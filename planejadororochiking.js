@@ -1,827 +1,732 @@
+// ==UserScript==
+// @name         OROCHIKING - Painel Unificado
+// @namespace    orochiking.painel
+// @version      2.0
+// @description  Painel único (preto/dourado) reunindo todos os scripts OROCHIKING. Abre no Assistente de Saque; cada botão navega para a tela certa e já ativa a ferramenta lá.
+// @match        https://*.tribalwars.com.br/game.php*
+// @match        https://*.tribalwars.net/game.php*
+// @match        https://*.die-staemme.de/game.php*
+// @match        https://*.tribalwars.co.uk/game.php*
+// @run-at       document-idle
+// @grant        none
+// @updateURL    https://raw.githubusercontent.com/evandrosmagela-tech/painelorochiking/refs/heads/main/painelorochiking.js
+// @downloadURL  https://raw.githubusercontent.com/evandrosmagela-tech/painelorochiking/refs/heads/main/painelorochiking.js
+// ==/UserScript==
+
 (function () {
-  if (1) {
-    // ==========================================================
-    //  OROCHIKING 3.9 — Planejador de Ataque em Massa
-    // ==========================================================
-    //  Liberado só pra alguns nicks (edite a lista abaixo pra
-    //  adicionar/remover quem pode usar).
-    // ==========================================================
-    var allowedNicks = ["- Orochi.2009", "Juniro1717", "Jordy Alba", "Bleda ."];
-    var currentNick = window.game_data && game_data.player ? game_data.player.name : null;
-    if (!currentNick || allowedNicks.indexOf(currentNick) === -1) {
-      alert(
-        "Este script não está liberado para o seu nick" +
-          (currentNick ? " (" + currentNick + ")" : "") +
-          ". Fala com o OrochiKing pra ser adicionado."
-      );
-      return;
-    }
 
-    // ==========================================================
-    //  Mudanças nesta versão:
-    //   1) Coordenadas em formato normal "X|Y" (sem "&"), uma por
-    //      linha ou separadas por vírgula. O script resolve o ID
-    //      da aldeia sozinho, consultando /map/village.txt (arquivo
-    //      público do próprio jogo, usado por qualquer ferramenta
-    //      de mapa).
-    //   2) Seleção do prédio-alvo da catapulta.
-    //   3) Sincronização de chegada: você escolhe um horário
-    //      (hora do servidor) e o script calcula o atraso de envio
-    //      de cada linha (origem->destino) pra todas chegarem juntas.
-    //
-    //  NÃO incluído (proposital): loop automático infinito que
-    //  reenvia sozinho sem você clicar em nada. Ver explicação
-    //  que te mandei no chat.
-    // ==========================================================
+  if (window.__OROCHIKING_PAINEL_ATIVO__) {
+    var jaAberto = document.getElementById('ork-painel');
+    if (jaAberto) { jaAberto.style.display = 'block'; return; }
+  }
 
-    var Aldeia = function (_coord, _id, _alvoId, _alvoC, _data, _time) {
-      this.coord = _coord;
-      this.id = _id;
-      this.alvoId = _alvoId;
-      this.alvoC = _alvoC;
-      this.data = _data;
-      this.time = _time;
-    };
+  if (typeof $ === 'undefined' || typeof game_data === 'undefined') { return; }
 
-    aldeias = [];
-    aldeiasAux = [];
-    aldeiasLength = 0;
-    deuError = 0;
+  /* ============================================================
+     LIBERAÇÃO POR NICK
+  ============================================================ */
+  var NICKS_LIBERADOS = ['Orochi.2009', 'Juniro1717', 'Jordy Alba', 'Bleda', 'EliteTeam5', 'Mr-magg'];
 
-    setParam = function (name, value) {
-      localStorage.setItem(name, value);
-    };
-    getParam = function (name) {
-      return localStorage.getItem(name);
-    };
+  function nickAtual() {
+    try {
+      return (game_data.player && game_data.player.name) ? String(game_data.player.name).trim() : '';
+    } catch (e) { return ''; }
+  }
 
-    random = function (inferior, superior) {
-      var numPossibilidades = superior - inferior,
-        aleat = Math.random() * numPossibilidades;
-      return Math.round(parseInt(inferior) + aleat);
-    };
+  function acessoLiberado() {
+    var nick = nickAtual().toLowerCase();
+    return NICKS_LIBERADOS.some(function (n) { return n.toLowerCase() === nick; });
+  }
 
-    usefullVillages = function () {
-      $(".quickedit-vn").each(function (index) {
-        aldeias[index] = new Aldeia(
-          $(this).find("a span").text().match(/\d{1,3}[|]\d{1,3}/g)[0],
-          $(this).data("id"),
-          0,
-          0,
-          {},
-          ""
-        );
-      });
-    };
+  if (!acessoLiberado()) { return; }
 
-    // ----------------------------------------------------------
-    // 1) Parser de coordenadas "normais" (X|Y) + resolução de ID
-    // ----------------------------------------------------------
+  /* ============================================================
+     CONFIGURAÇÃO DE DESTINOS
+     Ajuste aqui a parte da URL (depois de "game.php?village=ID&")
+     de cada tela, caso o seu mundo use um caminho diferente.
+  ============================================================ */
+  var DESTINOS = {
+    ataque:   'screen=overview_villages&mode=combined',
+    rename:   'screen=overview_villages',
+    cancelar: 'screen=overview_villages&mode=prod',
+    defender: 'screen=overview_villages&mode=incomings&subtype=attacks',
+    barbaras: 'screen=map'
+  };
 
-    // Aceita "555|551", separado por linha, vírgula ou espaço.
-    // Também aceita, por compatibilidade, o formato antigo "id&555|551".
-    parseCoordsInput = function (raw) {
-      raw = (raw || "").replace(/\r/g, "");
-      // Aceita quebra de linha, vírgula, ponto-e-vírgula OU espaço como separador
-      var parts = raw.split(/[\n,;\s]+/).map(function (s) {
-        return s.trim();
-      }).filter(Boolean);
-      var coords = [];
-      parts.forEach(function (p) {
-        var legacy = p.match(/^\d+&(\d{1,3}\|\d{1,3})$/);
-        var plain = p.match(/^(\d{1,3})\|(\d{1,3})$/);
-        if (legacy) {
-          coords.push(legacy[1]);
-        } else if (plain) {
-          coords.push(plain[1] + "|" + plain[2]);
-        }
-      });
-      return coords;
-    };
+  function urlPara(chaveDestino) {
+    var vid = (game_data.village && game_data.village.id) ? game_data.village.id : '';
+    return 'game.php?village=' + vid + '&' + DESTINOS[chaveDestino];
+  }
 
-    // Baixa o mapa público de aldeias do mundo (id,nome,x,y,dono,pontos)
-    // e monta um dicionário "X|Y" -> id
-    villageMapCache = null;
-    fetchVillageMap = function (callback) {
-      if (villageMapCache) {
-        callback(villageMapCache);
-        return;
-      }
-      $.ajax({
-        url: "/map/village.txt",
-        type: "GET",
-        dataType: "text",
-        success: function (data) {
-          var map = {};
-          var lines = data.replace(/\r/g, "").split("\n");
-          var parsed = 0;
-          for (var i = 0; i < lines.length; i++) {
-            if (!lines[i]) continue;
-            var cols = lines[i].split(",");
-            // formato: id,nome,x,y,dono,pontos
-            var id = (cols[0] || "").trim(),
-              x = (cols[2] || "").trim(),
-              y = (cols[3] || "").trim();
-            if (id !== "" && x !== "" && y !== "") {
-              map[x + "|" + y] = id;
-              parsed++;
+  /* ============================================================
+     FERRAMENTAS: checar (a tela atual serve?) e rodar (código original)
+  ============================================================ */
+
+  function checaFarmar() {
+    return !!(window.game_data && window.game_data.village);
+  }
+  function rodarFarmar() {
+    (function(){ if (window.__FarmHardAtivo) { if (typeof window.__FarmHardMostrar === "function") { window.__FarmHardMostrar(); } return; } window.__FarmHardAtivo = true; function _FarmarAS() { /* Script Escrito por ThiioM :) - Ajustado - Farm Hard 1.0 */ /* Lockr Script */ !function(t,e){t.Lockr=function(t,e){"use strict";return e.prefix="",e._getPrefixedKey=function(t,e){return e=e||{},e.noPrefix?t:this.prefix+t},e.set=function(t,e,r){var a=this._getPrefixedKey(t,r);try{localStorage.setItem(a,JSON.stringify({data:e}))}catch(t){}},e.get=function(t,e,r){var a,i=this._getPrefixedKey(t,r);try{a=JSON.parse(localStorage.getItem(i))}catch(t){a=localStorage[i]?{data:localStorage.getItem(i)}:null}return null===a?e:"object"==typeof a&&void 0!==a.data?a.data:e},e}(t,{})}(this); let TemArqueiro = $.inArray('archer', game_data.units) > -1; let TemPaladino = $.inArray('knight', game_data.units) > -1; let Ids = []; let Grupos = []; let Ponteiros = []; let GrupoAtual = 0; let NumGrupos = 1; let Rodando = false; let Pausado = false; let Iniciado = false; let AtaquesEnviados = 0; let fhRankIntervalo = null; let fhTentativasIds = 0; let VelocidadeFator = 1; const NUM_FILAS = 5; const apenasnumeros = string => parseInt(string.replace(/[^0-9]/g, '')); const aleatorio = (inferior, superior) => Math.round(parseInt(inferior) + (Math.random() * (superior - inferior))); /* Quantas filas ficam ativas de acordo com a velocidade - quanto mais devagar, menos filas simultaneas (menos parece robo) */ const FilasParaVelocidade = (fator) => { if (fator <= 0.5) { return 1; } if (fator <= 1) { return 2; } if (fator <= 1.25) { return 3; } if (fator <= 1.5) { return 4; } return 5; }; const MontarGrupos = (n) => { Grupos = []; Ponteiros = []; let total = Ids.length; if (total === 0 || n < 1) { return; } let base = Math.floor(total / n); let resto = total % n; let idx = 0; for (let g = 0; g < n; g++) { let tamanho = base + (g < resto ? 1 : 0); if (tamanho > 0) { Grupos.push(Ids.slice(idx, idx + tamanho)); Ponteiros.push(0); } idx += tamanho; } GrupoAtual = 0; }; const ProximaAldeia = () => { if (Grupos.length === 0) { return null; } let tentativas = 0; while (tentativas < Grupos.length) { let grupo = Grupos[GrupoAtual]; if (!grupo || grupo.length === 0) { GrupoAtual = (GrupoAtual + 1) % Grupos.length; tentativas++; continue; } let id_ = grupo[Ponteiros[GrupoAtual]]; Ponteiros[GrupoAtual]++; if (Ponteiros[GrupoAtual] >= grupo.length) { Ponteiros[GrupoAtual] = 0; } GrupoAtual = (GrupoAtual + 1) % Grupos.length; return id_; } return null; }; /* ===== POPUP Farm Hard 1.0 ===== */ const fhEstilo = document.createElement("style"); fhEstilo.innerHTML = `#farmhard-popup{position:fixed;top:80px;right:20px;width:315px;background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:14px;box-shadow:0 14px 34px rgba(0,0,0,0.75),0 0 0 1px rgba(255,196,0,0.12);font-family:"Segoe UI",Arial,Helvetica,sans-serif;color:#eee;z-index:999999;overflow:hidden}#farmhard-header{background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:13px 14px;display:flex;justify-content:space-between;align-items:center;cursor:move;box-shadow:inset 0 -1px 0 rgba(0,0,0,0.15)}#fh-title-main{font-size:15px;font-weight:800;letter-spacing:1.2px;text-shadow:0 1px 0 rgba(255,255,255,0.25)}#fh-title-version{font-size:9px;background:#141200;color:#FFC400;padding:2px 7px;border-radius:9px;margin-left:7px;font-weight:700;vertical-align:middle;letter-spacing:0.4px}#farmhard-header span.fh-close{cursor:pointer;font-weight:bold;font-size:16px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:0.15s;color:#141200}#farmhard-header span.fh-close:hover{background:rgba(0,0,0,0.18)}#farmhard-body{padding:14px}#farmhard-rank{background:#161616;border:1px solid #2c2c2c;border-radius:10px;padding:10px 12px;margin-bottom:12px}#farmhard-rank-label{font-size:10.5px;color:#FFC400;font-weight:700;letter-spacing:0.6px;margin-bottom:7px;text-transform:uppercase}#farmhard-rank-track{width:100%;height:11px;background:#0a0a0a;border:1px solid #2c2c2c;border-radius:6px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,0.6)}#farmhard-rank-fill{height:100%;width:0%;background:linear-gradient(90deg,#FFB800,#FFEB99);box-shadow:0 0 8px rgba(255,196,0,0.55);transition:width 0.5s ease}#farmhard-rank-texto{font-size:10.5px;color:#aaa;margin-top:7px;text-align:center;letter-spacing:0.2px}#farmhard-speed-box{background:#161616;border:1px solid #2c2c2c;border-radius:10px;padding:10px 12px;margin-bottom:12px}#farmhard-speed-titulo{font-size:10.5px;color:#888;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;margin-bottom:8px}#farmhard-speed-opcoes{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}.fh-vel{background:#1c1c1c;border:1px solid #333;border-radius:8px;padding:6px 1px;color:#ddd;font-weight:800;font-size:10.5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:0.15s}.fh-vel:hover{border-color:#665400}.fh-vel.ativa{border-color:#FFC400;background:#241f08;color:#fff}.fh-vel-tag{font-size:6.6px;font-weight:700;letter-spacing:0.1px;text-align:center;line-height:1.15;white-space:normal}#farmhard-opcoes-label{font-size:10.5px;color:#888;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;margin:2px 0 7px 2px}.fh-opcao{display:flex;align-items:center;gap:9px;background:#161616;border:1px solid #2c2c2c;border-radius:9px;padding:8px 10px;margin-bottom:6px;font-size:11.5px;color:#ccc;cursor:pointer;transition:0.15s}.fh-opcao:hover{border-color:#665400;background:#1c1a10}.fh-opcao.ativa{border-color:#FFC400;background:#241f08;color:#fff}.fh-badge{width:20px;height:20px;flex-shrink:0;border-radius:50%;background:#2c2c2c;color:#999;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;transition:0.15s}.fh-opcao.ativa .fh-badge{background:#FFC400;color:#141200}.fh-opcao input{position:absolute;opacity:0;width:0;height:0}#farmhard-contador{display:flex;align-items:center;justify-content:space-between;background:#161616;border:1px solid #2c2c2c;border-radius:10px;padding:10px 12px;margin:12px 0;font-size:11.5px;color:#bbb}#farmhard-contador b{color:#FFC400;font-size:18px}#farmhard-botoes{display:flex;gap:7px}#farmhard-botoes button{flex:1;padding:10px 0;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-size:11.5px;letter-spacing:0.3px;transition:0.15s}#fh-iniciar{background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;box-shadow:0 3px 10px rgba(255,184,0,0.35)}#fh-iniciar:hover{filter:brightness(1.08)}#fh-pausar{background:#232323;color:#FFC400;border:1px solid #3a3a3a}#fh-pausar:hover{background:#2b2b2b}#fh-fechar{background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c}#fh-fechar:hover{background:#341313}#farmhard-status{text-align:center;font-size:10.5px;margin-top:10px;color:#777;font-style:italic}`; document.head.appendChild(fhEstilo); const fhHtml = `<div id="farmhard-popup"><div id="farmhard-header"><div><span id="fh-title-main">FARM HARD</span><span id="fh-title-version">1.0</span></div><span class="fh-close" id="fh-x">&times;</span></div><div id="farmhard-body"><div id="farmhard-rank"><div id="farmhard-rank-label">Progresso vs Top 1 Mundial</div><div id="farmhard-rank-track"><div id="farmhard-rank-fill"></div></div><div id="farmhard-rank-texto">Carregando...</div></div><div id="farmhard-speed-box"><div id="farmhard-speed-titulo">Velocidade de envio</div><div id="farmhard-speed-opcoes"><button class="fh-vel" data-fator="0.5">0.5x<span class="fh-vel-tag" style="color:#7ec8ff">Durma em Paz</span></button><button class="fh-vel ativa" data-fator="1">1x<span class="fh-vel-tag" style="color:#8a8a8a">Normal</span></button><button class="fh-vel" data-fator="1.25">1.25x<span class="fh-vel-tag" style="color:#7ed17e">Baixo risco</span></button><button class="fh-vel" data-fator="1.5">1.5x<span class="fh-vel-tag" style="color:#ffb347">Risco moderado</span></button><button class="fh-vel" data-fator="2">2x<span class="fh-vel-tag" style="color:#ff5f5f">Arriscado</span></button></div></div><div id="farmhard-opcoes-label">Modo de rotação</div><label class="fh-opcao ativa"><span class="fh-badge">1</span><span>Normal — fila unica (ex: 1 a 100)</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="1" checked></label><label class="fh-opcao"><span class="fh-badge">2</span><span>2 grupos (ex: 1-50 / 51-100)</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="2"></label><label class="fh-opcao"><span class="fh-badge">3</span><span>3 grupos (ex: 1-30 / 31-60 / 61-100)</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="3"></label><label class="fh-opcao"><span class="fh-badge">4</span><span>4 grupos (ex: 1-25 / 26-50 / 51-75 / 76-100)</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="4"></label><div id="farmhard-contador"><span>Ataques enviados</span><b id="farmhard-contador-valor">0</b></div><div id="farmhard-botoes"><button id="fh-iniciar">Iniciar</button><button id="fh-pausar">Pausar</button><button id="fh-fechar">Fechar</button></div><div id="farmhard-status">Parado</div></div></div>`; const fhWrap = document.createElement("div"); fhWrap.innerHTML = fhHtml; document.body.appendChild(fhWrap.firstChild); const AtualizarStatus = (texto) => { const el = document.getElementById("farmhard-status"); if (el) { el.innerText = texto; } }; const AtualizarContador = () => { const el = document.getElementById("farmhard-contador-valor"); if (el) { el.innerText = AtaquesEnviados; } }; const AtualizarBarraRanking = (meu, top) => { let pct = Math.min(100, (meu / top) * 100); const fill = document.getElementById("farmhard-rank-fill"); const texto = document.getElementById("farmhard-rank-texto"); if (fill) { fill.style.width = pct.toFixed(4) + "%"; } if (texto) { texto.innerText = meu.toLocaleString("pt-BR") + " / " + top.toLocaleString("pt-BR") + " (" + pct.toFixed(4) + "%)"; } }; const BuscarRanking = () => { $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&mode=awards&group=0", type: "GET", headers: { "Upgrade-Insecure-Requests": 1 }, success: (data) => { let labelAlvo = null; let $doc = $(data); $doc.find("*").each( function() { if (labelAlvo !== null) { return false; } let txt = $(this).text(); if (txt) { txt = txt.replace(/\s+/g, " ").trim(); } if (txt === "Saqueador de recursos do dia") { let escopo = this.parentElement; for (let up = 0; up < 5 && escopo; up++) { let pb = $(escopo).find(".progress-bar .label").first(); if (pb.length) { labelAlvo = pb; return false; } escopo = escopo.parentElement; } } }); if (labelAlvo) { let texto = labelAlvo.text().replace(/\s+/g, ""); let partes = texto.split("/"); if (partes.length === 2) { let meu = parseInt(partes[0].replace(/[^0-9]/g, '')); let top = parseInt(partes[1].replace(/[^0-9]/g, '')); if (!isNaN(meu) && !isNaN(top) && top > 0) { Lockr.set('FarmHard_Meu', meu); Lockr.set('FarmHard_Top', top); AtualizarBarraRanking(meu, top); } } } else { const texto = document.getElementById("farmhard-rank-texto"); if (texto) { texto.innerText = "Conquista nao encontrada"; } } }, error: () => { const texto = document.getElementById("farmhard-rank-texto"); if (texto) { texto.innerText = "Erro ao buscar ranking"; } } }); }; let fhMeuCache = Lockr.get('FarmHard_Meu'); let fhTopCache = Lockr.get('FarmHard_Top'); if (fhMeuCache && fhTopCache) { AtualizarBarraRanking(fhMeuCache, fhTopCache); } BuscarRanking(); fhRankIntervalo = setInterval(BuscarRanking, 60000); window.__FarmHardMostrar = () => { const p = document.getElementById("farmhard-popup"); if (p) { p.style.display = "block"; } }; const fhHeader = document.getElementById("farmhard-header"); let fhArrastando = false, fhOffX = 0, fhOffY = 0; fhHeader.addEventListener("mousedown", (e) => { fhArrastando = true; const rect = document.getElementById("farmhard-popup").getBoundingClientRect(); fhOffX = e.clientX - rect.left; fhOffY = e.clientY - rect.top; }); document.addEventListener("mousemove", (e) => { if (!fhArrastando) { return; } const p = document.getElementById("farmhard-popup"); if (!p) { return; } p.style.left = (e.clientX - fhOffX) + "px"; p.style.top = (e.clientY - fhOffY) + "px"; p.style.right = "auto"; }); document.addEventListener("mouseup", () => { fhArrastando = false; }); document.querySelectorAll(".fh-vel").forEach((btn) => { btn.addEventListener("click", () => { VelocidadeFator = parseFloat(btn.getAttribute("data-fator")); document.querySelectorAll(".fh-vel").forEach((b) => { b.classList.remove("ativa"); }); btn.classList.add("ativa"); }); }); /* Pegar ID das Aldeias */ $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&id=" + game_data.player.id, data: {}, type: "GET", headers: { "Upgrade-Insecure-Requests": 1 }, success: (data) => { let _ids = data.match(/(data-id="(\d+)")+/g); if (_ids) { for (let x of _ids) { x = x.replace(/[^0-9]/g, ''); Ids.push(x); } } if (data.match(/Player\.getAllVillages/)) { $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&ajax=fetch_villages&player_id=" + game_data.player.id, data: {}, type: "GET", dataType: "json", success: (data) => { let _ids_ = data.villages ? data.villages.match(/(data-id="(\d+)")+/g) : null; if (_ids_) { for (let r of _ids_) { r = r.replace(/[^0-9]/g, ''); Ids.push(r); } } MontarGrupos(NumGrupos); }, error: () => { MontarGrupos(NumGrupos); } }); } else { MontarGrupos(NumGrupos); } }, error: () => { AtualizarStatus("Erro ao buscar aldeias"); } }); /* Função Enviar Atk Botão C - AS */ const EnviarAtaque_ = (Relatorio_id_, id_) => { $.ajax({ url: "/game.php?village=" + id_ + "&screen=am_farm&mode=farm&ajaxaction=farm_from_report&json=1&&h=" + csrf_token + "&client_time=" + Math.round(Timing.getCurrentServerTime() / 1e3), data: { report_id: Relatorio_id_ }, type: "POST", dataType: "json", headers: { "TribalWars-Ajax": 1 } }); AtaquesEnviados++; AtualizarContador(); }; class Alvo { constructor(Relatorio_id_, Madeira, Argila, Ferro) { this.Relatorio_id_ = Relatorio_id_; this.Madeira = Madeira; this.Argila = Argila; this.Ferro = Ferro; } get Recursos() { return this.Madeira + this.Argila + this.Ferro; } } /* Cada fila tem um indice fixo - se a velocidade atual pede menos filas do que o indice desta, ela so espera (nao farma) ate a velocidade subir de novo */ const Trabalhador = (indiceFila) => { if (!Rodando) { return; } if (Pausado) { setTimeout(() => Trabalhador(indiceFila), 300); return; } let filasAtivas = FilasParaVelocidade(VelocidadeFator); if (indiceFila >= filasAtivas) { setTimeout(() => Trabalhador(indiceFila), 1000); return; } if (Grupos.length === 0) { MontarGrupos(NumGrupos); } if (Grupos.length === 0) { setTimeout(() => Trabalhador(indiceFila), 300); return; } let inicio = Date.now(); let id_ = ProximaAldeia(); if (!id_) { setTimeout(() => Trabalhador(indiceFila), 300); return; } $.ajax({ url: "/game.php?village=" + id_ + "&screen=am_farm", type: "GET", headers: { "Upgrade-Insecure-Requests": 1 }, success: (data) => { let Alvos = []; if (!Lockr.get('Alvos_Muralha')) { Lockr.set('Alvos_Muralha', []); } let array = Lockr.get('Alvos_Muralha'); $(data).find('tr[id^=village_]').each( function(e) { let id = $(this).attr('id').match(/village_(\d+)/)[1]; let coord = $(this).find('td').eq(3).text().match(/(\d+)\|(\d+)/g); let Relatorio_id_ = $(this).find('td').eq(3).find('a').attr('href').match(/view=(\d+)/)[1]; let Madeira = apenasnumeros($(this).find('td').eq(5).find('span.nowrap').eq(0).text()); let Argila = apenasnumeros($(this).find('td').eq(5).find('span.nowrap').eq(1).text()); let Ferro = apenasnumeros($(this).find('td').eq(5).find('span.nowrap').eq(2).text()); let Muralha = apenasnumeros($(this).find('td').eq(6).text()); if( $(this).find('td').eq(5).find('span').eq(0).text() !== "?" ) { if ($(this).find('a.farm_icon.farm_icon_c').attr('class').match(/farm_icon_disabled/) === null) { if (Muralha > 0) { let aux = [ id, "&", coord, "&", Muralha ]; if(array.indexOf(aux.join('')) === -1 ) { array.push(aux.join('')); } } Alvos.push(new Alvo(Relatorio_id_, Madeira, Argila, Ferro)); } } }); Lockr.set('Alvos_Muralha', array); if (Alvos.length !== 0) { let Enviou = 0; for (let t = 0; t < Alvos.length; t++) { if (Alvos[t].Madeira >= 50000 && Alvos[t].Argila >= 50000 && Alvos[t].Ferro >= 50000 && Enviou === 0) { Enviou++; EnviarAtaque_(Alvos[t].Relatorio_id_, id_); } } } let gasto = Date.now() - inicio; let alvoIntervalo = Math.round(1000 / VelocidadeFator); let minimo = Math.max(75, Math.round(150 / VelocidadeFator)); let base = Math.max(minimo, alvoIntervalo - gasto); let espera = aleatorio(Math.round(base * 0.85), Math.round(base * 1.15)); setTimeout(() => Trabalhador(indiceFila), espera); }, error: () => { let gasto = Date.now() - inicio; let alvoIntervalo = Math.round(1000 / VelocidadeFator); let minimo = Math.max(75, Math.round(150 / VelocidadeFator)); let base = Math.max(minimo, alvoIntervalo - gasto); let espera = aleatorio(Math.round(base * 0.85), Math.round(base * 1.15)); setTimeout(() => Trabalhador(indiceFila), espera); } }); }; const IniciarFilas = () => { AtualizarStatus("Rodando (" + Ids.length + " aldeias, " + Grupos.length + " grupos)"); for (let l = 0; l < NUM_FILAS; l++) { setTimeout(() => Trabalhador(l), l * 150); } }; const __ids = () => { if (Ids[0] !== undefined) { if (Grupos.length === 0) { MontarGrupos(NumGrupos); } IniciarFilas(); } else { fhTentativasIds++; if (fhTentativasIds > 20) { AtualizarStatus("Erro: aldeias nao carregaram. Feche e abra novamente."); return; } setTimeout(__ids, 1000); } }; document.getElementById("fh-iniciar").onclick = () => { Rodando = true; Pausado = false; document.getElementById("fh-pausar").innerText = "Pausar"; AtualizarStatus("Iniciando..."); if (!Iniciado) { Iniciado = true; fhTentativasIds = 0; setTimeout(__ids, 500); } else { AtualizarStatus("Rodando..."); } }; document.getElementById("fh-pausar").onclick = () => { if (!Rodando) { return; } Pausado = !Pausado; document.getElementById("fh-pausar").innerText = Pausado ? "Continuar" : "Pausar"; AtualizarStatus(Pausado ? "Pausado" : "Rodando..."); }; const FecharTudo = () => { Rodando = false; if (fhRankIntervalo) { clearInterval(fhRankIntervalo); } const p = document.getElementById("farmhard-popup"); if (p) { p.remove(); } window.__FarmHardAtivo = false; }; document.getElementById("fh-fechar").onclick = FecharTudo; document.getElementById("fh-x").onclick = FecharTudo; document.querySelectorAll(".fh-opcao-input").forEach((el) => { el.addEventListener("change", (ev) => { NumGrupos = parseInt(ev.target.value); MontarGrupos(NumGrupos); document.querySelectorAll(".fh-opcao").forEach((o) => { o.classList.remove("ativa"); }); ev.target.closest(".fh-opcao").classList.add("ativa"); }); }); } _FarmarAS(); })();
+  }
+
+  function checaAtaque() {
+    return !!(window.game_data && game_data.screen === 'overview_villages' && game_data.mode === 'combined');
+  }
+  function rodarAtaque() {
+    (function () {
+      if (1) {
+        // ==========================================================
+        //  ATAQUE MASS v2
+        //  Mudanças nesta versão:
+        //   1) Coordenadas em formato normal "X|Y" (sem "&"), uma por
+        //      linha ou separadas por vírgula. O script resolve o ID
+        //      da aldeia sozinho, consultando /map/village.txt (arquivo
+        //      público do próprio jogo, usado por qualquer ferramenta
+        //      de mapa).
+        //   2) Seleção do prédio-alvo da catapulta.
+        //   3) Sincronização de chegada: você escolhe um horário
+        //      (hora do servidor) e o script calcula o atraso de envio
+        //      de cada linha (origem->destino) pra todas chegarem juntas.
+        //
+        //  NÃO incluído (proposital): loop automático infinito que
+        //  reenvia sozinho sem você clicar em nada. Ver explicação
+        //  que te mandei no chat.
+        // ==========================================================
+    
+        var Aldeia = function (_coord, _id, _alvoId, _alvoC, _data, _time) {
+          this.coord = _coord;
+          this.id = _id;
+          this.alvoId = _alvoId;
+          this.alvoC = _alvoC;
+          this.data = _data;
+          this.time = _time;
+        };
+    
+        aldeias = [];
+        aldeiasAux = [];
+        aldeiasLength = 0;
+        deuError = 0;
+    
+        setParam = function (name, value) {
+          localStorage.setItem(name, value);
+        };
+        getParam = function (name) {
+          return localStorage.getItem(name);
+        };
+    
+        random = function (inferior, superior) {
+          var numPossibilidades = superior - inferior,
+            aleat = Math.random() * numPossibilidades;
+          return Math.round(parseInt(inferior) + aleat);
+        };
+    
+        usefullVillages = function () {
+          $(".quickedit-vn").each(function (index) {
+            aldeias[index] = new Aldeia(
+              $(this).find("a span").text().match(/\d{1,3}[|]\d{1,3}/g)[0],
+              $(this).data("id"),
+              0,
+              0,
+              {},
+              ""
+            );
+          });
+        };
+    
+        // ----------------------------------------------------------
+        // 1) Parser de coordenadas "normais" (X|Y) + resolução de ID
+        // ----------------------------------------------------------
+    
+        // Aceita "555|551", separado por linha, vírgula ou espaço.
+        // Também aceita, por compatibilidade, o formato antigo "id&555|551".
+        parseCoordsInput = function (raw) {
+          raw = (raw || "").replace(/\r/g, "");
+          // Aceita quebra de linha, vírgula, ponto-e-vírgula OU espaço como separador
+          var parts = raw.split(/[\n,;\s]+/).map(function (s) {
+            return s.trim();
+          }).filter(Boolean);
+          var coords = [];
+          parts.forEach(function (p) {
+            var legacy = p.match(/^\d+&(\d{1,3}\|\d{1,3})$/);
+            var plain = p.match(/^(\d{1,3})\|(\d{1,3})$/);
+            if (legacy) {
+              coords.push(legacy[1]);
+            } else if (plain) {
+              coords.push(plain[1] + "|" + plain[2]);
+            }
+          });
+          return coords;
+        };
+    
+        // Baixa o mapa público de aldeias do mundo (id,nome,x,y,dono,pontos)
+        // e monta um dicionário "X|Y" -> id
+        villageMapCache = null;
+        fetchVillageMap = function (callback) {
+          if (villageMapCache) {
+            callback(villageMapCache);
+            return;
+          }
+          $.ajax({
+            url: "/map/village.txt",
+            type: "GET",
+            dataType: "text",
+            success: function (data) {
+              var map = {};
+              var lines = data.replace(/\r/g, "").split("\n");
+              var parsed = 0;
+              for (var i = 0; i < lines.length; i++) {
+                if (!lines[i]) continue;
+                var cols = lines[i].split(",");
+                // formato: id,nome,x,y,dono,pontos
+                var id = (cols[0] || "").trim(),
+                  x = (cols[2] || "").trim(),
+                  y = (cols[3] || "").trim();
+                if (id !== "" && x !== "" && y !== "") {
+                  map[x + "|" + y] = id;
+                  parsed++;
+                }
+              }
+              console.log("[AtaqueMass] village.txt: " + lines.length + " linhas, " + parsed + " aldeias mapeadas");
+              villageMapCache = map;
+              callback(map);
+            },
+            error: function (xhr) {
+              console.error("[AtaqueMass] falha ao buscar /map/village.txt", xhr.status, xhr.statusText);
+              alert(
+                "Não consegui carregar /map/village.txt para resolver as coordenadas (status " +
+                  xhr.status +
+                  "). Tente novamente."
+              );
+            },
+          });
+        };
+    
+        // Recebe lista de coords "X|Y", devolve string no formato interno
+        // "id&X|Y,id&X|Y,..." (mesmo formato que o resto do script já usa)
+        resolveCoordsToIdString = function (coordsList, callback) {
+          fetchVillageMap(function (map) {
+            var resolved = [],
+              naoEncontradas = [];
+            coordsList.forEach(function (c) {
+              if (map[c]) {
+                resolved.push(map[c] + "&" + c);
+              } else {
+                naoEncontradas.push(c);
+              }
+            });
+            if (naoEncontradas.length) {
+              console.log("Coordenadas não encontradas no mapa: " + naoEncontradas.join(", "));
+            }
+            callback(resolved.join(","), naoEncontradas);
+          });
+        };
+    
+        getAlvos = function (alvos) {
+          var infoAlvos = { id: [], coord: [] };
+          if (alvos === "") {
+            // string vazia = "sem alvos em cache", não "sem argumento".
+            // Não cair no fallback de reler a caixa de texto (que agora é formato puro, sem id).
+            return infoAlvos;
+          }
+          if (alvos === null || typeof alvos === "undefined" || alvos == -1) {
+            // Sem cache algum ainda: usa a lista já resolvida (id&coord), nunca o texto
+            // cru da caixa (que é só "X|Y", sem id, e quebraria o split abaixo).
+            var cached = getParam("coordsIds");
+            alvos = cached ? cached.split(",") : [];
+          } else {
+            alvos = alvos.split(",");
+          }
+          var infoAlvosLen = alvos.length;
+          for (var k = 0; k < infoAlvosLen; k++) {
+            alvos[k] = alvos[k].split("&");
+            infoAlvos.id[k] = alvos[k][0];
+            infoAlvos.coord[k] = alvos[k][1];
+          }
+          return infoAlvos;
+        };
+    
+        sortCoords = function () {
+          var len = aldeias.length,
+            lenAlvos,
+            x,
+            y,
+            prim,
+            seg,
+            coord = [],
+            id,
+            string = "",
+            objAlvo = getAlvos(getParam("coordsRes"));
+          lenAlvos = objAlvo.coord.length;
+          if (lenAlvos <= 0) {
+            objAlvo = getAlvos(getParam("coordsIds"));
+            lenAlvos = objAlvo.coord.length;
+          }
+          for (var i = 0; i < len; i++) {
+            if (!lenAlvos) {
+              // Recicla a lista de alvos já resolvida (id&coord) salva no localStorage,
+              // e não o texto cru da caixa (que agora é só "X|Y", sem id).
+              objAlvo = getAlvos(getParam("coordsIds"));
+              lenAlvos = objAlvo.coord.length;
+            }
+            x = aldeias[i].coord.split("|");
+            for (var j = 0; j < lenAlvos; j++) {
+              y = objAlvo.coord[j].split("|");
+              if (!j) prim = Math.sqrt(Math.pow(x[0] - y[0], 2) + Math.pow(x[1] - y[1], 2));
+              seg = Math.sqrt(Math.pow(x[0] - y[0], 2) + Math.pow(x[1] - y[1], 2));
+              if (prim >= seg) {
+                prim = seg;
+                coord = y;
+                id = objAlvo.id[j];
+              }
+            }
+            prim = objAlvo.coord.indexOf(coord.join("|"));
+            objAlvo.coord.splice(prim, 1);
+            objAlvo.id.splice(prim, 1);
+            lenAlvos--;
+            aldeias[i].alvoC = coord.join("|");
+            aldeias[i].alvoId = id;
+          }
+          seg = objAlvo.coord.length;
+          for (var m = 0; m < seg; m++) {
+            string += objAlvo.id[m] + "&" + objAlvo.coord[m];
+            if (m < seg - 1) string += ",";
+          }
+          setParam("coordsRes", string);
+          $("#combined_table tbody tr:eq(0) th:eq(0)").html(
+            "<b>Alvos Restantes: " + lenAlvos + "</b>"
+          );
+        };
+    
+        removeVillage = function (id) {
+          var len = aldeias.length;
+          while (len && len--) {
+            if (aldeias[len].id == id) {
+              aldeias.splice(len, 1);
+              return;
             }
           }
-          console.log("[AtaqueMass] village.txt: " + lines.length + " linhas, " + parsed + " aldeias mapeadas");
-          villageMapCache = map;
-          callback(map);
-        },
-        error: function (xhr) {
-          console.error("[AtaqueMass] falha ao buscar /map/village.txt", xhr.status, xhr.statusText);
-          alert(
-            "Não consegui carregar /map/village.txt para resolver as coordenadas (status " +
-              xhr.status +
-              "). Tente novamente."
-          );
-        },
-      });
-    };
-
-    // Recebe lista de coords "X|Y", devolve string no formato interno
-    // "id&X|Y,id&X|Y,..." (mesmo formato que o resto do script já usa)
-    resolveCoordsToIdString = function (coordsList, callback) {
-      fetchVillageMap(function (map) {
-        var resolved = [],
-          naoEncontradas = [];
-        coordsList.forEach(function (c) {
-          if (map[c]) {
-            resolved.push(map[c] + "&" + c);
-          } else {
-            naoEncontradas.push(c);
+        };
+        removeVillageAux = function (id) {
+          var len = aldeiasAux.length;
+          while (len--) {
+            if (aldeiasAux[len].id == id) {
+              aldeiasAux.splice(len, 1);
+              return;
+            }
           }
-        });
-        if (naoEncontradas.length) {
-          console.log("Coordenadas não encontradas no mapa: " + naoEncontradas.join(", "));
-        }
-        callback(resolved.join(","), naoEncontradas);
-      });
-    };
-
-    getAlvos = function (alvos) {
-      var infoAlvos = { id: [], coord: [] };
-      if (alvos === "") {
-        // string vazia = "sem alvos em cache", não "sem argumento".
-        // Não cair no fallback de reler a caixa de texto (que agora é formato puro, sem id).
-        return infoAlvos;
-      }
-      if (alvos === null || typeof alvos === "undefined" || alvos == -1) {
-        // Sem cache algum ainda: usa a lista já resolvida (id&coord), nunca o texto
-        // cru da caixa (que é só "X|Y", sem id, e quebraria o split abaixo).
-        var cached = getParam("coordsIds");
-        alvos = cached ? cached.split(",") : [];
-      } else {
-        alvos = alvos.split(",");
-      }
-      var infoAlvosLen = alvos.length;
-      for (var k = 0; k < infoAlvosLen; k++) {
-        alvos[k] = alvos[k].split("&");
-        infoAlvos.id[k] = alvos[k][0];
-        infoAlvos.coord[k] = alvos[k][1];
-      }
-      return infoAlvos;
-    };
-
-    sortCoords = function () {
-      var len = aldeias.length,
-        lenAlvos,
-        x,
-        y,
-        prim,
-        seg,
-        coord = [],
-        id,
-        string = "",
-        objAlvo = getAlvos(getParam("coordsRes"));
-      lenAlvos = objAlvo.coord.length;
-      if (lenAlvos <= 0) {
-        objAlvo = getAlvos(getParam("coordsIds"));
-        lenAlvos = objAlvo.coord.length;
-      }
-      for (var i = 0; i < len; i++) {
-        if (!lenAlvos) {
-          // Recicla a lista de alvos já resolvida (id&coord) salva no localStorage,
-          // e não o texto cru da caixa (que agora é só "X|Y", sem id).
-          objAlvo = getAlvos(getParam("coordsIds"));
-          lenAlvos = objAlvo.coord.length;
-        }
-        x = aldeias[i].coord.split("|");
-        for (var j = 0; j < lenAlvos; j++) {
-          y = objAlvo.coord[j].split("|");
-          if (!j) prim = Math.sqrt(Math.pow(x[0] - y[0], 2) + Math.pow(x[1] - y[1], 2));
-          seg = Math.sqrt(Math.pow(x[0] - y[0], 2) + Math.pow(x[1] - y[1], 2));
-          if (prim >= seg) {
-            prim = seg;
-            coord = y;
-            id = objAlvo.id[j];
-          }
-        }
-        prim = objAlvo.coord.indexOf(coord.join("|"));
-        objAlvo.coord.splice(prim, 1);
-        objAlvo.id.splice(prim, 1);
-        lenAlvos--;
-        aldeias[i].alvoC = coord.join("|");
-        aldeias[i].alvoId = id;
-      }
-      seg = objAlvo.coord.length;
-      for (var m = 0; m < seg; m++) {
-        string += objAlvo.id[m] + "&" + objAlvo.coord[m];
-        if (m < seg - 1) string += ",";
-      }
-      setParam("coordsRes", string);
-      $("#combined_table tbody tr:eq(0) th:eq(0)").html(
-        "<b>Alvos Restantes: " + lenAlvos + "</b>"
-      );
-    };
-
-    removeVillage = function (id) {
-      var len = aldeias.length;
-      while (len && len--) {
-        if (aldeias[len].id == id) {
-          aldeias.splice(len, 1);
-          return;
-        }
-      }
-    };
-    removeVillageAux = function (id) {
-      var len = aldeiasAux.length;
-      while (len--) {
-        if (aldeiasAux[len].id == id) {
-          aldeiasAux.splice(len, 1);
-          return;
-        }
-      }
-    };
-
-    // ----------------------------------------------------------
-    // Helpers de tempo (sincronização de chegada)
-    // ----------------------------------------------------------
-    durationToMs = function (str) {
-      // Aceita "H:MM:SS" ou "MM:SS"
-      if (!str) return null;
-      var p = str.trim().split(":").map(Number);
-      if (p.some(isNaN)) return null;
-      if (p.length === 3) return (p[0] * 3600 + p[1] * 60 + p[2]) * 1000;
-      if (p.length === 2) return (p[0] * 60 + p[1]) * 1000;
-      return null;
-    };
-
-    // Constrói o timestamp (ms, hora do servidor) do próximo horário
-    // HH:MM:SS informado pelo usuário, a partir de agora.
-    buildTargetTimestamp = function (hh, mm, ss) {
-      var now = Timing.getCurrentServerTime();
-      var d = new Date(now);
-      d.setHours(hh, mm, ss, 0);
-      var ts = d.getTime();
-      if (ts <= now) ts += 24 * 3600 * 1000; // já passou hoje, agenda pra amanhã
-      return ts;
-    };
-
-    // ----------------------------------------------------------
-    // Contagem regressiva ao vivo na coluna "Status" enquanto o
-    // ataque ainda não foi disparado
-    // ----------------------------------------------------------
-    countdownTimers = {};
-
-    formatCountdown = function (ms) {
-      var s = Math.max(0, Math.ceil(ms / 1000));
-      var hh = Math.floor(s / 3600),
-        mm = Math.floor((s % 3600) / 60),
-        ss = s % 60;
-      var pad = function (n) {
-        return n < 10 ? "0" + n : "" + n;
-      };
-      return (hh > 0 ? hh + ":" + pad(mm) : mm) + ":" + pad(ss);
-    };
-
-    startCountdown = function (rowIndex, fireAtMs) {
-      stopCountdown(rowIndex);
-      var cell = function () {
-        return $("#combined_table tbody tr:eq(" + rowIndex + ") td:eq(3)");
-      };
-      var tick = function () {
-        var rem = fireAtMs - Date.now();
-        if (rem <= 0) {
-          cell().text("Enviando...").css({ "text-align": "center", color: "#92400e", "font-weight": "600" });
-          return;
-        }
-        cell()
-          .text("Envio em " + formatCountdown(rem))
-          .css({ "text-align": "center", color: "var(--text-lo)", "font-family": "'JetBrains Mono',monospace" });
-      };
-      tick();
-      countdownTimers[rowIndex] = setInterval(tick, 1000);
-    };
-
-    stopCountdown = function (rowIndex) {
-      if (countdownTimers[rowIndex]) {
-        clearInterval(countdownTimers[rowIndex]);
-        delete countdownTimers[rowIndex];
-      }
-    };
-
-    // ----------------------------------------------------------
-    // Barra de progresso — carregar 100+ ataques demora dezenas de
-    // segundos (o jogo limita a velocidade das requisições), então
-    // sem isso parece que travou.
-    // ----------------------------------------------------------
-    progressState = { done: 0, total: 0 };
-
-    progressStart = function (n) {
-      progressState.done = 0;
-      progressState.total = n * 2; // duas fases: consultar tropas + confirmar
-      $("#amxProgress").show();
-      progressRender();
-    };
-
-    progressTick = function () {
-      progressState.done = Math.min(progressState.done + 1, progressState.total);
-      progressRender();
-    };
-
-    progressRender = function () {
-      var pct = progressState.total ? Math.round((progressState.done / progressState.total) * 100) : 0;
-      $("#amxProgressFill").css("width", pct + "%");
-      // "total" guarda passos internos (2 por aldeia: consultar tropas + confirmar) —
-      // mostramos em aldeias pra ficar mais claro pra quem tá acompanhando.
-      var aldeiasFeitas = Math.floor(progressState.done / 2);
-      var aldeiasTotal = Math.round(progressState.total / 2);
-      $("#amxProgressText").text(
-        "Carregando ataques... " + aldeiasFeitas + "/" + aldeiasTotal + " aldeias (" + pct + "%)" +
-        (pct < 100 ? " — isso pode levar até 1 minuto ou mais em lotes grandes, aguarde" : "")
-      );
-    };
-
-    progressHide = function () {
-      $("#amxProgress").hide();
-    };
-
-    // Callback usado pelo Demolidor pra emendar a próxima rodada assim que a
-    // atual terminar de enviar. Fora do Demolidor fica null e só mostramos o alerta normal.
-    onRoundDoneCallback = null;
-    finishRound = function () {
-      var cb = onRoundDoneCallback;
-      onRoundDoneCallback = null;
-      if (cb) {
-        cb();
-      } else {
-        alert("Todos os comandos foram enviados!");
-      }
-    };
-
-    // ----------------------------------------------------------
-    // Ciclo da rodada: estimativa de quando as tropas voltam pra casa,
-    // pra você saber quando dá pra mandar de novo (farm/demolidor).
-    // ----------------------------------------------------------
-    roundReturnAtMs = 0;
-    cycleTimer = null;
-
-    startCycleCountdown = function () {
-      clearInterval(cycleTimer);
-      if (!roundReturnAtMs) return;
-      $("#amxCycleStatus").show();
-      $("#amxRepeatBtn").prop("disabled", true).removeClass("amx-btn-ready").text("Aguardando tropas voltarem...");
-      var tick = function () {
-        var rem = roundReturnAtMs - Date.now();
-        if (rem <= 0) {
-          clearInterval(cycleTimer);
-          $("#amxCycleText").text("✅ Tropas devem ter voltado — já dá pra mandar de novo.");
-          $("#amxRepeatBtn").prop("disabled", false).addClass("amx-btn-ready").text("🔁 Repetir Mesmos Ataques");
-          return;
-        }
-        $("#amxCycleText").text("⏳ Tropas retornando... pronto em " + formatCountdown(rem) + " (estimativa)");
-      };
-      tick();
-      cycleTimer = setInterval(tick, 1000);
-    };
-
+        };
     
-    // ----------------------------------------------------------
-    // firstRequest: consulta a janela de comando de cada aldeia
-    // (sem alterações na lógica de tropas, só adiciona o prédio-alvo)
-    // ----------------------------------------------------------
-    firstRequest = function () {
-      var comando = $("#comando").val();
-      var spear = getParam("spear"),
-        sword = getParam("sword"),
-        axe = getParam("axe"),
-        archer = getParam("archer"),
-        spy = getParam("spy"),
-        light = getParam("light"),
-        heavy = getParam("heavy"),
-        marcher = getParam("marcher"),
-        ram = getParam("ram"),
-        catapult = getParam("catapult"),
-        snob = getParam("snob"),
-        building = getParam("buildingAlvo"),
-        count = 0,
-        i = 0;
-      aldeiasLength = aldeias.length;
-      for (let aldeia of aldeias) {
-        setTimeout(
-          function () {
-            $.ajax({
-              type: "GET",
-              url:
-                "/game.php?village=" +
-                aldeia.id +
-                "&screen=place&ajax=command&target=" +
-                aldeia.alvoId +
-                "&client_time=" +
-                Math.round(Timing.getCurrentServerTime() / 1e3),
-              data: {},
-              dataType: "json",
-              headers: { "TribalWars-Ajax": 1 },
-              success: function (data) {
-                progressTick();
-                var string,
-                  len,
-                  tropas = {},
-                  spearN, swordN, axeN, archerN, spyN, marcherN, lightN, heavyN, ramN, catapultN, snobN, first;
-                if (!data.error) {
-                  data = $(data.response.dialog);
-                  string = data.serialize().split("&");
-                  len = string.length;
-                  spearN = jQuery("#unit_input_spear", data).data("all-count");
-                  swordN = jQuery("#unit_input_sword", data).data("all-count");
-                  axeN = jQuery("#unit_input_axe", data).data("all-count");
-                  archerN = jQuery("#unit_input_archer", data).data("all-count");
-                  spyN = jQuery("#unit_input_spy", data).data("all-count");
-                  marcherN = jQuery("#unit_input_marcher", data).data("all-count");
-                  lightN = jQuery("#unit_input_light", data).data("all-count");
-                  heavyN = jQuery("#unit_input_heavy", data).data("all-count");
-                  ramN = jQuery("#unit_input_ram", data).data("all-count");
-                  catapultN = jQuery("#unit_input_catapult", data).data("all-count");
-                  snobN = jQuery("#unit_input_snob", data).data("all-count");
-                  for (var l = 0; l < len; l++) {
-                    tropas[string[l].split("=")[0]] = string[l].split("=")[1];
-                  }
-                  first = aldeia.alvoC.split("|");
-                  tropas.x = first[0];
-                  tropas.y = first[1];
-                  tropas.spear = spearN > parseInt(spear) ? spear : spearN;
-                  tropas.sword = swordN > parseInt(sword) ? sword : swordN;
-                  tropas.axe = axeN > parseInt(axe) ? axe : axeN;
-                  tropas.archer = archerN > parseInt(archer) ? archer : archerN;
-                  tropas.spy = spyN > parseInt(spy) ? spy : spyN;
-                  tropas.marcher = marcherN > parseInt(marcher) ? marcher : marcherN;
-                  tropas.light = lightN > parseInt(light) ? light : lightN;
-                  tropas.heavy = parseInt(heavy) < heavyN ? parseInt(heavy) : heavyN;
-                  tropas.ram = ramN > parseInt(ram) ? ram : ramN;
-                  tropas.catapult = catapultN > parseInt(catapult) ? catapult : catapultN;
-                  tropas.snob = parseInt(snob) && parseInt(snobN) ? 1 : 0;
-                  tropas["string"] = "";
-
-                  // NOVO: prédio-alvo da catapulta
-                  if (parseInt(tropas.catapult) > 0 && building) {
-                    tropas.building = building;
-                    aldeia.building = building; // guardamos aqui também: o passo seguinte
-                    // (secondRequest) substitui aldeia.data inteiro pelo dialog do
-                    // servidor, que traria o building padrão do jogo, apagando essa escolha.
-                  }
-
-                  // Escolta das levas de nobre: prioriza cavalaria leve; se a aldeia não tiver
-                  // cavalaria leve (ou não tiver o suficiente pra todas as levas extras), usa
-                  // cavalaria pesada disponível no lugar — tanto na leva principal quanto nas extras.
-                  var lightRequested = parseInt(light) || 0;
-                  if (lightRequested > 0 && lightN <= 0 && heavyN > 0) {
-                    var heavyRequestedMain = parseInt(heavy) || 0;
-                    tropas.heavy = heavyRequestedMain > 0 ? Math.min(heavyRequestedMain, heavyN) : heavyN;
-                  }
-
-                  if (snobN > 1 && parseInt(snob) > 1) {
-                    var extraCount = Math.min(parseInt(snob), snobN) - 1; // quantas levas extras (2..snob)
-                    var precisaLight = 25 * extraCount;
-                    var temLightSuficiente = precisaLight > 0 && lightN >= precisaLight;
-
-                    if (temLightSuficiente) {
-                      tropas.light = tropas.light ? tropas.light - precisaLight : 0;
-                    } else if (heavyN > 0) {
-                      // Não tem cavalaria leve suficiente pras levas extras -> reserva cavalaria
-                      // pesada da leva principal pra sobrar pras extras.
-                      tropas.heavy = tropas.heavy ? Math.max(0, tropas.heavy - 25 * extraCount) : tropas.heavy;
-                    }
-
-                    for (var k = 2; k <= snob && k <= snobN; k++) {
-                      tropas["string"] += "train[" + k + "][axe]=0&";
-                      tropas["string"] += "train[" + k + "][marcher]=0&";
-                      if (temLightSuficiente) {
-                        tropas["string"] += "train[" + k + "][light]=25&train[" + k + "][heavy]=0&";
-                      } else {
-                        tropas["string"] += "train[" + k + "][light]=0&train[" + k + "][heavy]=" + (heavyN > 0 ? 25 : 0) + "&";
+        // ----------------------------------------------------------
+        // Helpers de tempo (sincronização de chegada)
+        // ----------------------------------------------------------
+        durationToMs = function (str) {
+          // Aceita "H:MM:SS" ou "MM:SS"
+          if (!str) return null;
+          var p = str.trim().split(":").map(Number);
+          if (p.some(isNaN)) return null;
+          if (p.length === 3) return (p[0] * 3600 + p[1] * 60 + p[2]) * 1000;
+          if (p.length === 2) return (p[0] * 60 + p[1]) * 1000;
+          return null;
+        };
+    
+        // Constrói o timestamp (ms, hora do servidor) do próximo horário
+        // HH:MM:SS informado pelo usuário, a partir de agora.
+        buildTargetTimestamp = function (hh, mm, ss) {
+          var now = Timing.getCurrentServerTime();
+          var d = new Date(now);
+          d.setHours(hh, mm, ss, 0);
+          var ts = d.getTime();
+          if (ts <= now) ts += 24 * 3600 * 1000; // já passou hoje, agenda pra amanhã
+          return ts;
+        };
+    
+        // ----------------------------------------------------------
+        // Contagem regressiva ao vivo na coluna "Status" enquanto o
+        // ataque ainda não foi disparado
+        // ----------------------------------------------------------
+        countdownTimers = {};
+    
+        formatCountdown = function (ms) {
+          var s = Math.max(0, Math.ceil(ms / 1000));
+          var hh = Math.floor(s / 3600),
+            mm = Math.floor((s % 3600) / 60),
+            ss = s % 60;
+          var pad = function (n) {
+            return n < 10 ? "0" + n : "" + n;
+          };
+          return (hh > 0 ? hh + ":" + pad(mm) : mm) + ":" + pad(ss);
+        };
+    
+        startCountdown = function (rowIndex, fireAtMs) {
+          stopCountdown(rowIndex);
+          var cell = function () {
+            return $("#combined_table tbody tr:eq(" + rowIndex + ") td:eq(3)");
+          };
+          var tick = function () {
+            var rem = fireAtMs - Date.now();
+            if (rem <= 0) {
+              cell().text("Enviando...").css({ "text-align": "center", color: "#92400e", "font-weight": "600" });
+              return;
+            }
+            cell()
+              .text("Envio em " + formatCountdown(rem))
+              .css({ "text-align": "center", color: "var(--text-lo)", "font-family": "'JetBrains Mono',monospace" });
+          };
+          tick();
+          countdownTimers[rowIndex] = setInterval(tick, 1000);
+        };
+    
+        stopCountdown = function (rowIndex) {
+          if (countdownTimers[rowIndex]) {
+            clearInterval(countdownTimers[rowIndex]);
+            delete countdownTimers[rowIndex];
+          }
+        };
+    
+        // ----------------------------------------------------------
+        // Barra de progresso — carregar 100+ ataques demora dezenas de
+        // segundos (o jogo limita a velocidade das requisições), então
+        // sem isso parece que travou.
+        // ----------------------------------------------------------
+        progressState = { done: 0, total: 0 };
+    
+        progressStart = function (n) {
+          progressState.done = 0;
+          progressState.total = n * 2; // duas fases: consultar tropas + confirmar
+          $("#amxProgress").show();
+          progressRender();
+        };
+    
+        progressTick = function () {
+          progressState.done = Math.min(progressState.done + 1, progressState.total);
+          progressRender();
+        };
+    
+        progressRender = function () {
+          var pct = progressState.total ? Math.round((progressState.done / progressState.total) * 100) : 0;
+          $("#amxProgressFill").css("width", pct + "%");
+          // "total" guarda passos internos (2 por aldeia: consultar tropas + confirmar) —
+          // mostramos em aldeias pra ficar mais claro pra quem tá acompanhando.
+          var aldeiasFeitas = Math.floor(progressState.done / 2);
+          var aldeiasTotal = Math.round(progressState.total / 2);
+          $("#amxProgressText").text(
+            "Carregando ataques... " + aldeiasFeitas + "/" + aldeiasTotal + " aldeias (" + pct + "%)" +
+            (pct < 100 ? " — isso pode levar até 1 minuto ou mais em lotes grandes, aguarde" : "")
+          );
+        };
+    
+        progressHide = function () {
+          $("#amxProgress").hide();
+        };
+    
+        // Callback usado pelo Demolidor pra emendar a próxima rodada assim que a
+        // atual terminar de enviar. Fora do Demolidor fica null e só mostramos o alerta normal.
+        onRoundDoneCallback = null;
+        finishRound = function () {
+          var cb = onRoundDoneCallback;
+          onRoundDoneCallback = null;
+          if (cb) {
+            cb();
+          } else {
+            alert("Todos os comandos foram enviados!");
+          }
+        };
+    
+        // ----------------------------------------------------------
+        // Ciclo da rodada: estimativa de quando as tropas voltam pra casa,
+        // pra você saber quando dá pra mandar de novo (farm/demolidor).
+        // ----------------------------------------------------------
+        roundReturnAtMs = 0;
+        cycleTimer = null;
+    
+        startCycleCountdown = function () {
+          clearInterval(cycleTimer);
+          if (!roundReturnAtMs) return;
+          $("#amxCycleStatus").show();
+          $("#amxRepeatBtn").prop("disabled", true).removeClass("amx-btn-ready").text("Aguardando tropas voltarem...");
+          var tick = function () {
+            var rem = roundReturnAtMs - Date.now();
+            if (rem <= 0) {
+              clearInterval(cycleTimer);
+              $("#amxCycleText").text("✅ Tropas devem ter voltado — já dá pra mandar de novo.");
+              $("#amxRepeatBtn").prop("disabled", false).addClass("amx-btn-ready").text("🔁 Repetir Mesmos Ataques");
+              return;
+            }
+            $("#amxCycleText").text("⏳ Tropas retornando... pronto em " + formatCountdown(rem) + " (estimativa)");
+          };
+          tick();
+          cycleTimer = setInterval(tick, 1000);
+        };
+    
+        
+        // ----------------------------------------------------------
+        // firstRequest: consulta a janela de comando de cada aldeia
+        // (sem alterações na lógica de tropas, só adiciona o prédio-alvo)
+        // ----------------------------------------------------------
+        firstRequest = function () {
+          var comando = $("#comando").val();
+          var spear = getParam("spear"),
+            sword = getParam("sword"),
+            axe = getParam("axe"),
+            archer = getParam("archer"),
+            spy = getParam("spy"),
+            light = getParam("light"),
+            heavy = getParam("heavy"),
+            marcher = getParam("marcher"),
+            ram = getParam("ram"),
+            catapult = getParam("catapult"),
+            snob = getParam("snob"),
+            building = getParam("buildingAlvo"),
+            count = 0,
+            i = 0;
+          aldeiasLength = aldeias.length;
+          for (let aldeia of aldeias) {
+            setTimeout(
+              function () {
+                $.ajax({
+                  type: "GET",
+                  url:
+                    "/game.php?village=" +
+                    aldeia.id +
+                    "&screen=place&ajax=command&target=" +
+                    aldeia.alvoId +
+                    "&client_time=" +
+                    Math.round(Timing.getCurrentServerTime() / 1e3),
+                  data: {},
+                  dataType: "json",
+                  headers: { "TribalWars-Ajax": 1 },
+                  success: function (data) {
+                    progressTick();
+                    var string,
+                      len,
+                      tropas = {},
+                      spearN, swordN, axeN, archerN, spyN, marcherN, lightN, heavyN, ramN, catapultN, snobN, first;
+                    if (!data.error) {
+                      data = $(data.response.dialog);
+                      string = data.serialize().split("&");
+                      len = string.length;
+                      spearN = jQuery("#unit_input_spear", data).data("all-count");
+                      swordN = jQuery("#unit_input_sword", data).data("all-count");
+                      axeN = jQuery("#unit_input_axe", data).data("all-count");
+                      archerN = jQuery("#unit_input_archer", data).data("all-count");
+                      spyN = jQuery("#unit_input_spy", data).data("all-count");
+                      marcherN = jQuery("#unit_input_marcher", data).data("all-count");
+                      lightN = jQuery("#unit_input_light", data).data("all-count");
+                      heavyN = jQuery("#unit_input_heavy", data).data("all-count");
+                      ramN = jQuery("#unit_input_ram", data).data("all-count");
+                      catapultN = jQuery("#unit_input_catapult", data).data("all-count");
+                      snobN = jQuery("#unit_input_snob", data).data("all-count");
+                      for (var l = 0; l < len; l++) {
+                        tropas[string[l].split("=")[0]] = string[l].split("=")[1];
                       }
-                      tropas["string"] += "train[" + k + "][snob]=1";
-                      if (k < snobN) tropas["string"] += "&";
+                      first = aldeia.alvoC.split("|");
+                      tropas.x = first[0];
+                      tropas.y = first[1];
+                      tropas.spear = spearN > parseInt(spear) ? spear : spearN;
+                      tropas.sword = swordN > parseInt(sword) ? sword : swordN;
+                      tropas.axe = axeN > parseInt(axe) ? axe : axeN;
+                      tropas.archer = archerN > parseInt(archer) ? archer : archerN;
+                      tropas.spy = spyN > parseInt(spy) ? spy : spyN;
+                      tropas.marcher = marcherN > parseInt(marcher) ? marcher : marcherN;
+                      tropas.light = lightN > parseInt(light) ? light : lightN;
+                      tropas.heavy = parseInt(heavy) < heavyN ? parseInt(heavy) : heavyN;
+                      tropas.ram = ramN > parseInt(ram) ? ram : ramN;
+                      tropas.catapult = catapultN > parseInt(catapult) ? catapult : catapultN;
+                      tropas.snob = parseInt(snob) && parseInt(snobN) ? 1 : 0;
+                      tropas["string"] = "";
+    
+                      // NOVO: prédio-alvo da catapulta
+                      if (parseInt(tropas.catapult) > 0 && building) {
+                        tropas.building = building;
+                        aldeia.building = building; // guardamos aqui também: o passo seguinte
+                        // (secondRequest) substitui aldeia.data inteiro pelo dialog do
+                        // servidor, que traria o building padrão do jogo, apagando essa escolha.
+                      }
+    
+                      // Escolta das levas de nobre: prioriza cavalaria leve; se a aldeia não tiver
+                      // cavalaria leve (ou não tiver o suficiente pra todas as levas extras), usa
+                      // cavalaria pesada disponível no lugar — tanto na leva principal quanto nas extras.
+                      var lightRequested = parseInt(light) || 0;
+                      if (lightRequested > 0 && lightN <= 0 && heavyN > 0) {
+                        var heavyRequestedMain = parseInt(heavy) || 0;
+                        tropas.heavy = heavyRequestedMain > 0 ? Math.min(heavyRequestedMain, heavyN) : heavyN;
+                      }
+    
+                      if (snobN > 1 && parseInt(snob) > 1) {
+                        var extraCount = Math.min(parseInt(snob), snobN) - 1; // quantas levas extras (2..snob)
+                        var precisaLight = 25 * extraCount;
+                        var temLightSuficiente = precisaLight > 0 && lightN >= precisaLight;
+    
+                        if (temLightSuficiente) {
+                          tropas.light = tropas.light ? tropas.light - precisaLight : 0;
+                        } else if (heavyN > 0) {
+                          // Não tem cavalaria leve suficiente pras levas extras -> reserva cavalaria
+                          // pesada da leva principal pra sobrar pras extras.
+                          tropas.heavy = tropas.heavy ? Math.max(0, tropas.heavy - 25 * extraCount) : tropas.heavy;
+                        }
+    
+                        for (var k = 2; k <= snob && k <= snobN; k++) {
+                          tropas["string"] += "train[" + k + "][axe]=0&";
+                          tropas["string"] += "train[" + k + "][marcher]=0&";
+                          if (temLightSuficiente) {
+                            tropas["string"] += "train[" + k + "][light]=25&train[" + k + "][heavy]=0&";
+                          } else {
+                            tropas["string"] += "train[" + k + "][light]=0&train[" + k + "][heavy]=" + (heavyN > 0 ? 25 : 0) + "&";
+                          }
+                          tropas["string"] += "train[" + k + "][snob]=1";
+                          if (k < snobN) tropas["string"] += "&";
+                        }
+                      }
+                      if (comando == "attack") {
+                        tropas.attack = "l";
+                      } else if (comando == "support") {
+                        tropas.support = "l";
+                      } else {
+                        UI.ErrorMessage("Tipo de comando não especificado!");
+                        throw error;
+                      }
+                      aldeia.data = tropas;
+                      i++;
+                    } else {
+                      removeVillage(aldeia.id);
+                      console.log("First Request: " + data.error);
                     }
-                  }
-                  if (comando == "attack") {
-                    tropas.attack = "l";
-                  } else if (comando == "support") {
-                    tropas.support = "l";
-                  } else {
-                    UI.ErrorMessage("Tipo de comando não especificado!");
-                    throw error;
-                  }
-                  aldeia.data = tropas;
-                  i++;
-                } else {
-                  removeVillage(aldeia.id);
-                  console.log("First Request: " + data.error);
-                }
-                if (i == aldeias.length) secondRequest();
+                    if (i == aldeias.length) secondRequest();
+                  },
+                  error: function (data) {
+                    progressTick();
+                    console.log("Error First Request: " + data.status + " {" + data.error + "}");
+                    if (data.status == 429 || data.status == 405) {
+                      removeVillage(aldeia.id);
+                      aldeiasAux.push(aldeia);
+                      aldeiasLength--;
+                    } else {
+                      alert("Programa caiu, erro inesperado: {" + data.error + "}");
+                      throw error;
+                    }
+                    if (i == aldeias.length) secondRequest();
+                  },
+                });
               },
-              error: function (data) {
-                progressTick();
-                console.log("Error First Request: " + data.status + " {" + data.error + "}");
-                if (data.status == 429 || data.status == 405) {
-                  removeVillage(aldeia.id);
-                  aldeiasAux.push(aldeia);
-                  aldeiasLength--;
-                } else {
-                  alert("Programa caiu, erro inesperado: {" + data.error + "}");
-                  throw error;
-                }
-                if (i == aldeias.length) secondRequest();
-              },
-            });
-          },
-          // Ritmo de engatilhamento (consultar tropas) — 20% mais rápido que o original (200-220ms).
-          // Isso é só a fase de consultar/montar os comandos; o envio final continua no
-          // ritmo original de ~5/seg, por pedido explícito.
-          random(160, 176) + random(160, 176) * count
-        );
-        count++;
-      }
-    };
-
-    // ----------------------------------------------------------
-    // scheduleSend: agenda e dispara o envio final (popup_command) de UMA aldeia.
-    // Chamada assim que essa aldeia termina de confirmar — não espera as outras.
-    // Com sincronismo desligado, respeita só o ritmo de ~5 envios/seg (sendCursor);
-    // com sincronismo ligado, calcula o atraso individual pro horário de chegada.
-    // ----------------------------------------------------------
-    scheduleSend = function (aldeia, syncOn, targetTs) {
-      var delayMs;
-      var durMsGeneric = durationToMs(aldeia.time);
-      if (syncOn) {
-        if (durMsGeneric == null) {
-          // não conseguiu ler a duração, cai no ritmo padrão de ~5/seg
-          var nowFallback = Date.now();
-          sendCursor = Math.max(sendCursor, nowFallback);
-          delayMs = sendCursor - nowFallback;
-          sendCursor += 200;
-        } else {
-          // A "Duração" exibida pelo jogo é arredondada pro segundo cheio (geralmente
-          // pra cima), então usar ela ao pé da letra pode fazer o ataque chegar um
-          // pouquinho ANTES do horário escolhido. Aqui adicionamos uma margem de
-          // segurança de 1s pra nunca chegar antes — só depois, na pior das hipóteses.
-          var SAFETY_MARGIN_MS = 1000;
-          var nowServer = Timing.getCurrentServerTime();
-          delayMs = targetTs + (aldeia.retryOffsetMs || 0) - durMsGeneric - nowServer + SAFETY_MARGIN_MS;
-          if (delayMs < 100) {
-            console.log(
-              "Aviso: " + aldeia.coord + " -> " + aldeia.alvoC + " precisaria ter sido enviado no passado para chegar no horário escolhido. Enviando o quanto antes."
+              // Ritmo de engatilhamento (consultar tropas) — 20% mais rápido que o original (200-220ms).
+              // Isso é só a fase de consultar/montar os comandos; o envio final continua no
+              // ritmo original de ~5/seg, por pedido explícito.
+              random(160, 176) + random(160, 176) * count
             );
-            var nowLate = Date.now();
-            sendCursor = Math.max(sendCursor, nowLate);
-            delayMs = sendCursor - nowLate;
+            count++;
+          }
+        };
+    
+        // ----------------------------------------------------------
+        // scheduleSend: agenda e dispara o envio final (popup_command) de UMA aldeia.
+        // Chamada assim que essa aldeia termina de confirmar — não espera as outras.
+        // Com sincronismo desligado, respeita só o ritmo de ~5 envios/seg (sendCursor);
+        // com sincronismo ligado, calcula o atraso individual pro horário de chegada.
+        // ----------------------------------------------------------
+        scheduleSend = function (aldeia, syncOn, targetTs) {
+          var delayMs;
+          var durMsGeneric = durationToMs(aldeia.time);
+          if (syncOn) {
+            if (durMsGeneric == null) {
+              // não conseguiu ler a duração, cai no ritmo padrão de ~5/seg
+              var nowFallback = Date.now();
+              sendCursor = Math.max(sendCursor, nowFallback);
+              delayMs = sendCursor - nowFallback;
+              sendCursor += 200;
+            } else {
+              // A "Duração" exibida pelo jogo é arredondada pro segundo cheio (geralmente
+              // pra cima), então usar ela ao pé da letra pode fazer o ataque chegar um
+              // pouquinho ANTES do horário escolhido. Aqui adicionamos uma margem de
+              // segurança de 1s pra nunca chegar antes — só depois, na pior das hipóteses.
+              var SAFETY_MARGIN_MS = 1000;
+              var nowServer = Timing.getCurrentServerTime();
+              delayMs = targetTs + (aldeia.retryOffsetMs || 0) - durMsGeneric - nowServer + SAFETY_MARGIN_MS;
+              if (delayMs < 100) {
+                console.log(
+                  "Aviso: " + aldeia.coord + " -> " + aldeia.alvoC + " precisaria ter sido enviado no passado para chegar no horário escolhido. Enviando o quanto antes."
+                );
+                var nowLate = Date.now();
+                sendCursor = Math.max(sendCursor, nowLate);
+                delayMs = sendCursor - nowLate;
+                sendCursor += 200;
+              }
+            }
+          } else {
+            // Sem sincronismo: manda assim que confirmar, só respeitando o ritmo de ~5/seg
+            // — é aqui que ganhamos o tempo que antes ficava esperando a leva inteira
+            // confirmar e você clicar em Enviar.
+            var now = Date.now();
+            sendCursor = Math.max(sendCursor, now);
+            delayMs = sendCursor - now + (aldeia.retryOffsetMs || 0);
             sendCursor += 200;
           }
-        }
-      } else {
-        // Sem sincronismo: manda assim que confirmar, só respeitando o ritmo de ~5/seg
-        // — é aqui que ganhamos o tempo que antes ficava esperando a leva inteira
-        // confirmar e você clicar em Enviar.
-        var now = Date.now();
-        sendCursor = Math.max(sendCursor, now);
-        delayMs = sendCursor - now + (aldeia.retryOffsetMs || 0);
-        sendCursor += 200;
-      }
-
-      if (aldeia.rowIndex) {
-        startCountdown(aldeia.rowIndex, Date.now() + delayMs);
-      }
-
-      // Estimativa de quando a tropa volta pra aldeia de origem: ida (duração) + volta
-      // (aprox. igual à ida). Usamos isso pra saber quando toda a rodada "esvaziou".
-      if (durMsGeneric != null) {
-        var candidateReturn = Date.now() + delayMs + 2 * durMsGeneric;
-        if (candidateReturn > roundReturnAtMs) roundReturnAtMs = candidateReturn;
-      }
-
-      setTimeout(function () {
-        $.ajax({
-          url:
-            "/game.php?village=" +
-            aldeia.id +
-            "&screen=place&ajaxaction=popup_command&h=" +
-            csrf_token +
-            "&client_time=" +
-            Math.round(Timing.getCurrentServerTime() / 1e3),
-          data: aldeia.data,
-          type: "POST",
-          dataType: "json",
-          headers: { "TribalWars-Ajax": 1 },
-          success: function (data) {
-            stopCountdown(aldeia.rowIndex);
-            if (!data.error) {
-              $("#combined_table tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
-                .text("ENVIADO!")
-                .css("text-align", "center")
-                .css("color", "#0d1117")
-                .css("font-weight", "700")
-                .css("background-color", "#4ade80");
-              removeVillage(aldeia.id);
-            } else if (data.error != _("9a07c3a91c3f2b7a6a8bc675d1bcb913")) {
-              $("#combined_table tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
-                .text("Erorr!")
-                .css("text-align", "center")
-                .css("color", "#fff")
-                .css("font-weight", "700")
-                .css("background-color", "#ff5c5c");
-              removeVillage(aldeia.id);
-              console.log("Third Request: " + data.error);
-            } else {
-              // Limite do jogo: já tem 5 comandos chegando nessa aldeia no mesmo segundo.
-              // Não é erro definitivo — tira dessa passada e recoloca pra tentar de novo,
-              // igual já fazíamos com rate-limit (429). Se tiver sincronismo de chegada
-              // ligado, empurra 1s a mais no horário-alvo dela a cada tentativa, senão
-              // ela cairia sempre no mesmo segundo lotado de novo.
-              $("#combined_table tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
-                .text("5 no mesmo segundo — tentando de novo...")
-                .css("text-align", "center")
-                .css("color", "#1a0e05")
-                .css("font-weight", "700")
-                .css("background-color", "#eab308");
-              console.log("Third Request 2: " + data.error + " — reagendando " + aldeia.coord + " -> " + aldeia.alvoC);
-              aldeia.retryOffsetMs = (aldeia.retryOffsetMs || 0) + 1000;
-              removeVillage(aldeia.id);
-              removeVillageAux(aldeia.id);
-              aldeiasAux.push(aldeia);
-            }
-            onSendSettled();
-          },
-          error: function (data) {
-            stopCountdown(aldeia.rowIndex);
-            console.log("Error Third Request: " + data.status + " {" + data.error + "}");
-            if (data.status == 429 || data.status == 405) {
-              removeVillage(aldeia.id);
-              removeVillageAux(aldeia.id);
-              aldeiasAux.push(aldeia);
-              aldeiasLength--;
-            } else {
-              alert("Programa caiu, erro inesperado: {" + data.error + "}");
-              throw error;
-            }
-            onSendSettled();
-          },
-        });
-      }, delayMs);
-    };
-
-    // Controla quando essa "passada" (leva de confirmações + envios) termina de
-    // verdade, pra então fechar a rodada (finishRound) ou tentar de novo as que
-    // caíram por rate-limit (aldeiasAux) — sem depender de nenhum clique.
-    onSendSettled = function () {
-      sendSettledCount++;
-      checkPassComplete();
-    };
-
-    checkPassComplete = function () {
-      if (!allConfirmsDone) return; // ainda tem confirmação em andamento, espera
-      if (sendSettledCount < confirmedForSend) return; // ainda faltam envios terminarem
-      startCycleCountdown();
-      if (!aldeias.length) {
-        finishRound();
-      } else {
-        aldeias = $.merge(aldeias, aldeiasAux);
-        aldeiasAux = [];
-        deuError = 1; // limpa a tabela antes de mostrar a nova tentativa (retry)
-        firstRequest();
-      }
-    };
-
-    // ----------------------------------------------------------
-    // secondRequest: confirma cada aldeia e, assim que ela confirma, já agenda o
-    // envio dela (scheduleSend) — não espera a leva inteira confirmar nem precisa
-    // de clique em "Enviar". É isso que reduz o tempo total: enquanto as últimas
-    // aldeias ainda estão confirmando, as primeiras já estão sendo enviadas.
-    // ----------------------------------------------------------
-    secondRequest = function () {
-      let count = 0,
-        i = 0;
-      if (deuError) {
-        $("#combined_table tbody tr").remove();
-        $("#combined_table tbody").append(resultHeaderRow());
-        deuError = 0;
-      }
-
-      // Sincronismo de chegada é calculado uma vez por passada (mesmo horário-alvo
-      // pra todo mundo); sem sincronismo, cada aldeia só pega a próxima vaga livre
-      // no ritmo de ~5/seg (sendCursor), assim que confirma.
-      var syncOn = $("#syncChegada").is(":checked");
-      var targetTs = null;
-      if (syncOn) {
-        var timeVal = $("#syncTime").val(); // "HH:MM" ou "HH:MM:SS"
-        var tParts = (timeVal || "").split(":").map(function (n) {
-          return parseInt(n) || 0;
-        });
-        if (!timeVal) {
-          alert("Sincronizar chegada está marcado, mas nenhum horário foi definido. Ligando o escalonamento padrão.");
-          syncOn = false;
-        } else {
-          targetTs = buildTargetTimestamp(tParts[0] || 0, tParts[1] || 0, tParts[2] || 0);
-        }
-      }
-      sendCursor = Date.now();
-      confirmedForSend = 0;
-      sendSettledCount = 0;
-      allConfirmsDone = false;
-
-      for (let aldeia of aldeias) {
-        setTimeout(
-          function () {
+    
+          if (aldeia.rowIndex) {
+            startCountdown(aldeia.rowIndex, Date.now() + delayMs);
+          }
+    
+          // Estimativa de quando a tropa volta pra aldeia de origem: ida (duração) + volta
+          // (aprox. igual à ida). Usamos isso pra saber quando toda a rodada "esvaziou".
+          if (durMsGeneric != null) {
+            var candidateReturn = Date.now() + delayMs + 2 * durMsGeneric;
+            if (candidateReturn > roundReturnAtMs) roundReturnAtMs = candidateReturn;
+          }
+    
+          setTimeout(function () {
             $.ajax({
-              type: "POST",
               url:
                 "/game.php?village=" +
                 aldeia.id +
-                "&screen=place&ajax=confirm&h=" +
+                "&screen=place&ajaxaction=popup_command&h=" +
                 csrf_token +
                 "&client_time=" +
                 Math.round(Timing.getCurrentServerTime() / 1e3),
               data: aldeia.data,
+              type: "POST",
               dataType: "json",
               headers: { "TribalWars-Ajax": 1 },
               success: function (data) {
-                progressTick();
+                stopCountdown(aldeia.rowIndex);
                 if (!data.error) {
-                  string = aldeia.data["string"];
-                  aldeia.data = $(data.response.dialog).serialize() + (string.length ? "&" + string : "");
-                  // Reinjeta o prédio-alvo escolhido: o serialize() acima trouxe o
-                  // "building" padrão do dialog do servidor, sobrescrevendo nossa escolha.
-                  if (aldeia.building) {
-                    aldeia.data = aldeia.data.replace(/([&?]|^)building=[^&]*/, "");
-                    aldeia.data += "&building=" + encodeURIComponent(aldeia.building);
-                  }
-                  // Buscamos a linha da "Duração" pelo texto do rótulo, não por posição fixa —
-                  // quando a aldeia leva catapultas, o jogo insere uma linha extra ("Alvo da
-                  // catapulta") antes da Duração, o que deslocava tr:eq(3) pra linha errada
-                  // em parte dos ataques (por isso alguns sincronizavam certo e outros não).
-                  aldeia.time = jQuery("table.vis:eq(0) tr", data.response.dialog)
-                    .filter(function () {
-                      return $(this).find("td:eq(0)").text().indexOf("Dura") !== -1;
-                    })
-                    .find("td:eq(1)")
-                    .text()
-                    .trim();
-                  if (!aldeia.time) {
-                    // fallback pra posição antiga, caso o texto do rótulo mude
-                    aldeia.time = jQuery("table.vis:eq(0) tr:eq(3) td:eq(1)", data.response.dialog).text();
-                  }
-                  $("#combined_table tbody").append(
-                    '<tr><td style="text-align:center"><a href="/game.php?village=' +
-                      aldeia.id +
-                      '">' +
-                      aldeia.coord +
-                      '</a></td><td style="text-align:center"><a href="/game.php?village=' +
-                      game_data.village.id +
-                      "&screen=info_village&id=" +
-                      aldeia.alvoId +
-                      '">' +
-                      aldeia.alvoC +
-                      '</a></td><td style="text-align:center;">' +
-                      aldeia.time +
-                      '</td><td id="status">Na fila...</td></tr>'
-                  );
-                  // Guarda a linha exata dessa aldeia na tabela — as respostas do
-                  // servidor não chegam necessariamente na mesma ordem das aldeias,
-                  // então não dá pra confiar num contador sequencial pra achar a linha certa depois.
-                  aldeia.rowIndex = $("#combined_table tbody tr").length - 1;
-                  i++;
-                  confirmedForSend++;
-                  scheduleSend(aldeia, syncOn, targetTs);
-                } else {
-                  console.log("Second Request: " + data.error + " coord: " + aldeia.coord);
+                  $("#combined_table tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
+                    .text("ENVIADO!")
+                    .css("text-align", "center")
+                    .css("color", "#0d1117")
+                    .css("font-weight", "700")
+                    .css("background-color", "#4ade80");
                   removeVillage(aldeia.id);
-                  aldeiasLength--;
+                } else if (data.error != _("9a07c3a91c3f2b7a6a8bc675d1bcb913")) {
+                  $("#combined_table tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
+                    .text("Erorr!")
+                    .css("text-align", "center")
+                    .css("color", "#fff")
+                    .css("font-weight", "700")
+                    .css("background-color", "#ff5c5c");
+                  removeVillage(aldeia.id);
+                  console.log("Third Request: " + data.error);
+                } else {
+                  // Limite do jogo: já tem 5 comandos chegando nessa aldeia no mesmo segundo.
+                  // Não é erro definitivo — tira dessa passada e recoloca pra tentar de novo,
+                  // igual já fazíamos com rate-limit (429). Se tiver sincronismo de chegada
+                  // ligado, empurra 1s a mais no horário-alvo dela a cada tentativa, senão
+                  // ela cairia sempre no mesmo segundo lotado de novo.
+                  $("#combined_table tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
+                    .text("5 no mesmo segundo — tentando de novo...")
+                    .css("text-align", "center")
+                    .css("color", "#1a0e05")
+                    .css("font-weight", "700")
+                    .css("background-color", "#eab308");
+                  console.log("Third Request 2: " + data.error + " — reagendando " + aldeia.coord + " -> " + aldeia.alvoC);
+                  aldeia.retryOffsetMs = (aldeia.retryOffsetMs || 0) + 1000;
+                  removeVillage(aldeia.id);
+                  removeVillageAux(aldeia.id);
+                  aldeiasAux.push(aldeia);
                 }
-                if (i == aldeias.length) {
-                  progressHide();
-                  $("#listCommands").before(
-                    "<p>Engatilhados " + confirmedForSend + " comando(s) — enviando automaticamente no ritmo de ~5/seg...</p>"
-                  );
-                  allConfirmsDone = true;
-                  checkPassComplete();
-                }
+                onSendSettled();
               },
               error: function (data) {
-                progressTick();
-                console.log("Error Second Request: " + data.status + " {" + data.error + "}");
+                stopCountdown(aldeia.rowIndex);
+                console.log("Error Third Request: " + data.status + " {" + data.error + "}");
                 if (data.status == 429 || data.status == 405) {
                   removeVillage(aldeia.id);
                   removeVillageAux(aldeia.id);
@@ -831,525 +736,983 @@
                   alert("Programa caiu, erro inesperado: {" + data.error + "}");
                   throw error;
                 }
-                if (i == aldeias.length) {
-                  progressHide();
-                  $("#listCommands").before(
-                    "<p>Engatilhados " + confirmedForSend + " comando(s) — enviando automaticamente no ritmo de ~5/seg...</p>"
-                  );
-                  allConfirmsDone = true;
-                  checkPassComplete();
-                }
+                onSendSettled();
               },
             });
-          },
-          random(160, 176) + random(160, 176) * count
-        );
-        count++;
-      }
-    };
-
-    // ----------------------------------------------------------
-    // Interface — "console de comando" (tema escuro)
-    // ----------------------------------------------------------
-
-    // Linha de cabeçalho da tabela de resultados nativa do jogo
-    resultHeaderRow = function () {
-      return (
-        '<tr id="listCommands">' +
-        '<th class="amx-th">Aldeias Próprias</th>' +
-        '<th class="amx-th">Aldeias Alvos</th>' +
-        '<th class="amx-th">Duração</th>' +
-        '<th class="amx-th">Status</th>' +
-        "</tr>"
-      );
-    };
-
-    injectStyles = function () {
-      if (document.getElementById("amx-style")) return;
-      var css =
-        "@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');" +
-        ".amx{--bg:#14151a;--surface:#1c1d24;--surface-2:#22232b;--border:#33343d;--text-hi:#f2f3f5;--text-lo:#9a9ba3;--ember:#f5c518;--ember-dim:#d4a70f;--steel:#5eead4;--danger:#ff6b6b;--ok:#4ade80;--radius:10px;font-family:'Inter',sans-serif;color:var(--text-hi);background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px 22px;margin:14px 0;box-shadow:0 10px 30px rgba(0,0,0,.4);}" +
-        ".amx *{box-sizing:border-box;}" +
-        ".amx-head{display:flex;align-items:center;gap:10px;margin-bottom:4px;}" +
-        ".amx-flame{width:9px;height:9px;border-radius:50%;background:var(--ember);box-shadow:0 0 10px 2px rgba(255,138,61,.6);flex:none;}" +
-        ".amx-title{font-family:'Cinzel',serif;font-weight:700;font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-hi);}" +
-        ".amx-sub{font-size:11px;color:var(--text-lo);margin:2px 0 14px 19px;}" +
-        ".amx-divider{height:1px;background:linear-gradient(90deg,var(--ember) 0,var(--border) 18%,var(--border) 100%);margin:16px 0;border:none;}" +
-        ".amx-label{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-lo);font-weight:700;margin-bottom:8px;display:block;}" +
-        ".amx-hint{font-size:11px;color:var(--text-lo);margin-top:6px;}" +
-        ".amx-hint b{color:var(--steel);}" +
-        ".amx-troops{display:flex;flex-wrap:wrap;gap:8px;}" +
-        ".amx-troop{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 8px;}" +
-        ".amx-troop img{width:20px;height:20px;filter:brightness(1.15);}" +
-        ".amx-troop input{width:56px;background:var(--surface-2);border:1px solid var(--border);border-radius:5px;color:var(--text-hi);font-family:'JetBrains Mono',monospace;font-size:12px;padding:4px 6px;text-align:right;}" +
-        ".amx-troop input:focus{outline:none;border-color:var(--ember);}" +
-        ".amx-textarea{width:100%;min-height:110px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text-hi);font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;padding:10px;resize:vertical;}" +
-        ".amx-textarea:focus{outline:none;border-color:var(--ember);}" +
-        ".amx-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--steel);font-weight:600;margin-top:6px;}" +
-        ".amx-row{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;margin-top:14px;}" +
-        ".amx-field{display:flex;flex-direction:column;min-width:180px;}" +
-        ".amx-field select,.amx-field input[type=number],.amx-field input[type=time]{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;color:var(--text-hi);font-family:'Inter',sans-serif;font-size:13px;padding:8px 10px;}" +
-        ".amx-field select:focus,.amx-field input:focus{outline:none;border-color:var(--ember);box-shadow:0 0 0 3px rgba(255,138,61,.15);}" +
-        ".amx-sync{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}" +
-        ".amx-switch{position:relative;width:36px;height:20px;flex:none;}" +
-        ".amx-switch input{opacity:0;width:0;height:0;}" +
-        ".amx-slider{position:absolute;inset:0;background:var(--surface-2);border:1px solid var(--border);border-radius:20px;cursor:pointer;transition:.15s;}" +
-        ".amx-slider:before{content:'';position:absolute;width:14px;height:14px;left:2px;top:2px;background:var(--text-lo);border-radius:50%;transition:.15s;}" +
-        ".amx-switch input:checked + .amx-slider{background:var(--ember-dim);border-color:var(--ember);}" +
-        ".amx-switch input:checked + .amx-slider:before{transform:translateX(16px);background:var(--ember);box-shadow:0 0 6px 1px rgba(255,138,61,.6);}" +
-        ".amx-time{display:flex;align-items:center;}" +
-        ".amx-time input[type=time]{width:130px;font-size:14px;font-family:'JetBrains Mono',monospace;color-scheme:dark;}" +
-        ".amx-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;align-items:center;}" +
-        ".amx-btn{font-family:'Inter',sans-serif;font-weight:600;font-size:12px;letter-spacing:.03em;padding:9px 18px;border-radius:8px;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text-hi);transition:.15s;}" +
-        ".amx-btn:hover{border-color:var(--text-lo);}" +
-        ".amx-btn-primary{background:linear-gradient(180deg,var(--ember) 0,var(--ember-dim) 100%);border-color:var(--ember-dim);color:#1a0e05;}" +
-        ".amx-btn-primary:hover{filter:brightness(1.08);}" +
-        ".amx-btn:disabled{opacity:.5;cursor:not-allowed;}" +
-        ".amx-btn-ready{background:linear-gradient(180deg,var(--ok),#22a35c);border-color:#22a35c;color:#06210f;font-weight:700;animation:amxPulse 1.4s ease-in-out infinite;}" +
-        "@keyframes amxPulse{0%,100%{box-shadow:0 0 0 0 rgba(74,222,128,.5);}50%{box-shadow:0 0 0 6px rgba(74,222,128,0);}}" +
-        ".amx-th{text-align:center;color:#1a0e05;background:var(--ember);font-family:'Inter',sans-serif;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em;padding:8px;}" +
-        ".amx-progress{display:none;margin-top:14px;}" +
-        ".amx-progress-track{width:100%;height:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:99px;overflow:hidden;}" +
-        ".amx-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--ember-dim),var(--ember));transition:width .25s ease;}" +
-        ".amx-progress-text{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--steel);margin-top:6px;}" +
-        ".amx-section{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);}" +
-        ".amx-section-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;}" +
-        ".amx-section-icon{width:8px;height:8px;border-radius:2px;background:var(--steel);flex:none;}" +
-        ".amx-section-title{font-family:'Cinzel',serif;font-weight:700;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--text-hi);}" +
-        ".amx-buildings{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}" +
-        ".amx-chip{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:6px 12px;font-size:12px;cursor:pointer;user-select:none;font-family:'Inter',sans-serif;color:var(--text-hi);}" +
-        ".amx-chip:focus{outline:none;}" +
-        ".amx-chip:hover{border-color:var(--text-lo);}" +
-        ".amx-chip input{accent-color:var(--ember);cursor:pointer;}" +
-        ".amx-chip.amx-checked{border-color:var(--ember-dim);background:rgba(255,138,61,.12);color:var(--ember);}" +
-        ".amx-chip.amx-sending{border-color:#eab308;background:rgba(234,179,8,.15);color:#eab308;animation:amxPulse2 1.2s ease-in-out infinite;}" +
-        ".amx-chip.amx-done{border-color:var(--ok);background:rgba(74,222,128,.15);color:var(--ok);}" +
-        ".amx-chip.amx-done:after{content:' ✓';font-weight:700;}" +
-        "@keyframes amxPulse2{0%,100%{box-shadow:0 0 0 0 rgba(234,179,8,.5);}50%{box-shadow:0 0 0 5px rgba(234,179,8,0);}}" +
-        ".amx-order-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--ember);color:#1a0e05;font-size:10px;font-weight:700;margin-left:2px;}" +
-        ".amx-number{width:70px;}";
-      $("<style id='amx-style'>" + css + "</style>").appendTo("head");
-    };
-
-    main = function () {
-      var coords = getParam("coords"),
-        comando = getParam("comando"),
-        building = getParam("buildingAlvo"),
-        i,
-        tropas = "",
-        href,
-        spearIndex,
-        snobIndex;
-      coords = !coords ? "" : coords;
-      comando = !comando ? "" : comando;
-      building = !building ? "" : building;
-
-      injectStyles();
-
-      spearIndex = $('#combined_table tr:eq(0) th a img[src*="spear"]').parent().parent().index();
-      snobIndex = $('#combined_table tr:eq(0) th a img[src*="snob"]').parent().parent().index();
-      for (i = spearIndex; i <= snobIndex; i++) {
-        href = $("#combined_table tr:eq(0) th:eq(" + i + ") a img").attr("src");
-        tropas +=
-          "<div class='amx-troop'><img src=" +
-          href +
-          ">" +
-          "<input type='text' id='" +
-          href.match(/unit_?[a-z]+/g)[0].split("_")[1] +
-          "'/></div>";
-      }
-
-      var buildingList = [
-        ["main", "Edifício Principal"],
-        ["wall", "Muralha"],
-        ["hide", "Esconderijo"],
-        ["storage", "Armazém"],
-        ["farm", "Fazenda"],
-        ["place", "Praça de Reunião"],
-        ["market", "Mercado"],
-        ["smith", "Ferraria"],
-        ["barracks", "Quartel"],
-        ["stable", "Estábulo"],
-        ["garage", "Oficina"],
-        ["watchtower", "Torre de Vigia"],
-        ["snob", "Academia"],
-        ["statue", "Estátua"],
-      ];
-
-      var buildingOptions = [["", "-- Prédio (catapulta) --"]]
-        .concat(buildingList)
-        .map(function (o) {
+          }, delayMs);
+        };
+    
+        // Controla quando essa "passada" (leva de confirmações + envios) termina de
+        // verdade, pra então fechar a rodada (finishRound) ou tentar de novo as que
+        // caíram por rate-limit (aldeiasAux) — sem depender de nenhum clique.
+        onSendSettled = function () {
+          sendSettledCount++;
+          checkPassComplete();
+        };
+    
+        checkPassComplete = function () {
+          if (!allConfirmsDone) return; // ainda tem confirmação em andamento, espera
+          if (sendSettledCount < confirmedForSend) return; // ainda faltam envios terminarem
+          startCycleCountdown();
+          if (!aldeias.length) {
+            finishRound();
+          } else {
+            aldeias = $.merge(aldeias, aldeiasAux);
+            aldeiasAux = [];
+            deuError = 1; // limpa a tabela antes de mostrar a nova tentativa (retry)
+            firstRequest();
+          }
+        };
+    
+        // ----------------------------------------------------------
+        // secondRequest: confirma cada aldeia e, assim que ela confirma, já agenda o
+        // envio dela (scheduleSend) — não espera a leva inteira confirmar nem precisa
+        // de clique em "Enviar". É isso que reduz o tempo total: enquanto as últimas
+        // aldeias ainda estão confirmando, as primeiras já estão sendo enviadas.
+        // ----------------------------------------------------------
+        secondRequest = function () {
+          let count = 0,
+            i = 0;
+          if (deuError) {
+            $("#combined_table tbody tr").remove();
+            $("#combined_table tbody").append(resultHeaderRow());
+            deuError = 0;
+          }
+    
+          // Sincronismo de chegada é calculado uma vez por passada (mesmo horário-alvo
+          // pra todo mundo); sem sincronismo, cada aldeia só pega a próxima vaga livre
+          // no ritmo de ~5/seg (sendCursor), assim que confirma.
+          var syncOn = $("#syncChegada").is(":checked");
+          var targetTs = null;
+          if (syncOn) {
+            var timeVal = $("#syncTime").val(); // "HH:MM" ou "HH:MM:SS"
+            var tParts = (timeVal || "").split(":").map(function (n) {
+              return parseInt(n) || 0;
+            });
+            if (!timeVal) {
+              alert("Sincronizar chegada está marcado, mas nenhum horário foi definido. Ligando o escalonamento padrão.");
+              syncOn = false;
+            } else {
+              targetTs = buildTargetTimestamp(tParts[0] || 0, tParts[1] || 0, tParts[2] || 0);
+            }
+          }
+          sendCursor = Date.now();
+          confirmedForSend = 0;
+          sendSettledCount = 0;
+          allConfirmsDone = false;
+    
+          for (let aldeia of aldeias) {
+            setTimeout(
+              function () {
+                $.ajax({
+                  type: "POST",
+                  url:
+                    "/game.php?village=" +
+                    aldeia.id +
+                    "&screen=place&ajax=confirm&h=" +
+                    csrf_token +
+                    "&client_time=" +
+                    Math.round(Timing.getCurrentServerTime() / 1e3),
+                  data: aldeia.data,
+                  dataType: "json",
+                  headers: { "TribalWars-Ajax": 1 },
+                  success: function (data) {
+                    progressTick();
+                    if (!data.error) {
+                      string = aldeia.data["string"];
+                      aldeia.data = $(data.response.dialog).serialize() + (string.length ? "&" + string : "");
+                      // Reinjeta o prédio-alvo escolhido: o serialize() acima trouxe o
+                      // "building" padrão do dialog do servidor, sobrescrevendo nossa escolha.
+                      if (aldeia.building) {
+                        aldeia.data = aldeia.data.replace(/([&?]|^)building=[^&]*/, "");
+                        aldeia.data += "&building=" + encodeURIComponent(aldeia.building);
+                      }
+                      // Buscamos a linha da "Duração" pelo texto do rótulo, não por posição fixa —
+                      // quando a aldeia leva catapultas, o jogo insere uma linha extra ("Alvo da
+                      // catapulta") antes da Duração, o que deslocava tr:eq(3) pra linha errada
+                      // em parte dos ataques (por isso alguns sincronizavam certo e outros não).
+                      aldeia.time = jQuery("table.vis:eq(0) tr", data.response.dialog)
+                        .filter(function () {
+                          return $(this).find("td:eq(0)").text().indexOf("Dura") !== -1;
+                        })
+                        .find("td:eq(1)")
+                        .text()
+                        .trim();
+                      if (!aldeia.time) {
+                        // fallback pra posição antiga, caso o texto do rótulo mude
+                        aldeia.time = jQuery("table.vis:eq(0) tr:eq(3) td:eq(1)", data.response.dialog).text();
+                      }
+                      $("#combined_table tbody").append(
+                        '<tr><td style="text-align:center"><a href="/game.php?village=' +
+                          aldeia.id +
+                          '">' +
+                          aldeia.coord +
+                          '</a></td><td style="text-align:center"><a href="/game.php?village=' +
+                          game_data.village.id +
+                          "&screen=info_village&id=" +
+                          aldeia.alvoId +
+                          '">' +
+                          aldeia.alvoC +
+                          '</a></td><td style="text-align:center;">' +
+                          aldeia.time +
+                          '</td><td id="status">Na fila...</td></tr>'
+                      );
+                      // Guarda a linha exata dessa aldeia na tabela — as respostas do
+                      // servidor não chegam necessariamente na mesma ordem das aldeias,
+                      // então não dá pra confiar num contador sequencial pra achar a linha certa depois.
+                      aldeia.rowIndex = $("#combined_table tbody tr").length - 1;
+                      i++;
+                      confirmedForSend++;
+                      scheduleSend(aldeia, syncOn, targetTs);
+                    } else {
+                      console.log("Second Request: " + data.error + " coord: " + aldeia.coord);
+                      removeVillage(aldeia.id);
+                      aldeiasLength--;
+                    }
+                    if (i == aldeias.length) {
+                      progressHide();
+                      $("#listCommands").before(
+                        "<p>Engatilhados " + confirmedForSend + " comando(s) — enviando automaticamente no ritmo de ~5/seg...</p>"
+                      );
+                      allConfirmsDone = true;
+                      checkPassComplete();
+                    }
+                  },
+                  error: function (data) {
+                    progressTick();
+                    console.log("Error Second Request: " + data.status + " {" + data.error + "}");
+                    if (data.status == 429 || data.status == 405) {
+                      removeVillage(aldeia.id);
+                      removeVillageAux(aldeia.id);
+                      aldeiasAux.push(aldeia);
+                      aldeiasLength--;
+                    } else {
+                      alert("Programa caiu, erro inesperado: {" + data.error + "}");
+                      throw error;
+                    }
+                    if (i == aldeias.length) {
+                      progressHide();
+                      $("#listCommands").before(
+                        "<p>Engatilhados " + confirmedForSend + " comando(s) — enviando automaticamente no ritmo de ~5/seg...</p>"
+                      );
+                      allConfirmsDone = true;
+                      checkPassComplete();
+                    }
+                  },
+                });
+              },
+              random(160, 176) + random(160, 176) * count
+            );
+            count++;
+          }
+        };
+    
+        // ----------------------------------------------------------
+        // Interface — "console de comando" (tema escuro)
+        // ----------------------------------------------------------
+    
+        // Linha de cabeçalho da tabela de resultados nativa do jogo
+        resultHeaderRow = function () {
           return (
-            "<option value='" + o[0] + "'" + (building == o[0] ? " selected='selected'" : "") + ">" + o[1] + "</option>"
+            '<tr id="listCommands">' +
+            '<th class="amx-th">Aldeias Próprias</th>' +
+            '<th class="amx-th">Aldeias Alvos</th>' +
+            '<th class="amx-th">Duração</th>' +
+            '<th class="amx-th">Status</th>' +
+            "</tr>"
           );
-        })
-        .join("");
-
-      var demolidorChips = buildingList
-        .map(function (o) {
-          return (
-            "<label class='amx-chip' data-building='" + o[0] + "'>" +
-              "<input type='checkbox' class='demolidor-chk' value='" + o[0] + "'/>" +
-              "<span>" + o[1] + "</span>" +
-              "<span class='amx-order-badge' style='display:none'></span>" +
-            "</label>"
-          );
-        })
-        .join("");
-
-      $("#overview_menu").after(
-        "<div class='amx content-command'>" +
-          "<div class='amx-head'><span class='amx-flame'></span><span class='amx-title'>OrochiKing 3.9</span><span style='font-size:10px;color:var(--text-lo);margin-left:8px;letter-spacing:.08em;text-transform:uppercase'>Planejador de Ataque em Massa</span></div>" +
-          "<div class='amx-sub'>Console de coordenação — tropas, alvos e sincronismo de chegada</div>" +
-
-          "<span class='amx-label'>Modelos de tropas (preenche sozinho)</span>" +
-          "<div class='amx-buildings' id='amxTroopTemplates'>" +
-            "<button type='button' class='amx-chip' data-tpl='full'><span>⚔️ Ataque Full</span></button>" +
-            "<button type='button' class='amx-chip' data-tpl='farm'><span>🌾 Farmar Player</span></button>" +
-            "<button type='button' class='amx-chip' data-tpl='fullnt'><span>👑 Full + NT (4 nobres)</span></button>" +
-            "<button type='button' class='amx-chip' data-tpl='fullnobre'><span>👑 Full + 1 Nobre</span></button>" +
-            "<button type='button' class='amx-chip' data-tpl='noblarbarbara'><span>🎯 Noblar Bárbara</span></button>" +
-          "</div>" +
-
-          "<span class='amx-label' style='margin-top:12px'>Tropas por envio</span>" +
-          "<div class='amx-troops'>" + tropas + "</div>" +
-          "<div class='amx-hint'>Deixe em <b>0</b> (ou vazio) as tropas que você <b>não</b> quer que sejam enviadas nesse comando.</div>" +
-
-          "<hr class='amx-divider'/>" +
-
-          "<span class='amx-label'>Coordenadas alvo</span>" +
-          "<textarea name='coords' class='amx-textarea'>" + (!coords ? "" : coords) + "</textarea>" +
-          "<div class='amx-count' name='nCoords'>Nº Alvos: 0</div>" +
-          "<div style='font-size:11px;color:var(--text-lo);margin-top:4px'>Uma coordenada por linha (ou separadas por vírgula), formato <b style='color:var(--text-hi)'>555|551</b>. Sem ID, sem &amp;.</div>" +
-
-          "<div class='amx-row'>" +
-            "<div class='amx-field'>" +
-              "<span class='amx-label'>Tipo de comando</span>" +
-              "<select id='comando'>" +
-                "<option disabled='disabled' " + (comando == -1 || !comando ? "selected='selected'" : "") + "></option>" +
-                "<option value='attack'" + (comando == "attack" ? "selected='selected'" : "") + ">Ataque</option>" +
-                "<option value='support' " + (comando == "support" ? "selected='selected'" : "") + ">Apoio</option>" +
-              "</select>" +
-            "</div>" +
-            "<div class='amx-field'>" +
-              "<span class='amx-label'>Prédio-alvo (catapulta)</span>" +
-              "<select id='buildingAlvo'>" + buildingOptions + "</select>" +
-            "</div>" +
-            "<div class='amx-field'>" +
-              "<span class='amx-label'>Sincronizar chegada</span>" +
-              "<div class='amx-sync'>" +
-                "<label class='amx-switch'><input type='checkbox' id='syncChegada'/><span class='amx-slider'></span></label>" +
-                "<div class='amx-time'>" +
-                  "<input type='time' id='syncTime' step='1'/>" +
-                "</div>" +
-                "<span style='font-size:11px;color:var(--text-lo)'>hora do servidor (HH:MM:SS)</span>" +
+        };
+    
+        injectStyles = function () {
+          if (document.getElementById("amx-style")) return;
+          var css =
+            "@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');" +
+            ".amx{--bg:#14151a;--surface:#1c1d24;--surface-2:#22232b;--border:#33343d;--text-hi:#f2f3f5;--text-lo:#9a9ba3;--ember:#f5c518;--ember-dim:#d4a70f;--steel:#5eead4;--danger:#ff6b6b;--ok:#4ade80;--radius:10px;font-family:'Inter',sans-serif;color:var(--text-hi);background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px 22px;margin:14px 0;box-shadow:0 10px 30px rgba(0,0,0,.4);}" +
+            ".amx *{box-sizing:border-box;}" +
+            ".amx-head{display:flex;align-items:center;gap:10px;margin-bottom:4px;}" +
+            ".amx-flame{width:9px;height:9px;border-radius:50%;background:var(--ember);box-shadow:0 0 10px 2px rgba(255,138,61,.6);flex:none;}" +
+            ".amx-title{font-family:'Cinzel',serif;font-weight:700;font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-hi);}" +
+            ".amx-sub{font-size:11px;color:var(--text-lo);margin:2px 0 14px 19px;}" +
+            ".amx-divider{height:1px;background:linear-gradient(90deg,var(--ember) 0,var(--border) 18%,var(--border) 100%);margin:16px 0;border:none;}" +
+            ".amx-label{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-lo);font-weight:700;margin-bottom:8px;display:block;}" +
+            ".amx-hint{font-size:11px;color:var(--text-lo);margin-top:6px;}" +
+            ".amx-hint b{color:var(--steel);}" +
+            ".amx-troops{display:flex;flex-wrap:wrap;gap:8px;}" +
+            ".amx-troop{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 8px;}" +
+            ".amx-troop img{width:20px;height:20px;filter:brightness(1.15);}" +
+            ".amx-troop input{width:56px;background:var(--surface-2);border:1px solid var(--border);border-radius:5px;color:var(--text-hi);font-family:'JetBrains Mono',monospace;font-size:12px;padding:4px 6px;text-align:right;}" +
+            ".amx-troop input:focus{outline:none;border-color:var(--ember);}" +
+            ".amx-textarea{width:100%;min-height:110px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text-hi);font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;padding:10px;resize:vertical;}" +
+            ".amx-textarea:focus{outline:none;border-color:var(--ember);}" +
+            ".amx-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--steel);font-weight:600;margin-top:6px;}" +
+            ".amx-row{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;margin-top:14px;}" +
+            ".amx-field{display:flex;flex-direction:column;min-width:180px;}" +
+            ".amx-field select,.amx-field input[type=number],.amx-field input[type=time]{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;color:var(--text-hi);font-family:'Inter',sans-serif;font-size:13px;padding:8px 10px;}" +
+            ".amx-field select:focus,.amx-field input:focus{outline:none;border-color:var(--ember);box-shadow:0 0 0 3px rgba(255,138,61,.15);}" +
+            ".amx-sync{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}" +
+            ".amx-switch{position:relative;width:36px;height:20px;flex:none;}" +
+            ".amx-switch input{opacity:0;width:0;height:0;}" +
+            ".amx-slider{position:absolute;inset:0;background:var(--surface-2);border:1px solid var(--border);border-radius:20px;cursor:pointer;transition:.15s;}" +
+            ".amx-slider:before{content:'';position:absolute;width:14px;height:14px;left:2px;top:2px;background:var(--text-lo);border-radius:50%;transition:.15s;}" +
+            ".amx-switch input:checked + .amx-slider{background:var(--ember-dim);border-color:var(--ember);}" +
+            ".amx-switch input:checked + .amx-slider:before{transform:translateX(16px);background:var(--ember);box-shadow:0 0 6px 1px rgba(255,138,61,.6);}" +
+            ".amx-time{display:flex;align-items:center;}" +
+            ".amx-time input[type=time]{width:130px;font-size:14px;font-family:'JetBrains Mono',monospace;color-scheme:dark;}" +
+            ".amx-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;align-items:center;}" +
+            ".amx-btn{font-family:'Inter',sans-serif;font-weight:600;font-size:12px;letter-spacing:.03em;padding:9px 18px;border-radius:8px;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text-hi);transition:.15s;}" +
+            ".amx-btn:hover{border-color:var(--text-lo);}" +
+            ".amx-btn-primary{background:linear-gradient(180deg,var(--ember) 0,var(--ember-dim) 100%);border-color:var(--ember-dim);color:#1a0e05;}" +
+            ".amx-btn-primary:hover{filter:brightness(1.08);}" +
+            ".amx-btn:disabled{opacity:.5;cursor:not-allowed;}" +
+            ".amx-btn-ready{background:linear-gradient(180deg,var(--ok),#22a35c);border-color:#22a35c;color:#06210f;font-weight:700;animation:amxPulse 1.4s ease-in-out infinite;}" +
+            "@keyframes amxPulse{0%,100%{box-shadow:0 0 0 0 rgba(74,222,128,.5);}50%{box-shadow:0 0 0 6px rgba(74,222,128,0);}}" +
+            ".amx-th{text-align:center;color:#1a0e05;background:var(--ember);font-family:'Inter',sans-serif;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em;padding:8px;}" +
+            ".amx-progress{display:none;margin-top:14px;}" +
+            ".amx-progress-track{width:100%;height:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:99px;overflow:hidden;}" +
+            ".amx-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--ember-dim),var(--ember));transition:width .25s ease;}" +
+            ".amx-progress-text{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--steel);margin-top:6px;}" +
+            ".amx-section{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);}" +
+            ".amx-section-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;}" +
+            ".amx-section-icon{width:8px;height:8px;border-radius:2px;background:var(--steel);flex:none;}" +
+            ".amx-section-title{font-family:'Cinzel',serif;font-weight:700;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--text-hi);}" +
+            ".amx-buildings{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}" +
+            ".amx-chip{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:6px 12px;font-size:12px;cursor:pointer;user-select:none;font-family:'Inter',sans-serif;color:var(--text-hi);}" +
+            ".amx-chip:focus{outline:none;}" +
+            ".amx-chip:hover{border-color:var(--text-lo);}" +
+            ".amx-chip input{accent-color:var(--ember);cursor:pointer;}" +
+            ".amx-chip.amx-checked{border-color:var(--ember-dim);background:rgba(255,138,61,.12);color:var(--ember);}" +
+            ".amx-chip.amx-sending{border-color:#eab308;background:rgba(234,179,8,.15);color:#eab308;animation:amxPulse2 1.2s ease-in-out infinite;}" +
+            ".amx-chip.amx-done{border-color:var(--ok);background:rgba(74,222,128,.15);color:var(--ok);}" +
+            ".amx-chip.amx-done:after{content:' ✓';font-weight:700;}" +
+            "@keyframes amxPulse2{0%,100%{box-shadow:0 0 0 0 rgba(234,179,8,.5);}50%{box-shadow:0 0 0 5px rgba(234,179,8,0);}}" +
+            ".amx-order-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--ember);color:#1a0e05;font-size:10px;font-weight:700;margin-left:2px;}" +
+            ".amx-number{width:70px;}";
+          $("<style id='amx-style'>" + css + "</style>").appendTo("head");
+        };
+    
+        main = function () {
+          var coords = getParam("coords"),
+            comando = getParam("comando"),
+            building = getParam("buildingAlvo"),
+            i,
+            tropas = "",
+            href,
+            spearIndex,
+            snobIndex;
+          coords = !coords ? "" : coords;
+          comando = !comando ? "" : comando;
+          building = !building ? "" : building;
+    
+          injectStyles();
+    
+          spearIndex = $('#combined_table tr:eq(0) th a img[src*="spear"]').parent().parent().index();
+          snobIndex = $('#combined_table tr:eq(0) th a img[src*="snob"]').parent().parent().index();
+          for (i = spearIndex; i <= snobIndex; i++) {
+            href = $("#combined_table tr:eq(0) th:eq(" + i + ") a img").attr("src");
+            tropas +=
+              "<div class='amx-troop'><img src=" +
+              href +
+              ">" +
+              "<input type='text' id='" +
+              href.match(/unit_?[a-z]+/g)[0].split("_")[1] +
+              "'/></div>";
+          }
+    
+          var buildingList = [
+            ["main", "Edifício Principal"],
+            ["wall", "Muralha"],
+            ["hide", "Esconderijo"],
+            ["storage", "Armazém"],
+            ["farm", "Fazenda"],
+            ["place", "Praça de Reunião"],
+            ["market", "Mercado"],
+            ["smith", "Ferraria"],
+            ["barracks", "Quartel"],
+            ["stable", "Estábulo"],
+            ["garage", "Oficina"],
+            ["watchtower", "Torre de Vigia"],
+            ["snob", "Academia"],
+            ["statue", "Estátua"],
+          ];
+    
+          var buildingOptions = [["", "-- Prédio (catapulta) --"]]
+            .concat(buildingList)
+            .map(function (o) {
+              return (
+                "<option value='" + o[0] + "'" + (building == o[0] ? " selected='selected'" : "") + ">" + o[1] + "</option>"
+              );
+            })
+            .join("");
+    
+          var demolidorChips = buildingList
+            .map(function (o) {
+              return (
+                "<label class='amx-chip' data-building='" + o[0] + "'>" +
+                  "<input type='checkbox' class='demolidor-chk' value='" + o[0] + "'/>" +
+                  "<span>" + o[1] + "</span>" +
+                  "<span class='amx-order-badge' style='display:none'></span>" +
+                "</label>"
+              );
+            })
+            .join("");
+    
+          $("#overview_menu").after(
+            "<div class='amx content-command'>" +
+              "<div class='amx-head'><span class='amx-flame'></span><span class='amx-title'>OrochiKing 3.9</span><span style='font-size:10px;color:var(--text-lo);margin-left:8px;letter-spacing:.08em;text-transform:uppercase'>Planejador de Ataque em Massa</span></div>" +
+              "<div class='amx-sub'>Console de coordenação — tropas, alvos e sincronismo de chegada</div>" +
+    
+              "<span class='amx-label'>Modelos de tropas (preenche sozinho)</span>" +
+              "<div class='amx-buildings' id='amxTroopTemplates'>" +
+                "<button type='button' class='amx-chip' data-tpl='full'><span>⚔️ Ataque Full</span></button>" +
+                "<button type='button' class='amx-chip' data-tpl='farm'><span>🌾 Farmar Player</span></button>" +
+                "<button type='button' class='amx-chip' data-tpl='fullnt'><span>👑 Full + NT (4 nobres)</span></button>" +
+                "<button type='button' class='amx-chip' data-tpl='fullnobre'><span>👑 Full + 1 Nobre</span></button>" +
+                "<button type='button' class='amx-chip' data-tpl='noblarbarbara'><span>🎯 Noblar Bárbara</span></button>" +
               "</div>" +
-            "</div>" +
-          "</div>" +
-
-          "<div class='amx-actions'>" +
-            "<input type='submit' id='salvar' name='Att1' value='Salvar' class='amx-btn'/>" +
-            "<input type='submit' name='send' value='Enviar Comandos' class='amx-btn amx-btn-primary'/>" +
-          "</div>" +
-
-          "<div class='amx-progress' id='amxProgress'>" +
-            "<div class='amx-progress-track'><div class='amx-progress-fill' id='amxProgressFill'></div></div>" +
-            "<div class='amx-progress-text' id='amxProgressText'>Carregando ataques...</div>" +
-          "</div>" +
-
-          "<div class='amx-cycle' id='amxCycleStatus' style='display:none;margin-top:14px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap'>" +
-            "<span class='amx-hint' id='amxCycleText' style='margin:0'></span>" +
-            "<button type='button' id='amxRepeatBtn' class='amx-btn' disabled>Repetir Mesmos Ataques</button>" +
-          "</div>" +
-          "<div class='amx-hint'>Tudo isso fica guardado enquanto essa aba do jogo permanecer aberta. Se fechar a aba ou recarregar a página (F5), perde tudo e precisa clicar no bookmarklet de novo.</div>" +
-
-          "<div class='amx-section'>" +
-            "<div class='amx-section-head'><span class='amx-section-icon'></span><span class='amx-section-title'>Demolidor</span></div>" +
-            "<div class='amx-hint'>Escolhe os prédios (na ordem que aparecem abaixo) e uma leva de ataque é enviada pra cada um, um de cada vez, usando as mesmas tropas/alvos acima. Ele não fica rodando sozinho pra sempre — termina a lista e para. Quando terminar, use o botão \"Repetir Mesmos Ataques\" acima pra repetir a volta inteira assim que as tropas voltarem.</div>" +
-            "<div class='amx-buildings' id='amxDemolidorChips'>" + demolidorChips + "</div>" +
-            "<div class='amx-actions'>" +
-              "<button type='button' id='amxDemolidorStart' class='amx-btn amx-btn-primary'>Iniciar Demolidor</button>" +
-              "<span class='amx-hint' id='amxDemolidorStatus'></span>" +
-            "</div>" +
-          "</div>" +
-        "</div>"
-      );
-
-
-      // ----------------------------------------------------------
-      // Modelos de tropas: preenche os campos sozinho. O que não faz
-      // parte do modelo escolhido vai pra 0 — nada fica "sobrando" de
-      // uma seleção anterior.
-      // ----------------------------------------------------------
-      var ALL_UNITS = ["spear", "sword", "axe", "archer", "spy", "light", "heavy", "marcher", "ram", "catapult", "knight", "snob"];
-      var troopTemplates = {
-        // Ataque Full: bárbaro, cavalaria leve, arqueiro a cavalo, explorador, aríete, catapulta e paladino — "tudo que tiver disponível" (número alto = manda o máximo)
-        full: { axe: 100000, light: 100000, marcher: 100000, spy: 100000, ram: 100000, catapult: 100000, knight: 100000 },
-        // Farmar Player: só cavalaria leve
-        farm: { light: 100000 },
-        // Full + NT: mesmas tropas do ataque full + 4 nobres
-        fullnt: { axe: 100000, light: 100000, marcher: 100000, spy: 100000, ram: 100000, catapult: 100000, knight: 100000, snob: 4 },
-        // Full + Nobre: mesma coisa, só 1 nobre
-        fullnobre: { axe: 100000, light: 100000, marcher: 100000, spy: 100000, ram: 100000, catapult: 100000, knight: 100000, snob: 1 },
-        // Noblar Bárbara: 25 cavalaria leve + 1 nobre (número fixo, não "máximo")
-        noblarbarbara: { light: 25, snob: 1 },
-      };
-
-      $("#amxTroopTemplates").on("click", "button[data-tpl]", function (e) {
-        e.preventDefault();
-        var tpl = troopTemplates[$(this).data("tpl")] || {};
-        // Zera TODOS os campos de tropa que realmente existem na tela (em vez de uma
-        // lista fixa de nomes) — em alguns mundos/idiomas o id real do campo pode não
-        // bater com o nome que a gente espera, e aí o campo nunca era zerado de verdade.
-        $(".amx-troop input").each(function () {
-          var id = $(this).attr("id");
-          $(this).val(tpl[id] !== undefined ? tpl[id] : 0);
-        });
-        $("#amxTroopTemplates button").removeClass("amx-checked");
-        $(this).addClass("amx-checked");
-      });
-
-      $("input#salvar").click(function () {
-        setParam("spear", $("#spear").val());
-        setParam("sword", $("#sword").val());
-        setParam("axe", $("#axe").val());
-        setParam("archer", $("#archer").val());
-        setParam("spy", $("#spy").val());
-        setParam("light", $("#light").val());
-        setParam("heavy", $("#heavy").val());
-        setParam("marcher", $("#marcher").val());
-        setParam("ram", $("#ram").val());
-        setParam("catapult", $("#catapult").val());
-        setParam("knight", $("#knight").val());
-        setParam("snob", $("#snob").val());
-        setParam("comando", $("#comando").val());
-        setParam("buildingAlvo", $("#buildingAlvo").val());
-        setParam("coords", $("textarea[name='coords']").val());
-        UI.InfoMessage("Configurações salvas!");
-      });
-
-      usefullVillages();
-      $("tr.nowrap").each(function (i) {
-        $(this)
-          .find("td:eq(1)")
-          .prepend("<input type='checkbox' data-id='" + aldeias[i].id + "' data-coord='" + aldeias[i].coord + "' class='chkbox'/>");
-      });
-      $(".menu-side:eq(0)").after("<td class='qtdCheckbox' style='background: #0c0707;color: white;'></td>");
-
-      function atualizarContadorAlvos() {
-        var valor = $("textarea[name=coords]").val();
-        var n = parseCoordsInput(valor).length;
-        $("div[name=nCoords]").html("Nº Alvos: " + n);
-      }
-      atualizarContadorAlvos(); // já mostra certo ao abrir, sem precisar clicar na caixa
-      $("textarea[name=coords]").on("input blur", atualizarContadorAlvos);
-      $("textarea[name=coords]").change(function () {
-        setParam("coordsRes", "");
-      });
-
-      $(".chkbox").change(function () {
-        var qtcBoxChecked = $(".chkbox:checked").length;
-        if (qtcBoxChecked) {
-          $(".qtdCheckbox").html("Selecionados: " + qtcBoxChecked);
-        } else {
-          $(".qtdCheckbox").html("Selecionados: 0");
-        }
-      });
-
-      $("#spear").val(getParam("spear"));
-      $("#sword").val(getParam("sword"));
-      $("#axe").val(getParam("axe"));
-      $("#archer").val(getParam("archer"));
-      $("#spy").val(getParam("spy"));
-      $("#light").val(getParam("light"));
-      $("#heavy").val(getParam("heavy"));
-      $("#marcher").val(getParam("marcher"));
-      $("#ram").val(getParam("ram"));
-      $("#catapult").val(getParam("catapult"));
-      $("#knight").val(getParam("knight"));
-      $("#snob").val(getParam("snob"));
-
-      // executarEnvio: mesma lógica de antes, agora reutilizável — tanto o botão
-      // "Enviar Comandos" quanto o Demolidor (que dispara uma rodada por vez,
-      // sempre esperando a rodada anterior terminar) chamam essa função.
-      // buildingOverride: se vier preenchido, força esse prédio-alvo pra essa rodada
-      // (usado pelo Demolidor). onRoundDone: chamado quando a rodada inteira for enviada.
-      executarEnvio = function (buildingOverride, onRoundDone) {
-        console.log("[AtaqueMass] Iniciando envio" + (buildingOverride ? " (Demolidor: " + buildingOverride + ")" : ""));
-        onRoundDoneCallback = onRoundDone || null;
-
-        function continuarEnvio() {
-          if ($("input.chkbox:checked").length) {
-            aldeias.splice(0, aldeias.length);
-            $("input.chkbox:checked").each(function (k) {
-              aldeias[k] = new Aldeia($(this).data("coord"), $(this).data("id"));
+    
+              "<span class='amx-label' style='margin-top:12px'>Tropas por envio</span>" +
+              "<div class='amx-troops'>" + tropas + "</div>" +
+              "<div class='amx-hint'>Deixe em <b>0</b> (ou vazio) as tropas que você <b>não</b> quer que sejam enviadas nesse comando.</div>" +
+    
+              "<hr class='amx-divider'/>" +
+    
+              "<span class='amx-label'>Coordenadas alvo</span>" +
+              "<textarea name='coords' class='amx-textarea'>" + (!coords ? "" : coords) + "</textarea>" +
+              "<div class='amx-count' name='nCoords'>Nº Alvos: 0</div>" +
+              "<div style='font-size:11px;color:var(--text-lo);margin-top:4px'>Uma coordenada por linha (ou separadas por vírgula), formato <b style='color:var(--text-hi)'>555|551</b>. Sem ID, sem &amp;.</div>" +
+    
+              "<div class='amx-row'>" +
+                "<div class='amx-field'>" +
+                  "<span class='amx-label'>Tipo de comando</span>" +
+                  "<select id='comando'>" +
+                    "<option disabled='disabled' " + (comando == -1 || !comando ? "selected='selected'" : "") + "></option>" +
+                    "<option value='attack'" + (comando == "attack" ? "selected='selected'" : "") + ">Ataque</option>" +
+                    "<option value='support' " + (comando == "support" ? "selected='selected'" : "") + ">Apoio</option>" +
+                  "</select>" +
+                "</div>" +
+                "<div class='amx-field'>" +
+                  "<span class='amx-label'>Prédio-alvo (catapulta)</span>" +
+                  "<select id='buildingAlvo'>" + buildingOptions + "</select>" +
+                "</div>" +
+                "<div class='amx-field'>" +
+                  "<span class='amx-label'>Sincronizar chegada</span>" +
+                  "<div class='amx-sync'>" +
+                    "<label class='amx-switch'><input type='checkbox' id='syncChegada'/><span class='amx-slider'></span></label>" +
+                    "<div class='amx-time'>" +
+                      "<input type='time' id='syncTime' step='1'/>" +
+                    "</div>" +
+                    "<span style='font-size:11px;color:var(--text-lo)'>hora do servidor (HH:MM:SS)</span>" +
+                  "</div>" +
+                "</div>" +
+              "</div>" +
+    
+              "<div class='amx-actions'>" +
+                "<input type='submit' id='salvar' name='Att1' value='Salvar' class='amx-btn'/>" +
+                "<input type='submit' name='send' value='Enviar Comandos' class='amx-btn amx-btn-primary'/>" +
+              "</div>" +
+    
+              "<div class='amx-progress' id='amxProgress'>" +
+                "<div class='amx-progress-track'><div class='amx-progress-fill' id='amxProgressFill'></div></div>" +
+                "<div class='amx-progress-text' id='amxProgressText'>Carregando ataques...</div>" +
+              "</div>" +
+    
+              "<div class='amx-cycle' id='amxCycleStatus' style='display:none;margin-top:14px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap'>" +
+                "<span class='amx-hint' id='amxCycleText' style='margin:0'></span>" +
+                "<button type='button' id='amxRepeatBtn' class='amx-btn' disabled>Repetir Mesmos Ataques</button>" +
+              "</div>" +
+              "<div class='amx-hint'>Tudo isso fica guardado enquanto essa aba do jogo permanecer aberta. Se fechar a aba ou recarregar a página (F5), perde tudo e precisa clicar no bookmarklet de novo.</div>" +
+    
+              "<div class='amx-section'>" +
+                "<div class='amx-section-head'><span class='amx-section-icon'></span><span class='amx-section-title'>Demolidor</span></div>" +
+                "<div class='amx-hint'>Escolhe os prédios (na ordem que aparecem abaixo) e uma leva de ataque é enviada pra cada um, um de cada vez, usando as mesmas tropas/alvos acima. Ele não fica rodando sozinho pra sempre — termina a lista e para. Quando terminar, use o botão \"Repetir Mesmos Ataques\" acima pra repetir a volta inteira assim que as tropas voltarem.</div>" +
+                "<div class='amx-buildings' id='amxDemolidorChips'>" + demolidorChips + "</div>" +
+                "<div class='amx-actions'>" +
+                  "<button type='button' id='amxDemolidorStart' class='amx-btn amx-btn-primary'>Iniciar Demolidor</button>" +
+                  "<span class='amx-hint' id='amxDemolidorStatus'></span>" +
+                "</div>" +
+              "</div>" +
+            "</div>"
+          );
+    
+    
+          // ----------------------------------------------------------
+          // Modelos de tropas: preenche os campos sozinho. O que não faz
+          // parte do modelo escolhido vai pra 0 — nada fica "sobrando" de
+          // uma seleção anterior.
+          // ----------------------------------------------------------
+          var ALL_UNITS = ["spear", "sword", "axe", "archer", "spy", "light", "heavy", "marcher", "ram", "catapult", "knight", "snob"];
+          var troopTemplates = {
+            // Ataque Full: bárbaro, cavalaria leve, arqueiro a cavalo, explorador, aríete, catapulta e paladino — "tudo que tiver disponível" (número alto = manda o máximo)
+            full: { axe: 100000, light: 100000, marcher: 100000, spy: 100000, ram: 100000, catapult: 100000, knight: 100000 },
+            // Farmar Player: só cavalaria leve
+            farm: { light: 100000 },
+            // Full + NT: mesmas tropas do ataque full + 4 nobres
+            fullnt: { axe: 100000, light: 100000, marcher: 100000, spy: 100000, ram: 100000, catapult: 100000, knight: 100000, snob: 4 },
+            // Full + Nobre: mesma coisa, só 1 nobre
+            fullnobre: { axe: 100000, light: 100000, marcher: 100000, spy: 100000, ram: 100000, catapult: 100000, knight: 100000, snob: 1 },
+            // Noblar Bárbara: 25 cavalaria leve + 1 nobre (número fixo, não "máximo")
+            noblarbarbara: { light: 25, snob: 1 },
+          };
+    
+          $("#amxTroopTemplates").on("click", "button[data-tpl]", function (e) {
+            e.preventDefault();
+            var tpl = troopTemplates[$(this).data("tpl")] || {};
+            // Zera TODOS os campos de tropa que realmente existem na tela (em vez de uma
+            // lista fixa de nomes) — em alguns mundos/idiomas o id real do campo pode não
+            // bater com o nome que a gente espera, e aí o campo nunca era zerado de verdade.
+            $(".amx-troop input").each(function () {
+              var id = $(this).attr("id");
+              $(this).val(tpl[id] !== undefined ? tpl[id] : 0);
             });
-          } else {
-            usefullVillages();
+            $("#amxTroopTemplates button").removeClass("amx-checked");
+            $(this).addClass("amx-checked");
+          });
+    
+          $("input#salvar").click(function () {
+            setParam("spear", $("#spear").val());
+            setParam("sword", $("#sword").val());
+            setParam("axe", $("#axe").val());
+            setParam("archer", $("#archer").val());
+            setParam("spy", $("#spy").val());
+            setParam("light", $("#light").val());
+            setParam("heavy", $("#heavy").val());
+            setParam("marcher", $("#marcher").val());
+            setParam("ram", $("#ram").val());
+            setParam("catapult", $("#catapult").val());
+            setParam("knight", $("#knight").val());
+            setParam("snob", $("#snob").val());
+            setParam("comando", $("#comando").val());
+            setParam("buildingAlvo", $("#buildingAlvo").val());
+            setParam("coords", $("textarea[name='coords']").val());
+            UI.InfoMessage("Configurações salvas!");
+          });
+    
+          usefullVillages();
+          $("tr.nowrap").each(function (i) {
+            $(this)
+              .find("td:eq(1)")
+              .prepend("<input type='checkbox' data-id='" + aldeias[i].id + "' data-coord='" + aldeias[i].coord + "' class='chkbox'/>");
+          });
+          $(".menu-side:eq(0)").after("<td class='qtdCheckbox' style='background: #0c0707;color: white;'></td>");
+    
+          function atualizarContadorAlvos() {
+            var valor = $("textarea[name=coords]").val();
+            var n = parseCoordsInput(valor).length;
+            $("div[name=nCoords]").html("Nº Alvos: " + n);
           }
-          console.log("[AtaqueMass] aldeias próprias carregadas:", aldeias.length);
-          sortCoords();
-          $("#combined_table tbody tr").remove();
-          $("#combined_table tbody").append(resultHeaderRow());
-          progressStart(aldeias.length);
-          roundReturnAtMs = 0; // zera a estimativa de retorno da rodada anterior
-          clearInterval(cycleTimer);
-          $("#amxCycleStatus").hide();
-          firstRequest();
-        }
-
-        try {
-          var rawCoords = $("textarea[name=coords]").val();
-          var coordsList = parseCoordsInput(rawCoords);
-          console.log("[AtaqueMass] coordsList:", coordsList);
-          if (coordsList.length) {
-            resolveCoordsToIdString(coordsList, function (idString, naoEncontradas) {
-              try {
-                console.log("[AtaqueMass] idString resolvido:", idString);
-                if (naoEncontradas.length) {
-                  alert(
-                    "Atenção: " +
-                      naoEncontradas.length +
-                      " coordenada(s) não foram encontradas no mapa e serão ignoradas:\n" +
-                      naoEncontradas.join(", ")
-                  );
-                }
-                if (!idString) {
-                  alert("Nenhuma das coordenadas informadas foi encontrada no mapa do mundo. Confira se estão certas.");
-                  return;
-                }
-                setParam("coords", rawCoords); // sempre salva o que você digitou, no formato puro
-                setParam("coordsIds", idString); // versão resolvida (id&coord), só uso interno
-                setParam("coordsRes", "");
-                if (buildingOverride) {
-                  setParam("buildingAlvo", buildingOverride);
-                  $("#buildingAlvo").val(buildingOverride);
-                }
-                continuarEnvio();
-              } catch (errCb) {
-                console.error("[AtaqueMass] erro no callback de resolução:", errCb);
-                alert("Erro ao processar coordenadas resolvidas: " + errCb.message);
+          atualizarContadorAlvos(); // já mostra certo ao abrir, sem precisar clicar na caixa
+          $("textarea[name=coords]").on("input blur", atualizarContadorAlvos);
+          $("textarea[name=coords]").change(function () {
+            setParam("coordsRes", "");
+          });
+    
+          $(".chkbox").change(function () {
+            var qtcBoxChecked = $(".chkbox:checked").length;
+            if (qtcBoxChecked) {
+              $(".qtdCheckbox").html("Selecionados: " + qtcBoxChecked);
+            } else {
+              $(".qtdCheckbox").html("Selecionados: 0");
+            }
+          });
+    
+          $("#spear").val(getParam("spear"));
+          $("#sword").val(getParam("sword"));
+          $("#axe").val(getParam("axe"));
+          $("#archer").val(getParam("archer"));
+          $("#spy").val(getParam("spy"));
+          $("#light").val(getParam("light"));
+          $("#heavy").val(getParam("heavy"));
+          $("#marcher").val(getParam("marcher"));
+          $("#ram").val(getParam("ram"));
+          $("#catapult").val(getParam("catapult"));
+          $("#knight").val(getParam("knight"));
+          $("#snob").val(getParam("snob"));
+    
+          // executarEnvio: mesma lógica de antes, agora reutilizável — tanto o botão
+          // "Enviar Comandos" quanto o Demolidor (que dispara uma rodada por vez,
+          // sempre esperando a rodada anterior terminar) chamam essa função.
+          // buildingOverride: se vier preenchido, força esse prédio-alvo pra essa rodada
+          // (usado pelo Demolidor). onRoundDone: chamado quando a rodada inteira for enviada.
+          executarEnvio = function (buildingOverride, onRoundDone) {
+            console.log("[AtaqueMass] Iniciando envio" + (buildingOverride ? " (Demolidor: " + buildingOverride + ")" : ""));
+            onRoundDoneCallback = onRoundDone || null;
+    
+            function continuarEnvio() {
+              if ($("input.chkbox:checked").length) {
+                aldeias.splice(0, aldeias.length);
+                $("input.chkbox:checked").each(function (k) {
+                  aldeias[k] = new Aldeia($(this).data("coord"), $(this).data("id"));
+                });
+              } else {
+                usefullVillages();
               }
-            });
-          } else {
-            alert("Nenhuma coordenada válida encontrada na caixa de alvos. Use o formato 555|551.");
-          }
-        } catch (err) {
-          console.error("[AtaqueMass] erro ao iniciar envio:", err);
-          alert("Erro ao iniciar envio: " + err.message);
-        }
-      };
-
-      $("input[name='send']").click(function (e) {
-        e.preventDefault();
-        lastRoundType = "normal";
-        executarEnvio();
-      });
-
-      // ----------------------------------------------------------
-      // Demolidor: numera visualmente a ordem em que os prédios foram
-      // marcados, e dispara uma rodada por vez (esperando cada uma
-      // terminar) até acabar a lista escolhida.
-      // ----------------------------------------------------------
-      demolidorActive = false;
-      demolidorQueue = [];
-
-      function renumerarDemolidorChips() {
-        $(".demolidor-chk:checked").each(function (idx) {
-          $(this).closest(".amx-chip").addClass("amx-checked").find(".amx-order-badge").show().text(idx + 1);
-        });
-        $(".demolidor-chk:not(:checked)").each(function () {
-          $(this).closest(".amx-chip").removeClass("amx-checked").find(".amx-order-badge").hide();
-        });
-      }
-
-      $("#amxDemolidorChips").on("change", ".demolidor-chk", renumerarDemolidorChips);
-
-      runNextDemolidorRound = function () {
-        if (!demolidorQueue.length) {
+              console.log("[AtaqueMass] aldeias próprias carregadas:", aldeias.length);
+              sortCoords();
+              $("#combined_table tbody tr").remove();
+              $("#combined_table tbody").append(resultHeaderRow());
+              progressStart(aldeias.length);
+              roundReturnAtMs = 0; // zera a estimativa de retorno da rodada anterior
+              clearInterval(cycleTimer);
+              $("#amxCycleStatus").hide();
+              firstRequest();
+            }
+    
+            try {
+              var rawCoords = $("textarea[name=coords]").val();
+              var coordsList = parseCoordsInput(rawCoords);
+              console.log("[AtaqueMass] coordsList:", coordsList);
+              if (coordsList.length) {
+                resolveCoordsToIdString(coordsList, function (idString, naoEncontradas) {
+                  try {
+                    console.log("[AtaqueMass] idString resolvido:", idString);
+                    if (naoEncontradas.length) {
+                      alert(
+                        "Atenção: " +
+                          naoEncontradas.length +
+                          " coordenada(s) não foram encontradas no mapa e serão ignoradas:\n" +
+                          naoEncontradas.join(", ")
+                      );
+                    }
+                    if (!idString) {
+                      alert("Nenhuma das coordenadas informadas foi encontrada no mapa do mundo. Confira se estão certas.");
+                      return;
+                    }
+                    setParam("coords", rawCoords); // sempre salva o que você digitou, no formato puro
+                    setParam("coordsIds", idString); // versão resolvida (id&coord), só uso interno
+                    setParam("coordsRes", "");
+                    if (buildingOverride) {
+                      setParam("buildingAlvo", buildingOverride);
+                      $("#buildingAlvo").val(buildingOverride);
+                    }
+                    continuarEnvio();
+                  } catch (errCb) {
+                    console.error("[AtaqueMass] erro no callback de resolução:", errCb);
+                    alert("Erro ao processar coordenadas resolvidas: " + errCb.message);
+                  }
+                });
+              } else {
+                alert("Nenhuma coordenada válida encontrada na caixa de alvos. Use o formato 555|551.");
+              }
+            } catch (err) {
+              console.error("[AtaqueMass] erro ao iniciar envio:", err);
+              alert("Erro ao iniciar envio: " + err.message);
+            }
+          };
+    
+          $("input[name='send']").click(function (e) {
+            e.preventDefault();
+            lastRoundType = "normal";
+            executarEnvio();
+          });
+    
+          // ----------------------------------------------------------
+          // Demolidor: numera visualmente a ordem em que os prédios foram
+          // marcados, e dispara uma rodada por vez (esperando cada uma
+          // terminar) até acabar a lista escolhida.
+          // ----------------------------------------------------------
           demolidorActive = false;
-          $("#amxDemolidorStatus").text("");
-          alert("Demolidor concluído! Todos os prédios da lista já receberam uma leva de ataque.");
-          return;
-        }
-        var building = demolidorQueue.shift();
-        var chip = $(".demolidor-chk[value='" + building + "']").closest(".amx-chip");
-        var label = chip.find("span").first().text();
-        chip.removeClass("amx-done").addClass("amx-sending");
-        $("#amxDemolidorStatus").text("Demolidor: enviando leva contra \"" + label + "\" (faltam " + demolidorQueue.length + " prédio(s) depois desse)");
-        executarEnvio(building, function () {
-          chip.removeClass("amx-sending").addClass("amx-done");
-          runNextDemolidorRound();
-        });
-      };
-
-      $("#amxDemolidorStart").click(function (e) {
-        e.preventDefault();
-        if (demolidorActive) {
-          alert("O Demolidor já está rodando. Espera a rodada atual terminar (ou recarrega a página pra cancelar).");
-          return;
-        }
-        var chosen = $(".demolidor-chk:checked")
-          .map(function () {
-            return $(this).val();
-          })
-          .get();
-        if (!chosen.length) {
-          alert("Marca pelo menos um prédio na lista do Demolidor.");
-          return;
-        }
-        var rawCoords = $("textarea[name=coords]").val();
-        if (!parseCoordsInput(rawCoords).length) {
-          alert("Preenche a caixa de Coordenadas Alvo antes de iniciar o Demolidor.");
-          return;
-        }
-        lastRoundType = "demolidor";
-        lastDemolidorList = chosen.slice();
-        demolidorQueue = chosen;
-        demolidorActive = true;
-        $(".amx-chip").removeClass("amx-done amx-sending");
-        runNextDemolidorRound();
-      });
-
-      // "Enviar Novamente" — mesma mecânica pro farm de jogador: você manda a leva,
-      // acompanha aqui quando a estimativa diz que as tropas voltaram, e clica de novo.
-      // Sempre precisa do seu clique — não reinicia sozinho.
-      lastRoundType = "normal";
-      lastDemolidorList = [];
-      $("#amxRepeatBtn").click(function (e) {
-        e.preventDefault();
-        if (demolidorActive) {
-          alert("Já tem uma rodada rodando.");
-          return;
-        }
-        if (lastRoundType === "demolidor" && lastDemolidorList.length) {
-          demolidorQueue = lastDemolidorList.slice();
-          demolidorActive = true;
-          $(".amx-chip").removeClass("amx-done amx-sending");
-          runNextDemolidorRound();
-        } else {
-          executarEnvio();
-        }
-      });
-
-      var lastChecked = null;
-      var $chkboxes = $(".chkbox");
-      $chkboxes.click(function (e) {
-        if (!lastChecked) {
-          lastChecked = this;
-          return;
-        }
-        if (e.shiftKey) {
-          var start = $chkboxes.index(this);
-          var end = $chkboxes.index(lastChecked);
-          $chkboxes.slice(Math.min(start, end), Math.max(start, end) + 1).attr("checked", lastChecked.checked);
-        }
-        lastChecked = this;
-      });
-    };
-
-    main();
-  } else {
-    UI.ErrorMessage("Não autorizado!");
+          demolidorQueue = [];
+    
+          function renumerarDemolidorChips() {
+            $(".demolidor-chk:checked").each(function (idx) {
+              $(this).closest(".amx-chip").addClass("amx-checked").find(".amx-order-badge").show().text(idx + 1);
+            });
+            $(".demolidor-chk:not(:checked)").each(function () {
+              $(this).closest(".amx-chip").removeClass("amx-checked").find(".amx-order-badge").hide();
+            });
+          }
+    
+          $("#amxDemolidorChips").on("change", ".demolidor-chk", renumerarDemolidorChips);
+    
+          runNextDemolidorRound = function () {
+            if (!demolidorQueue.length) {
+              demolidorActive = false;
+              $("#amxDemolidorStatus").text("");
+              alert("Demolidor concluído! Todos os prédios da lista já receberam uma leva de ataque.");
+              return;
+            }
+            var building = demolidorQueue.shift();
+            var chip = $(".demolidor-chk[value='" + building + "']").closest(".amx-chip");
+            var label = chip.find("span").first().text();
+            chip.removeClass("amx-done").addClass("amx-sending");
+            $("#amxDemolidorStatus").text("Demolidor: enviando leva contra \"" + label + "\" (faltam " + demolidorQueue.length + " prédio(s) depois desse)");
+            executarEnvio(building, function () {
+              chip.removeClass("amx-sending").addClass("amx-done");
+              runNextDemolidorRound();
+            });
+          };
+    
+          $("#amxDemolidorStart").click(function (e) {
+            e.preventDefault();
+            if (demolidorActive) {
+              alert("O Demolidor já está rodando. Espera a rodada atual terminar (ou recarrega a página pra cancelar).");
+              return;
+            }
+            var chosen = $(".demolidor-chk:checked")
+              .map(function () {
+                return $(this).val();
+              })
+              .get();
+            if (!chosen.length) {
+              alert("Marca pelo menos um prédio na lista do Demolidor.");
+              return;
+            }
+            var rawCoords = $("textarea[name=coords]").val();
+            if (!parseCoordsInput(rawCoords).length) {
+              alert("Preenche a caixa de Coordenadas Alvo antes de iniciar o Demolidor.");
+              return;
+            }
+            lastRoundType = "demolidor";
+            lastDemolidorList = chosen.slice();
+            demolidorQueue = chosen;
+            demolidorActive = true;
+            $(".amx-chip").removeClass("amx-done amx-sending");
+            runNextDemolidorRound();
+          });
+    
+          // "Enviar Novamente" — mesma mecânica pro farm de jogador: você manda a leva,
+          // acompanha aqui quando a estimativa diz que as tropas voltaram, e clica de novo.
+          // Sempre precisa do seu clique — não reinicia sozinho.
+          lastRoundType = "normal";
+          lastDemolidorList = [];
+          $("#amxRepeatBtn").click(function (e) {
+            e.preventDefault();
+            if (demolidorActive) {
+              alert("Já tem uma rodada rodando.");
+              return;
+            }
+            if (lastRoundType === "demolidor" && lastDemolidorList.length) {
+              demolidorQueue = lastDemolidorList.slice();
+              demolidorActive = true;
+              $(".amx-chip").removeClass("amx-done amx-sending");
+              runNextDemolidorRound();
+            } else {
+              executarEnvio();
+            }
+          });
+    
+          var lastChecked = null;
+          var $chkboxes = $(".chkbox");
+          $chkboxes.click(function (e) {
+            if (!lastChecked) {
+              lastChecked = this;
+              return;
+            }
+            if (e.shiftKey) {
+              var start = $chkboxes.index(this);
+              var end = $chkboxes.index(lastChecked);
+              $chkboxes.slice(Math.min(start, end), Math.max(start, end) + 1).attr("checked", lastChecked.checked);
+            }
+            lastChecked = this;
+          });
+        };
+    
+        main();
+      } else {
+        UI.ErrorMessage("Não autorizado!");
+      }
+    })();
+    
   }
+
+  function checaRename() {
+    return document.querySelector('a[href*="village="]') !== null;
+  }
+  function rodarRename() {
+    !function(){if("undefined"!=typeof $)if(document.getElementById("rh-popup"))$("#rh-popup").show();else{$('<style id="rh-style">').text("#rh-popup{position:fixed;top:80px;left:50%;transform:translateX(-50%);width:460px;max-height:82vh;background:#181818;border:2px solid #f5c518;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.6);z-index:999999;font-family:Verdana,Arial,sans-serif;color:#eee;overflow:hidden;display:flex;flex-direction:column;}#rh-header{background:linear-gradient(180deg,#ffd84d,#f0b90b);color:#111;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:move;user-select:none;}#rh-header .rh-title{font-weight:bold;font-size:15px;letter-spacing:.5px;display:flex;align-items:center;gap:8px;}#rh-header .rh-badge{background:#111;color:#f5c518;font-size:11px;font-weight:bold;padding:2px 7px;border-radius:10px;}#rh-header .rh-sub{display:block;font-size:10px;font-weight:normal;opacity:.75;}#rh-close{cursor:pointer;font-weight:bold;font-size:16px;color:#111;background:transparent;border:none;}#rh-body{padding:12px 14px;overflow-y:auto;flex:1;}.rh-section{margin-bottom:12px;border:1px solid #333;border-radius:6px;padding:9px 10px;background:#1f1f1f;}.rh-label{font-size:11px;color:#f5c518;font-weight:bold;text-transform:uppercase;margin-bottom:5px;display:block;}#rh-popup input[type=text],#rh-popup input[type=number],#rh-popup select{width:100%;box-sizing:border-box;background:#111;border:1px solid #444;color:#eee;padding:6px 7px;border-radius:4px;font-size:12px;margin-bottom:6px;}#rh-popup input:focus,#rh-popup select:focus{outline:none;border-color:#f5c518;}.rh-row{display:flex;gap:6px;}.rh-row > *{flex:1;}.rh-check{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px;}.rh-check input{width:auto;margin:0;}#rh-popup button{cursor:pointer;border:none;border-radius:5px;font-weight:bold;font-size:12px;padding:8px 10px;}.rh-btn-primary{background:#f5c518;color:#111;}.rh-btn-primary:hover{background:#ffd84d;}.rh-btn-secondary{background:#2a2a2a;color:#f5c518;border:1px solid #f5c518 !important;}.rh-btn-secondary:hover{background:#333;}.rh-btn-danger{background:#7a1f1f;color:#fff;}.rh-btn-danger:hover{background:#992525;}.rh-btn-mini{padding:4px 7px;font-size:11px;}#rh-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}#rh-actions button{flex:1;min-width:80px;}#rh-progress-wrap{background:#111;border-radius:4px;height:14px;margin:8px 0 4px;overflow:hidden;border:1px solid #333;}#rh-progress-bar{background:linear-gradient(90deg,#f0b90b,#ffd84d);height:100%;width:0%;transition:width .2s;}#rh-status{font-size:11px;color:#ccc;margin-bottom:4px;}#rh-log{background:#0d0d0d;border:1px solid #333;border-radius:5px;height:120px;overflow-y:auto;font-family:Consolas,monospace;font-size:11px;padding:6px;}.rh-log-ok{color:#8fdc7a;}.rh-log-err{color:#ff8080;}.rh-log-info{color:#9ec9ff;}.rh-rule-row{display:flex;gap:4px;margin-bottom:5px;align-items:center;}.rh-rule-row input{margin-bottom:0;}.rh-rule-row .rh-rule-min,.rh-rule-row .rh-rule-max{width:70px;flex:none;}.rh-rule-row .rh-rule-nome{flex:1;}.rh-rule-row .rh-rule-del{flex:none;width:24px;height:24px;padding:0;background:#7a1f1f;color:#fff;border-radius:4px;}#rh-add-rule{width:100%;margin-top:2px;}.rh-hide{display:none !important;}").appendTo("head");var e,o,r,a,t;$("body").append('<div id="rh-popup"><div id="rh-header"><div class="rh-title">RENOMEADOR HARD <span class="rh-badge">1.0</span><span class="rh-sub">BY OROCHIKING</span></div><button id="rh-close">&times;</button></div><div id="rh-body"><div class="rh-section"><span class="rh-label">Nome base</span><input type="text" id="rh-nomebase" placeholder="Ex: THE KING!" value="THE KING!"><label class="rh-check"><input type="checkbox" id="rh-pular-iguais" checked> Pular aldeias que já têm o nome final</label></div><div class="rh-section"><span class="rh-label">Tipo de renomeação</span><select id="rh-modo"><option value="unico">Nome único para todas</option><option value="continente">Nome + Continente (K55)</option><option value="sequencial">Nome + numeração sequencial</option><option value="lote">Nome + lote (quantidade de aldeias por bloco)</option><option value="pontos">Regras por pontuação da aldeia</option></select><div id="rh-opts-sequencial" class="rh-hide"><div class="rh-row"><div><span class="rh-label">Início</span><input type="number" id="rh-seq-inicio" value="1" min="0"></div><div><span class="rh-label">Dígitos</span><input type="number" id="rh-seq-digitos" value="3" min="1" max="6"></div></div></div><div id="rh-opts-lote" class="rh-hide"><span class="rh-label">Aldeias por lote</span><input type="number" id="rh-lote-tam" value="20" min="1"></div><div id="rh-opts-pontos" class="rh-hide"><span class="rh-label">Regras (pontos mín / máx / nome)</span><div id="rh-rules"></div><button id="rh-add-rule" class="rh-btn-secondary rh-btn-mini" type="button">+ adicionar regra</button><label class="rh-check" style="margin-top:6px;"><input type="checkbox" id="rh-pontos-numerar"> Numerar sequencialmente dentro de cada regra</label><span class="rh-label">Nome p/ aldeias fora das regras (deixe vazio p/ pular)</span><input type="text" id="rh-pontos-fallback" placeholder="opcional"></div></div><div class="rh-section"><span class="rh-label">Filtro de aldeias na tela</span><select id="rh-filtro-tipo"><option value="todas">Todas as linhas visíveis nesta aba</option><option value="barbaras">Só aldeias de bárbaros</option><option value="minhas">Só minhas aldeias (com nome de jogador)</option></select><span class="rh-label">Intervalo entre aldeias (ms)</span><input type="number" id="rh-delay" value="800" min="150" step="50"></div><div id="rh-actions"><button id="rh-diag" class="rh-btn-secondary">Diagnosticar</button><button id="rh-diag2" class="rh-btn-secondary">Diagnosticar clique</button><button id="rh-test" class="rh-btn-secondary">Testar 1 aldeia</button><button id="rh-start" class="rh-btn-primary">Iniciar</button><button id="rh-pause" class="rh-btn-secondary" disabled>Pausar</button><button id="rh-stop" class="rh-btn-danger" disabled>Parar</button></div><div id="rh-progress-wrap"><div id="rh-progress-bar"></div></div><div id="rh-status">Pronto.</div><textarea id="rh-diag-area" class="rh-hide" rows="6" readonly style="width:100%;box-sizing:border-box;background:#0d0d0d;color:#8fdc7a;font-family:Consolas,monospace;font-size:10px;border:1px solid #333;border-radius:5px;margin-bottom:6px;padding:5px;"></textarea><div id="rh-log"></div></div></div>'),e=document.getElementById("rh-popup"),o=document.getElementById("rh-header"),r=!1,a=0,t=0,o.addEventListener("mousedown",function(o){r=!0;var n=e.getBoundingClientRect();a=o.clientX-n.left,t=o.clientY-n.top,e.style.transform="none",e.style.left=n.left+"px",e.style.top=n.top+"px"}),document.addEventListener("mousemove",function(o){r&&(e.style.left=o.clientX-a+"px",e.style.top=o.clientY-t+"px")}),document.addEventListener("mouseup",function(){r=!1}),l(0,999,"BARBARA PEQUENA"),l(1e3,999999,"BARBARA GRANDE"),$("#rh-add-rule").on("click",function(){l()}),$("#rh-modo").on("change",s),s();var n={rodando:!1,pausado:!1,parar:!1,fila:[],indice:0,ok:0,erro:0,pulados:0},i=null;$("#rh-diag").on("click",function(){var e=h("todas");if(e.length){for(var o=Math.min(2,e.length),r=[],a=0;a<o;a++)r.push("----- LINHA "+(a+1)+" -----\n"+e[a].row.outerHTML);var t=r.join("\n\n");$("#rh-diag-area").removeClass("rh-hide").val(t),$("#rh-diag-area")[0].select();try{document.execCommand("copy"),d("HTML copiado para a área de transferência (e visível na caixa acima). Cole e me envie.","ok")}catch(e){d("Não deu pra copiar automático. Selecione o texto da caixa acima e copie manualmente (Ctrl+C).","info")}}else d("Nenhuma aldeia encontrada para diagnóstico.","err")}),$("#rh-diag2").on("click",function(){var e=h("todas");if(e.length){var o=e[0].row,r=f(o);r?(r.click(),setTimeout(function(){var e="----- LINHA APÓS CLICAR NO ÍCONE -----\n"+o.outerHTML;$("#rh-diag-area").removeClass("rh-hide").val(e),$("#rh-diag-area")[0].select();try{document.execCommand("copy"),d("HTML pós-clique copiado. Cole e me envie.","ok")}catch(e){d("Selecione o texto da caixa acima e copie manualmente (Ctrl+C).","info")}},600)):d("Ícone de edição não encontrado nesta linha.","err")}else d("Nenhuma aldeia encontrada para diagnóstico.","err")}),$("#rh-test").on("click",function(){var e=w(i=m(),!0);e.length&&(d("Testando em 1 aldeia...","info"),v(e[0].item,e[0].novoNome,function(o,r){o?d('Teste OK: "'+e[0].item.nomeAtual+'" -> "'+e[0].novoNome+'"',"ok"):d("Teste falhou: "+r,"err")}))}),$("#rh-start").on("click",function(){var e=w(i=m(),!1);e.length&&(n={rodando:!0,pausado:!1,parar:!1,fila:e,indice:0,ok:0,erro:0,pulados:0},$("#rh-log").empty(),d("Iniciando renomeação de "+e.length+" aldeia(s)...","info"),$("#rh-start").prop("disabled",!0),$("#rh-pause").prop("disabled",!1),$("#rh-stop").prop("disabled",!1),y())}),$("#rh-pause").on("click",function(){n.pausado=!n.pausado,$(this).text(n.pausado?"Continuar":"Pausar"),p(n.pausado?"Pausado.":"Retomando...")}),$("#rh-stop").on("click",function(){n.parar=!0}),$("#rh-close").on("click",function(){$("#rh-popup").remove(),$("#rh-style").remove()}),p('Configure as opções e clique em "Testar 1 aldeia" antes de rodar em todas.')}else alert("jQuery não encontrado nesta página. Abra o script estando dentro do jogo (game.php).");function l(e,o,r){var a="r"+Math.random().toString(36).slice(2,8),t=$('<div class="rh-rule-row" data-id="'+a+'"><input type="number" class="rh-rule-min" placeholder="mín" value="'+(null!=e?e:"")+'"><input type="number" class="rh-rule-max" placeholder="máx" value="'+(null!=o?o:"")+'"><input type="text" class="rh-rule-nome" placeholder="nome desta faixa" value="'+(r||"")+'"><button type="button" class="rh-rule-del">×</button></div>');t.find(".rh-rule-del").on("click",function(){t.remove()}),$("#rh-rules").append(t)}function s(){var e=$("#rh-modo").val();$("#rh-opts-sequencial, #rh-opts-lote, #rh-opts-pontos").addClass("rh-hide"),"sequencial"===e&&$("#rh-opts-sequencial").removeClass("rh-hide"),"lote"===e&&$("#rh-opts-lote").removeClass("rh-hide"),"pontos"===e&&$("#rh-opts-pontos").removeClass("rh-hide")}function d(e,o){var r=$('<div class="'+("ok"===o?"rh-log-ok":"err"===o?"rh-log-err":"rh-log-info")+'"></div>').text(e);$("#rh-log").append(r),$("#rh-log").scrollTop($("#rh-log")[0].scrollHeight)}function p(e){$("#rh-status").text(e)}function c(e){$("#rh-progress-bar").css("width",Math.max(0,Math.min(100,e))+"%")}function u(e){var o=e.closest("table");if(!o)return null;if(void 0===o.__rhPontosIdx){var r=o.querySelectorAll("thead th");r.length||(r=o.querySelectorAll("tr:first-child th"));var a=-1;r.forEach(function(e,o){/pontos/i.test(e.textContent)&&(a=o)}),o.__rhPontosIdx=a}if((a=o.__rhPontosIdx)<0)return null;var t=e.querySelectorAll("td");if(!t[a])return null;var n=t[a].textContent.replace(/\./g,"").replace(/[^\d]/g,"");return n?parseInt(n,10):null}function h(e){var o=[],r={};return document.querySelectorAll('a[href*="village="]').forEach(function(a){var t=a.closest("tr");if(t&&(!t.id||0!==t.id.indexOf("menu_row"))&&t.querySelector(".quickedit-vn, .rename-icon")){var n=t.textContent.match(/\((\d{1,3})\|(\d{1,3})\)/);if(n){var i=a.getAttribute("href").match(/village=(\d+)/);if(i){var l=i[1];if(!r[l]){r[l]=!0;var s,d=parseInt(n[1],10),p=parseInt(n[2],10),c=t.textContent.match(/K(\d{2,3})\b/),h=c?c[1]:String(Math.floor(p/100))+String(Math.floor(d/100)),m=t.querySelector(".quickedit-label");s=m?m.textContent.replace(/\(\d{1,3}\|\d{1,3}\)\s*K?\d{0,3}\s*$/,"").trim():a.textContent.replace(/\(\d{1,3}\|\d{1,3}\)\s*K?\d{0,3}\s*$/,"").trim();var f=/árbaro|barbar/i.test(s);("barbaras"!==e||f)&&("minhas"===e&&f||o.push({id:l,row:t,link:a,x:d,y:p,continente:h,pontos:u(t),nomeAtual:s}))}}}}}),o}function m(){var e=[];return $("#rh-rules .rh-rule-row").each(function(){var o=$(this),r=parseFloat(o.find(".rh-rule-min").val()),a=parseFloat(o.find(".rh-rule-max").val()),t=o.find(".rh-rule-nome").val().trim();""===t||isNaN(r)||isNaN(a)||e.push({min:r,max:a,nome:t})}),{nomeBase:$("#rh-nomebase").val().trim()||"ALDEIA",modo:$("#rh-modo").val(),pularIguais:$("#rh-pular-iguais").is(":checked"),seqInicio:parseInt($("#rh-seq-inicio").val(),10)||0,seqDigitos:parseInt($("#rh-seq-digitos").val(),10)||3,loteTam:parseInt($("#rh-lote-tam").val(),10)||20,regrasPontos:e,pontosNumerar:$("#rh-pontos-numerar").is(":checked"),pontosFallback:$("#rh-pontos-fallback").val().trim(),filtroTipo:$("#rh-filtro-tipo").val(),delay:Math.max(150,parseInt($("#rh-delay").val(),10)||800)}}function f(e){return e.querySelector("a.rename-icon")}function b(e){var o=e.querySelectorAll(".quickedit-edit");return o.length?o[o.length-1].querySelector('input[type="text"]'):null}function g(e,o,r){var a=b(e);a?r(a):o<=0?r(null):setTimeout(function(){g(e,o-1,r)},150)}function v(e,o,r){var a=e.row,t=b(a);if(!t){var n=f(a);return n?(n.click(),void g(a,12,function(e){e?x(e,o,r):r(!1,"campo de edição não apareceu após clicar no ícone")})):void r(!1,"ícone de edição não encontrado nesta linha")}x(t,o,r)}function x(e,o,r){e.value=o,$(e).trigger("input").trigger("change");var a=e.closest(".quickedit-edit"),t=a?a.querySelector('input.btn, input[type="button"]'):null;t?(t.click(),setTimeout(function(){r(!0,"renomeada")},150)):r(!1,"botão de confirmar (Renomear) não encontrado")}function y(){if(n.parar)k("Parado pelo usuário.");else if(n.pausado)setTimeout(y,300);else{if(!(n.indice>=n.fila.length)){var e=n.fila[n.indice];return c(n.indice/n.fila.length*100),p("Processando "+(n.indice+1)+"/"+n.fila.length+"  (OK: "+n.ok+" | Erros: "+n.erro+" | Pulados: "+n.pulados+")"),null===e.novoNome?(n.pulados++,d("— pulada (fora das regras): "+e.item.nomeAtual,"info"),n.indice++,void setTimeout(y,40)):i.pularIguais&&e.item.nomeAtual===e.novoNome?(n.pulados++,d("— já está com o nome certo: "+e.novoNome,"info"),n.indice++,void setTimeout(y,40)):void v(e.item,e.novoNome,function(o,r){o?(n.ok++,d("OK ("+e.item.x+"|"+e.item.y+'): "'+e.item.nomeAtual+'" -> "'+e.novoNome+'"',"ok")):(n.erro++,d("ERRO ("+e.item.x+"|"+e.item.y+"): "+r,"err")),n.indice++,setTimeout(y,i.delay)})}k("Concluído.")}}function k(e){n.rodando=!1,c(100),p(e+"  (OK: "+n.ok+" | Erros: "+n.erro+" | Pulados: "+n.pulados+")"),$("#rh-start").prop("disabled",!1).text("Iniciar"),$("#rh-pause").prop("disabled",!0).text("Pausar"),$("#rh-stop").prop("disabled",!0)}function w(e,o){var r=h(e.filtroTipo);if(!r.length)return d("Nenhuma aldeia encontrada nesta tabela.","err"),[];var a={},t=[];return r.forEach(function(o,r){var n=function(e,o,r,a){switch(r.modo){case"unico":return r.nomeBase;case"continente":return r.nomeBase+" K"+e.continente;case"sequencial":for(var t=r.seqInicio+o,n=String(t);n.length<r.seqDigitos;)n="0"+n;return r.nomeBase+" "+n;case"lote":var i=Math.floor(o/r.loteTam)+1;return r.nomeBase+" - Lote "+i;case"pontos":for(var l=null,s=0;s<r.regrasPontos.length;s++){var d=r.regrasPontos[s];if(null!=e.pontos&&e.pontos>=d.min&&e.pontos<=d.max){l=d;break}}if(!l)return r.pontosFallback||null;if(r.pontosNumerar){a[l.nome]=(a[l.nome]||0)+1;for(var p=String(a[l.nome]);p.length<r.seqDigitos;)p="0"+p;return l.nome+" "+p}return l.nome}return r.nomeBase}(o,r,e,a);t.push({item:o,novoNome:n})}),o&&(t=t.slice(0,1)),t}}();
+  }
+
+  function checaCancelar() {
+    return document.getElementById('production_table') !== null && window.game_data && window.game_data.mode === 'prod';
+  }
+  function rodarCancelar() {
+    (function() {    'use strict';    var arma = ['barracks', 'stable', 'garage'];    const setDelRecruit = async () => {        var url_, id, xz;        var rows = document.querySelector('#production_table').querySelectorAll('tr').length - 1;        xz = 0;        for (let i = 1; i <= rows; i++) {            if (document.querySelector('#production_table').querySelectorAll('tr')[i].querySelectorAll('td')[9].querySelectorAll('li').length > 0) {                xz = xz + 1;                id = document.querySelector('#production_table').querySelectorAll('tr')[i].querySelector('span').dataset.id;                for (let a = 0; a < arma.length; a++) {                    url_ = `https://${document.domain}/game.php?village=${id}&screen=train&action=cancel_all&mode=train&h=${csrf_token}&building=${arma[a]}&client_time=${Math.round(Timing.getCurrentServerTime()/1e3)}`;                    UI.SuccessMessage(`Aguarde...cancelando ${xz} aldeia(s) ${arma[a]}`, 5000);                    await fetch(url_);                };                partialReload(document.querySelector('#production_table').querySelectorAll('tr')[i].querySelectorAll('td')[9]);            };        };        if (xz == 0) {            UI.ErrorMessage('Nenhuma ordem de recruamento para caneclar!! Noob!!!');        } else {            UI.SuccessMessage(`Ordens de recrutamento de ${xz} aldeia(s) Cancelado! `, 3000);        };    };    if (game_data.mode != 'prod') {        UI.ErrorMessage("Use na Visualização->Produção.", 3000);    } else {        setDelRecruit();    };})()
+  }
+
+  function checaDefender() {
+    return !!(window.game_data && game_data.screen === 'overview_villages' && game_data.mode === 'incomings');
+  }
+  function rodarDefender() {
+    function adicionarElem(array, elem, id) { let string = id + "&" + elem; if ($.inArray(string, array) == -1) { return elem; } return false; } let atkComing = $('#incomings_table tbody tr'); if (atkComing.length) { let strAtt, strSup, strId, aux, arrayLength; let coords = [], coordsS = []; let windowM; for (let i = 0; i < (atkComing.length - 2); i++) { strAtt = $('#incomings_table tbody tr:eq(' + (1 + i) + ') td:eq(2) a').text(); strSup = $('#incomings_table tbody tr:eq(' + (1 + i) + ') td:eq(1) a').text(); strId = $('#incomings_table tbody tr:eq(' + (1 + i) + ') td:eq(2) a').attr("href"); strId = strId.match(/\d+/g)[1]; strAtt = strAtt.match(/\d{3}[|]?\d{3}/g).toString(); strSup = strSup.match(/\d{3}[|]?\d{3}/g).toString(); aux = adicionarElem(coords, strAtt, strId); if (aux) { arrayLength = coords.length; coords[arrayLength] = strId + "&" + aux; } strId = $('#incomings_table tbody tr:eq(' + (1 + i) + ') td:eq(1) a').attr("href"); strId = strId.match(/\d+/g); aux = adicionarElem(coordsS, strSup, strId); if (aux) { arrayLength = coordsS.length; coordsS[arrayLength] = strId + "&" + aux; } } windowM = window.open('Incomings.html', 'Incomings', 'width=720, height=500, top=100, left=110, scrollbars=yes'); windowM.document.write("<html><body><h1>Origin</h1><textarea cols='80' rows='10' disabled>"+coords.join(",")+"</textarea>"+ "<h1>Destination</h1><textarea cols='80' rows='10' disabled>"+coordsS.join(",")+"</textarea></body></html>"); } void(0);
+  }
+
+  function checaBarbaras() {
+    return window.game_data && window.game_data.screen === 'map';
+  }
+  function rodarBarbaras() {
+    !function(){var n,e="OROCHIKING - Barb Finder",a="orkBarbList",o="screen=map",t="",i=[],r=[];function s(){window.localStorage.setItem(`${a}_Settings`,JSON.stringify(n))}function c(){let n=$.grep(Object.values(TWMap.villages),n=>"0"==n.owner&&n.points),[e,a]=[game_data.village.x,game_data.village.y];n.forEach(n=>{n.x=Math.floor(n.xy/1e3),n.y=n.xy%1e3,n.distance=Math.sqrt((n.x-e)**2+(n.y-a)**2)}),n.sort((n,e)=>n.distance-e.distance),l(n)}function d(n){$(`#${a}_textarea`).val("Buscando dados do mapa ao vivo...");let e=Math.ceil(2*n)+2;TWMap.resize(e),setTimeout(()=>{let[e,a]=[game_data.village.x,game_data.village.y],o=$.grep(Object.values(TWMap.villages),n=>"0"==n.owner&&n.points);o.forEach(n=>{n.x=Math.floor(n.xy/1e3),n.y=n.xy%1e3,n.distance=Math.sqrt((n.x-e)**2+(n.y-a)**2)}),o=o.filter(e=>e.distance<=n),o.sort((n,e)=>n.distance-e.distance),l(o)},1200)}function l(n){r=n,p()}function p(){i=function(e){if("spaced"===n.strategy){let a=n.spacing,o=[];return e.forEach(n=>{o.every(e=>Math.sqrt((e.x-n.x)**2+(e.y-n.y)**2)>=a)&&o.push(n)}),o}return e}(r),$(`#${a}_count`).text(i.length),u()}function u(){let e=n.format,o=i.map(n=>"coords_comma"==e?`${n.x}|${n.y},`:"link"==e?`[village]${n.x}|${n.y}[/village]`:`${n.x}|${n.y}`);$(`#${a}_textarea`).val(o.join(" "))}function g(){let n=document.getElementById(`${a}_textarea`);n.select(),n.setSelectionRange(0,999999),navigator.clipboard.writeText(n.value).then(()=>{UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)}).catch(()=>{document.execCommand("copy"),UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)})}!function(){if($(`#${a}_popup_container`).length)return void UI.ErrorMessage("Script já foi carregado, recarregue a página antes de chamá-lo novamente");let i=window.location.search.match(/t=\d+/g);if(i&&(t=i),-1==window.location.href.indexOf(`${o}`))return UI.ErrorMessage("Script precisa ser executado no mapa"),void(window.location.href=window.location.pathname+`?${t?t+"&":""}${o}`);!function(){let e=window.localStorage.getItem(`${a}_Settings`);n=e?JSON.parse(e):{mode:"loaded",radius:30,format:"coords",strategy:"cluster",spacing:5}}(),function(){let o=`\n    <div id="${a}_popup_container" class="ork_popup_container">\n        <div>\n            <a class="popup_box_close tooltip-delayed ork_close" id="${a}_popup_cross" href="javascript:void(0)">✕</a>\n            <div id="${a}_popup_content" class="ork_popup_content">\n                <h3 class="ork_centered">${e}</h3>\n\n                <div style="padding:5px;">\n                    <label class="ork_label">Fonte de dados</label>\n                    <select id="${a}_mode" class="ork_select">\n                        <option value="loaded">Mapa carregado atualmente</option>\n                        <option value="radius">Scan ao vivo: dentro do raio</option>\n                    </select>\n\n                    <div id="${a}_radiusRow" class="ork_row" style="display:none;">\n                        <span>Raio (campos): </span>\n                        <input type="text" id="${a}_radius" class="ork_input" value="${n.radius}" size="4">\n                    </div>\n\n                    <br>\n                    <label class="ork_label">Estratégia de nobre</label>\n                    <select id="${a}_strategy" class="ork_select">\n                        <option value="cluster">Cluster (aldeias coladas)</option>\n                        <option value="spaced">Espaçada (com farm ao redor)</option>\n                    </select>\n\n                    <div id="${a}_spacingRow" class="ork_row" style="display:none;">\n                        <span>Espaçamento mínimo (campos): </span>\n                        <input type="text" id="${a}_spacing" class="ork_input" value="${n.spacing}" size="4">\n                    </div>\n\n                    <br><br>\n                    <input type="submit" class="ork_btn" id="${a}_scan" value="Scan">\n                    <br><br>\n                    <span><b id="${a}_count" class="ork_gold">0</b> aldeias bárbaras encontradas</span>\n                    <br><br>\n                    <textarea id="${a}_textarea" rows="8" cols="20" class="ork_textarea" readonly></textarea>\n                    <br><br>\n                    <select id="${a}_format" class="ork_select">\n                        <option value="coords">x|y</option>\n                        <option value="coords_comma">x|y,</option>\n                        <option value="link">BB link</option>\n                    </select>\n                    <input type="submit" class="ork_btn" id="${a}_copy" value="Copiar">\n                </div>\n            </div>\n        </div>\n    </div>\n    <style>\n        .ork_popup_container {\n            border: 3px solid #D4AF37;\n            border-radius: 8px;\n            display: block;\n            position: fixed;\n            top: 8%;\n            left: 65%;\n            z-index: 14000;\n            background: linear-gradient(180deg, #0c0c0c 0%, #1b1b1b 100%);\n            box-shadow: 0 0 18px rgba(212,175,55,0.55), inset 0 0 8px rgba(212,175,55,0.15);\n            font-family: Verdana, Arial, sans-serif;\n        }\n        .ork_popup_content {\n            min-width: 250px;\n            padding: 8px 10px 12px 10px;\n            color: #E9C25E;\n        }\n        .ork_centered {\n            text-align: center;\n            color: #D4AF37;\n            text-shadow: 0 0 6px rgba(212,175,55,0.5);\n            letter-spacing: 1px;\n            margin: 4px 0 10px 0;\n            padding-right: 26px;\n            box-sizing: border-box;\n            font-size: 14px;\n            white-space: nowrap;\n            border-bottom: 1px solid #D4AF37;\n            padding-bottom: 6px;\n        }\n        .ork_close {\n            position: absolute;\n            top: 6px;\n            right: 8px;\n            width: 16px;\n            height: 16px;\n            line-height: 16px;\n            text-align: center;\n            color: #D4AF37;\n            font-weight: bold;\n            font-size: 13px;\n            cursor: pointer;\n            text-decoration: none;\n            z-index: 1;\n        }\n        .ork_label {\n            display: block;\n            font-size: 11px;\n            color: #B8952E;\n            margin-top: 6px;\n            margin-bottom: 2px;\n            text-transform: uppercase;\n        }\n        .ork_select, .ork_input, .ork_textarea {\n            background: #111111;\n            color: #E9C25E;\n            border: 1px solid #D4AF37;\n            border-radius: 4px;\n            padding: 3px 5px;\n        }\n        .ork_select { width: 100%; }\n        .ork_textarea { width: 100%; box-sizing: border-box; resize: vertical; }\n        .ork_row { margin-top: 4px; }\n        .ork_gold { color: #D4AF37; }\n        .ork_btn {\n            background: #D4AF37;\n            color: #0c0c0c;\n            font-weight: bold;\n            border: none;\n            border-radius: 4px;\n            padding: 5px 12px;\n            margin-top: 6px;\n            cursor: pointer;\n        }\n        .ork_btn:hover { background: #E9C25E; }\n    </style>`;$("body").append(o),$(`#${a}_popup_container`).draggable(),$(`#${a}_popup_cross`).click(()=>$(`#${a}_popup_container`).remove()),$(`#${a}_mode`).val(n.mode),$(`#${a}_strategy`).val(n.strategy),$(`#${a}_format`).val(n.format),$(`#${a}_radiusRow`).toggle("radius"===n.mode),$(`#${a}_spacingRow`).toggle("spaced"===n.strategy),$(`#${a}_mode`).on("change",function(){n.mode=this.value,s(),$(`#${a}_radiusRow`).toggle("radius"===this.value)}),$(`#${a}_strategy`).on("change",function(){n.strategy=this.value,s(),$(`#${a}_spacingRow`).toggle("spaced"===this.value),p()}),$(`#${a}_radius`).click(function(){this.focus(),this.select()}),$(`#${a}_radius`).on("change",function(){n.radius=parseFloat(this.value)||n.radius,s()}),$(`#${a}_spacing`).click(function(){this.focus(),this.select()}),$(`#${a}_spacing`).on("change",function(){n.spacing=parseFloat(this.value)||n.spacing,s(),p()}),$(`#${a}_format`).on("change",function(){n.format=this.value,s(),u()}),$(`#${a}_copy`).click(g),$(`#${a}_scan`).click(function(){"loaded"===n.mode?c():"radius"===n.mode&&d(n.radius)}),"radius"===n.mode?d(n.radius):c()}()}()}()
+  }
+
+  function checaPerfil() {
+    return document.URL.indexOf('screen=info_player') !== -1;
+  }
+  function rodarPerfil() {
+    if (game_data.player.premium == false) { alert("Para utilizar esse script é necessário uma Conta Premium."); return; } if ( typeof bb === 'undefined') var bb = false; if (document.URL.indexOf('screen=info_player') == -1) { alert('Você deve executar o script no perfil de algum jogador!'); } else { var tds = document.getElementsByTagName("TD"); var K = new Array(); for (var idx = 0; idx < 100; idx++) K[idx] = new Array(); var C = new Array(); for (var idx = 0; idx < tds.length; idx++) { var xy = tds[idx].innerHTML; if (/^\d+\|\d+$/.test(xy)) { C.push(xy); var xys = xy.split('|'); K[Math.floor(parseInt(xys[0]) / 100) + Math.floor(parseInt(xys[1]) / 100) * 10].push(xy); } } if (bb == true) { C = "Esta aldeia não existe Esta aldeia não existe"; } if (bb == false) { C = C.join(' '); } var prefix = '<textarea cols=80 rows=10>'; var postfix = '<\/textarea>'; var S = '<html>' + '<head>' + '<title>Coletor de Coordenadas</title>' + '<meta http-equiv=\"content-type\" content=\"text/html; charset=UTF-8\" />' + '</head>' + '<body>' + '<b>Coletor de Coordenadas</b><hr>Todas as Aldeias do Jogador:<br>' + prefix + C + postfix; for (var idx = 0; idx < 100; idx++) if (K[idx].length > 0) { if (bb == true) { var Ks = "Esta aldeia não existe Esta aldeia não existe"; } if (bb == false) { var Ks = K[idx].join(' '); } S += '<br><br> Aldeias do Continente ' + idx + ' <br>' + prefix + Ks + postfix; } S += '</body></html>'; var popup = window.open('about:blank', 'twcc', 'width=720,height=480,scrollbars=1'); popup.document.open('text/html', 'replace'); popup.document.write(S); popup.document.close(); };void(0);
+  }
+
+  function checaOcultar() {
+    return document.querySelector('table#villages_list') !== null || document.URL.indexOf('screen=info_player') !== -1;
+  }
+  function rodarOcultar() {
+    var aux = 0; var villages_total = $('table #villages_list tbody tr:last td a'); var element = $('table #villages_list tbody tr td span[class="icon command command-attack-ally"]'); var element1 = $('table #villages_list tbody tr td span[class="icon command command-attack"]'); var element2 = $('table #villages_list tbody tr td span[class="icon command command-support-ally"]'); var element3 = $('table #villages_list tbody tr td span[class="icon command command-support"]'); if (villages_total.length) { villages_total.click(); } element.parent().parent().remove(); element1.parent().parent().remove(); element2.parent().parent().remove(); element3.parent().parent().remove(); void(0);
+  }
+
+  var FERRAMENTAS = [
+    {
+      id: 'farmar',
+      nome: 'Farm Hard',
+      icone: '🌾',
+      dica: 'Ativa direto aqui — abre o popup do Farm Hard para configurar e iniciar.',
+      checar: checaFarmar,
+      rodar: rodarFarmar,
+      destino: null
+    },
+    {
+      id: 'ataque',
+      nome: 'Ataque Mass',
+      icone: '⚔️',
+      dica: 'Ao clicar, leva para a tela Combinado e já abre o planejador lá.',
+      checar: checaAtaque,
+      rodar: rodarAtaque,
+      destino: 'ataque'
+    },
+    {
+      id: 'rename',
+      nome: 'Renomeador Hard',
+      icone: '✏️',
+      dica: 'Ao clicar, leva para Visão Geral de Aldeias e já abre o renomeador.',
+      checar: checaRename,
+      rodar: rodarRename,
+      destino: 'rename'
+    },
+    {
+      id: 'cancelar',
+      nome: 'Cancelar Recrutamento',
+      icone: '🚫',
+      dica: 'Ao clicar, leva para Visão Geral → Produção e já cancela.',
+      checar: checaCancelar,
+      rodar: rodarCancelar,
+      destino: 'cancelar'
+    },
+    {
+      id: 'defender',
+      nome: 'Coletar Ataques (ATK/DEF)',
+      icone: '🛡️',
+      dica: 'Ao clicar, leva para Comandos → Ataques Recebidos e já coleta.',
+      checar: checaDefender,
+      rodar: rodarDefender,
+      destino: 'defender'
+    },
+    {
+      id: 'barbaras',
+      nome: 'Coletar Bárbaras (Mapa)',
+      icone: '🗺️',
+      dica: 'Ao clicar, leva para o Mapa e já abre o coletor.',
+      checar: checaBarbaras,
+      rodar: rodarBarbaras,
+      destino: 'barbaras'
+    },
+    {
+      id: 'perfil',
+      nome: 'Coletar Perfil',
+      icone: '👤',
+      dica: 'Abra o perfil público de um jogador (screen=info_player) e clique aqui. Requer Conta Premium.',
+      checar: checaPerfil,
+      rodar: rodarPerfil,
+      destino: null
+    },
+    {
+      id: 'ocultar',
+      nome: 'Ocultar Perfil',
+      icone: '🙈',
+      dica: 'Abra o perfil público de um jogador e clique aqui.',
+      checar: checaOcultar,
+      rodar: rodarOcultar,
+      destino: null
+    }
+  ];
+
+  var FERRAMENTAS_POR_ID = {};
+  FERRAMENTAS.forEach(function (f) { FERRAMENTAS_POR_ID[f.id] = f; });
+
+  /* ============================================================
+     RETOMAR EXECUÇÃO PENDENTE APÓS NAVEGAR DE TELA
+     (roda em QUALQUER tela do jogo, mesmo sem o painel aberto)
+  ============================================================ */
+  (function tentarExecutarPendente() {
+    var pendenteId = null;
+    try { pendenteId = localStorage.getItem('ork_pendente'); } catch (e) {}
+    if (!pendenteId) return;
+    try { localStorage.removeItem('ork_pendente'); } catch (e) {}
+    var f = FERRAMENTAS_POR_ID[pendenteId];
+    if (!f) return;
+    setTimeout(function () {
+      try {
+        if (f.checar()) { f.rodar(); }
+      } catch (e) {
+        console.error('[OROCHIKING] erro ao retomar', f.nome, e);
+      }
+    }, 500);
+  })();
+
+  /* ============================================================
+     O PAINEL COMPLETO SÓ APARECE NO ASSISTENTE DE SAQUE
+  ============================================================ */
+  if (!(window.game_data && window.game_data.screen === 'am_farm')) {
+    return;
+  }
+
+  window.__OROCHIKING_PAINEL_ATIVO__ = true;
+
+  /* ============================================================
+     ESTILO (preto / dourado - padrão OROCHIKING, docado à direita
+     com abas no topo, no estilo do painel de referência)
+  ============================================================ */
+  var css = `
+    #ork-painel{position:fixed;top:60px;right:16px;width:360px;background:linear-gradient(160deg,#181818,#050505);
+      border:1px solid #3a3a3a;border-radius:14px;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.14);
+      font-family:Verdana,Arial,sans-serif;color:#eee;z-index:999999;overflow:hidden}
+    #ork-header{background:linear-gradient(100deg,#f0b90b,#ffd84d 55%,#f0b90b);color:#141200;padding:11px 14px;
+      display:flex;justify-content:space-between;align-items:center;cursor:move;user-select:none}
+    #ork-header .ork-title{font-weight:800;font-size:14px;letter-spacing:.8px;display:flex;align-items:center;gap:8px}
+    #ork-header .ork-badge{background:#141200;color:#ffc400;font-size:10px;font-weight:800;padding:2px 7px;border-radius:9px}
+    #ork-header .ork-btns{display:flex;gap:6px}
+    #ork-header button{cursor:pointer;border:none;background:transparent;color:#141200;font-weight:800;font-size:15px;
+      width:20px;height:20px;line-height:20px;border-radius:50%}
+    #ork-header button:hover{background:rgba(0,0,0,.18)}
+    #ork-tabs{display:flex;flex-wrap:wrap;gap:4px;padding:8px 8px 6px;border-bottom:1px solid #262626;background:#101010}
+    .ork-tab{flex:1 1 auto;min-width:74px;background:#1c1c1c;border:1px solid #2c2c2c;color:#bbb;font-size:10.5px;
+      font-weight:700;padding:6px 4px;border-radius:7px;cursor:pointer;text-align:center;white-space:nowrap}
+    .ork-tab:hover{border-color:#665400;color:#eee}
+    .ork-tab.ork-tab-ativa{background:linear-gradient(100deg,#f0b90b,#ffd84d);color:#141200;border-color:#f0b90b}
+    #ork-body{padding:14px}
+    #ork-content-titulo{font-size:14px;font-weight:800;color:#ffd84d;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+    #ork-content-dica{font-size:11.5px;color:#9a9a9a;line-height:1.5;margin-bottom:12px;min-height:34px}
+    .ork-btn-grande{width:100%;background:linear-gradient(100deg,#f0b90b,#ffd84d);color:#141200;border:none;
+      border-radius:8px;font-weight:800;font-size:13px;padding:10px 12px;cursor:pointer}
+    .ork-btn-grande:hover{filter:brightness(1.08)}
+    #ork-status{font-size:10.5px;color:#ff9d5c;margin-top:10px;min-height:14px;line-height:1.4}
+    #ork-footer{font-size:10px;color:#666;text-align:center;padding:8px 0 10px;border-top:1px solid #262626}
+  `;
+  var styleEl = document.createElement('style');
+  styleEl.id = 'ork-style';
+  styleEl.textContent = css;
+  document.head.appendChild(styleEl);
+
+  /* ============================================================
+     HTML DO PAINEL (abas no topo + conteúdo da ferramenta ativa)
+  ============================================================ */
+  var tabsHtml = FERRAMENTAS.map(function (f) {
+    return '<button class="ork-tab" data-id="' + f.id + '">' + f.icone + ' ' + f.nome.split(' ')[0] + '</button>';
+  }).join('');
+
+  var painel = document.createElement('div');
+  painel.id = 'ork-painel';
+  painel.innerHTML =
+    '<div id="ork-header">' +
+      '<div class="ork-title">PAINEL <span class="ork-badge">OROCHIKING</span></div>' +
+      '<div class="ork-btns">' +
+        '<button id="ork-min" title="Minimizar">–</button>' +
+        '<button id="ork-close" title="Fechar">&times;</button>' +
+      '</div>' +
+    '</div>' +
+    '<div id="ork-tabs">' + tabsHtml + '</div>' +
+    '<div id="ork-body">' +
+      '<div id="ork-content-titulo"></div>' +
+      '<div id="ork-content-dica"></div>' +
+      '<button id="ork-ativar" class="ork-btn-grande">Ativar</button>' +
+      '<div id="ork-status"></div>' +
+    '</div>' +
+    '<div id="ork-footer">Escolha a aba e clique em Ativar — o script já abre no lugar certo.</div>';
+  document.body.appendChild(painel);
+
+  var ferramentaSelecionada = FERRAMENTAS[0];
+
+  function selecionarFerramenta(id) {
+    var f = FERRAMENTAS_POR_ID[id];
+    if (!f) return;
+    ferramentaSelecionada = f;
+    painel.querySelectorAll('.ork-tab').forEach(function (t) {
+      t.classList.toggle('ork-tab-ativa', t.getAttribute('data-id') === id);
+    });
+    document.getElementById('ork-content-titulo').textContent = f.icone + ' ' + f.nome;
+    document.getElementById('ork-content-dica').textContent = f.dica;
+    document.getElementById('ork-status').textContent = '';
+  }
+
+  painel.querySelectorAll('.ork-tab').forEach(function (t) {
+    t.addEventListener('click', function () { selecionarFerramenta(t.getAttribute('data-id')); });
+  });
+  selecionarFerramenta(FERRAMENTAS[0].id);
+
+  /* ============================================================
+     ARRASTAR
+  ============================================================ */
+  (function tornarArrastavel() {
+    var header = document.getElementById('ork-header');
+    var arrastando = false, offX = 0, offY = 0;
+    header.addEventListener('mousedown', function (e) {
+      arrastando = true;
+      var r = painel.getBoundingClientRect();
+      offX = e.clientX - r.left;
+      offY = e.clientY - r.top;
+      painel.style.right = 'auto';
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!arrastando) return;
+      painel.style.left = (e.clientX - offX) + 'px';
+      painel.style.top = (e.clientY - offY) + 'px';
+    });
+    document.addEventListener('mouseup', function () { arrastando = false; });
+  })();
+
+  document.getElementById('ork-close').addEventListener('click', function () {
+    painel.remove();
+    styleEl.remove();
+    window.__OROCHIKING_PAINEL_ATIVO__ = false;
+  });
+
+  var minimizado = false;
+  document.getElementById('ork-min').addEventListener('click', function () {
+    minimizado = !minimizado;
+    document.getElementById('ork-tabs').style.display = minimizado ? 'none' : 'flex';
+    document.getElementById('ork-body').style.display = minimizado ? 'none' : 'block';
+  });
+
+  /* ============================================================
+     BOTÃO "ATIVAR" — usa a ferramenta selecionada na aba atual
+  ============================================================ */
+  function mostrarAviso(msg) {
+    var el = document.getElementById('ork-status');
+    el.textContent = msg;
+    clearTimeout(el.__t);
+    el.__t = setTimeout(function () { el.textContent = ''; }, 6000);
+  }
+
+  document.getElementById('ork-ativar').addEventListener('click', function () {
+    var f = ferramentaSelecionada;
+    if (!f) return;
+
+    var telaOk = true;
+    try { telaOk = f.checar(); } catch (e) { telaOk = true; }
+
+    if (telaOk) {
+      try {
+        f.rodar();
+      } catch (err) {
+        console.error('[OROCHIKING]', f.nome, err);
+        mostrarAviso('⚠ Erro ao rodar aqui: ' + (err && err.message ? err.message : err));
+      }
+      return;
+    }
+
+    if (!f.destino) {
+      mostrarAviso('⚠ ' + f.dica);
+      return;
+    }
+
+    try { localStorage.setItem('ork_pendente', f.id); } catch (e) {}
+    window.location.href = urlPara(f.destino);
+  });
+
 })();
