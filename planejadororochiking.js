@@ -1,31 +1,26 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      2.0
-// @description  Painel único (preto/dourado) reunindo todos os scripts OROCHIKING. Abre no Assistente de Saque; cada botão navega para a tela certa e já ativa a ferramenta lá.
+// @version      3.0
+// @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo, com monitor de captcha (alerta visual + sonoro).
 // @match        https://*.tribalwars.com.br/game.php*
 // @match        https://*.tribalwars.net/game.php*
 // @match        https://*.die-staemme.de/game.php*
 // @match        https://*.tribalwars.co.uk/game.php*
 // @run-at       document-idle
 // @grant        none
-// @updateURL    https://raw.githubusercontent.com/evandrosmagela-tech/painelorochiking/refs/heads/main/painelorochiking.js
-// @downloadURL  https://raw.githubusercontent.com/evandrosmagela-tech/painelorochiking/refs/heads/main/painelorochiking.js
+// @updateURL    https://raw.githubusercontent.com/evandrosmagela-tech/planejadorbyorochiking3.9/refs/heads/main/planejadororochiking.js
+// @downloadURL  https://raw.githubusercontent.com/evandrosmagela-tech/planejadorbyorochiking3.9/refs/heads/main/planejadororochiking.js
 // ==/UserScript==
 
 (function () {
-
-  if (window.__OROCHIKING_PAINEL_ATIVO__) {
-    var jaAberto = document.getElementById('ork-painel');
-    if (jaAberto) { jaAberto.style.display = 'block'; return; }
-  }
 
   if (typeof $ === 'undefined' || typeof game_data === 'undefined') { return; }
 
   /* ============================================================
      LIBERAÇÃO POR NICK
   ============================================================ */
-  var NICKS_LIBERADOS = ['- Orochi.2009', 'Juniro1717', 'Jordy Alba', 'Bleda', 'EliteTeam5', 'Mr-magg'];
+  var NICKS_LIBERADOS = ['Orochi.2009', 'Juniro1717', 'Jordy Alba', 'Bleda', 'EliteTeam5', 'Mr-magg'];
 
   function nickAtual() {
     try {
@@ -41,16 +36,120 @@
   if (!acessoLiberado()) { return; }
 
   /* ============================================================
+     MONITOR DE CAPTCHA (roda em toda tela, sempre, independente do painel)
+     Detecta o desafio anti-bot, toca um alarme, mostra um aviso grande
+     e tenta parar o Farm Hard imediatamente. Some sozinho quando resolvida.
+  ============================================================ */
+  (function monitorCaptcha() {
+    var SELETORES_CAPTCHA = [
+      '#bot_check', '.bot-protect-row', '#bot_check_wrapper',
+      '[id*="captcha" i]', '[class*="captcha" i]',
+      'iframe[src*="hcaptcha" i]', 'iframe[src*="recaptcha" i]',
+      'iframe[title*="human" i]', 'iframe[title*="challenge" i]'
+    ];
+
+    function captchaNaTela() {
+      for (var i = 0; i < SELETORES_CAPTCHA.length; i++) {
+        try {
+          var el = document.querySelector(SELETORES_CAPTCHA[i]);
+          if (el) {
+            var estilo = window.getComputedStyle ? window.getComputedStyle(el) : null;
+            var escondido = estilo && (estilo.display === 'none' || estilo.visibility === 'hidden');
+            if (!escondido) { return true; }
+          }
+        } catch (e) {}
+      }
+      return false;
+    }
+
+    var alarmeAtivo = false;
+    var audioCtx = null;
+    var osciladores = [];
+
+    function tocarAlarme() {
+      try {
+        if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+        var tocando = true;
+        function bipe() {
+          if (!tocando || !alarmeAtivo) return;
+          var osc = audioCtx.createOscillator();
+          var gain = audioCtx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+          osc.frequency.linearRampToValueAtTime(440, audioCtx.currentTime + 0.35);
+          gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.35);
+          osciladores.push(osc);
+          setTimeout(bipe, 450);
+        }
+        bipe();
+        return function pararSom() { tocando = false; };
+      } catch (e) { return function () {}; }
+    }
+
+    var pararSomAtual = null;
+
+    function pararFarmHard() {
+      try {
+        var fechar = document.getElementById('fh-fechar');
+        if (fechar) { fechar.click(); return; }
+        var pausar = document.getElementById('fh-pausar');
+        if (pausar) { pausar.click(); }
+      } catch (e) {}
+    }
+
+    function mostrarOverlay() {
+      if (document.getElementById('ork-captcha-overlay')) return;
+      var estilo = document.createElement('style');
+      estilo.id = 'ork-captcha-estilo';
+      estilo.textContent =
+        '@keyframes ork-pulsar{0%{background:#7a0000}50%{background:#c40000}100%{background:#7a0000}}' +
+        '#ork-captcha-overlay{position:fixed;top:0;left:0;right:0;padding:16px;text-align:center;' +
+        'z-index:9999999;color:#fff;font-family:Verdana,Arial,sans-serif;font-weight:800;font-size:16px;' +
+        'letter-spacing:.5px;box-shadow:0 4px 24px rgba(0,0,0,.6);animation:ork-pulsar 1s infinite}';
+      document.head.appendChild(estilo);
+      var overlay = document.createElement('div');
+      overlay.id = 'ork-captcha-overlay';
+      overlay.textContent = '🚨 CAPTCHA DETECTADO — SCRIPTS PARADOS. RESOLVA AGORA! 🚨';
+      document.body.appendChild(overlay);
+    }
+
+    function removerOverlay() {
+      var overlay = document.getElementById('ork-captcha-overlay');
+      if (overlay) overlay.remove();
+      var estilo = document.getElementById('ork-captcha-estilo');
+      if (estilo) estilo.remove();
+    }
+
+    setInterval(function () {
+      var achou = captchaNaTela();
+      if (achou && !alarmeAtivo) {
+        alarmeAtivo = true;
+        pararFarmHard();
+        mostrarOverlay();
+        pararSomAtual = tocarAlarme();
+        console.warn('[OROCHIKING] Captcha detectado — scripts pausados.');
+      } else if (!achou && alarmeAtivo) {
+        alarmeAtivo = false;
+        removerOverlay();
+        if (pararSomAtual) { pararSomAtual(); pararSomAtual = null; }
+      }
+    }, 1200);
+  })();
+
+  /* ============================================================
      CONFIGURAÇÃO DE DESTINOS
-     Ajuste aqui a parte da URL (depois de "game.php?village=ID&")
-     de cada tela, caso o seu mundo use um caminho diferente.
   ============================================================ */
   var DESTINOS = {
     ataque:   'screen=overview_villages&mode=combined',
-    rename:   'screen=overview_villages',
+    rename:   'screen=overview_villages&mode=combined',
     cancelar: 'screen=overview_villages&mode=prod',
     defender: 'screen=overview_villages&mode=incomings&subtype=attacks',
-    barbaras: 'screen=map'
+    barbaras: 'screen=map',
+    ranking:  'screen=ranking'
   };
 
   function urlPara(chaveDestino) {
@@ -59,7 +158,7 @@
   }
 
   /* ============================================================
-     FERRAMENTAS: checar (a tela atual serve?) e rodar (código original)
+     FERRAMENTAS
   ============================================================ */
 
   function checaFarmar() {
@@ -1416,7 +1515,7 @@
   }
 
   function checaRename() {
-    return document.querySelector('a[href*="village="]') !== null;
+    return !!(window.game_data && game_data.screen === 'overview_villages' && game_data.mode === 'combined');
   }
   function rodarRename() {
     !function(){if("undefined"!=typeof $)if(document.getElementById("rh-popup"))$("#rh-popup").show();else{$('<style id="rh-style">').text("#rh-popup{position:fixed;top:80px;left:50%;transform:translateX(-50%);width:460px;max-height:82vh;background:#181818;border:2px solid #f5c518;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.6);z-index:999999;font-family:Verdana,Arial,sans-serif;color:#eee;overflow:hidden;display:flex;flex-direction:column;}#rh-header{background:linear-gradient(180deg,#ffd84d,#f0b90b);color:#111;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:move;user-select:none;}#rh-header .rh-title{font-weight:bold;font-size:15px;letter-spacing:.5px;display:flex;align-items:center;gap:8px;}#rh-header .rh-badge{background:#111;color:#f5c518;font-size:11px;font-weight:bold;padding:2px 7px;border-radius:10px;}#rh-header .rh-sub{display:block;font-size:10px;font-weight:normal;opacity:.75;}#rh-close{cursor:pointer;font-weight:bold;font-size:16px;color:#111;background:transparent;border:none;}#rh-body{padding:12px 14px;overflow-y:auto;flex:1;}.rh-section{margin-bottom:12px;border:1px solid #333;border-radius:6px;padding:9px 10px;background:#1f1f1f;}.rh-label{font-size:11px;color:#f5c518;font-weight:bold;text-transform:uppercase;margin-bottom:5px;display:block;}#rh-popup input[type=text],#rh-popup input[type=number],#rh-popup select{width:100%;box-sizing:border-box;background:#111;border:1px solid #444;color:#eee;padding:6px 7px;border-radius:4px;font-size:12px;margin-bottom:6px;}#rh-popup input:focus,#rh-popup select:focus{outline:none;border-color:#f5c518;}.rh-row{display:flex;gap:6px;}.rh-row > *{flex:1;}.rh-check{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px;}.rh-check input{width:auto;margin:0;}#rh-popup button{cursor:pointer;border:none;border-radius:5px;font-weight:bold;font-size:12px;padding:8px 10px;}.rh-btn-primary{background:#f5c518;color:#111;}.rh-btn-primary:hover{background:#ffd84d;}.rh-btn-secondary{background:#2a2a2a;color:#f5c518;border:1px solid #f5c518 !important;}.rh-btn-secondary:hover{background:#333;}.rh-btn-danger{background:#7a1f1f;color:#fff;}.rh-btn-danger:hover{background:#992525;}.rh-btn-mini{padding:4px 7px;font-size:11px;}#rh-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}#rh-actions button{flex:1;min-width:80px;}#rh-progress-wrap{background:#111;border-radius:4px;height:14px;margin:8px 0 4px;overflow:hidden;border:1px solid #333;}#rh-progress-bar{background:linear-gradient(90deg,#f0b90b,#ffd84d);height:100%;width:0%;transition:width .2s;}#rh-status{font-size:11px;color:#ccc;margin-bottom:4px;}#rh-log{background:#0d0d0d;border:1px solid #333;border-radius:5px;height:120px;overflow-y:auto;font-family:Consolas,monospace;font-size:11px;padding:6px;}.rh-log-ok{color:#8fdc7a;}.rh-log-err{color:#ff8080;}.rh-log-info{color:#9ec9ff;}.rh-rule-row{display:flex;gap:4px;margin-bottom:5px;align-items:center;}.rh-rule-row input{margin-bottom:0;}.rh-rule-row .rh-rule-min,.rh-rule-row .rh-rule-max{width:70px;flex:none;}.rh-rule-row .rh-rule-nome{flex:1;}.rh-rule-row .rh-rule-del{flex:none;width:24px;height:24px;padding:0;background:#7a1f1f;color:#fff;border-radius:4px;}#rh-add-rule{width:100%;margin-top:2px;}.rh-hide{display:none !important;}").appendTo("head");var e,o,r,a,t;$("body").append('<div id="rh-popup"><div id="rh-header"><div class="rh-title">RENOMEADOR HARD <span class="rh-badge">1.0</span><span class="rh-sub">BY OROCHIKING</span></div><button id="rh-close">&times;</button></div><div id="rh-body"><div class="rh-section"><span class="rh-label">Nome base</span><input type="text" id="rh-nomebase" placeholder="Ex: THE KING!" value="THE KING!"><label class="rh-check"><input type="checkbox" id="rh-pular-iguais" checked> Pular aldeias que já têm o nome final</label></div><div class="rh-section"><span class="rh-label">Tipo de renomeação</span><select id="rh-modo"><option value="unico">Nome único para todas</option><option value="continente">Nome + Continente (K55)</option><option value="sequencial">Nome + numeração sequencial</option><option value="lote">Nome + lote (quantidade de aldeias por bloco)</option><option value="pontos">Regras por pontuação da aldeia</option></select><div id="rh-opts-sequencial" class="rh-hide"><div class="rh-row"><div><span class="rh-label">Início</span><input type="number" id="rh-seq-inicio" value="1" min="0"></div><div><span class="rh-label">Dígitos</span><input type="number" id="rh-seq-digitos" value="3" min="1" max="6"></div></div></div><div id="rh-opts-lote" class="rh-hide"><span class="rh-label">Aldeias por lote</span><input type="number" id="rh-lote-tam" value="20" min="1"></div><div id="rh-opts-pontos" class="rh-hide"><span class="rh-label">Regras (pontos mín / máx / nome)</span><div id="rh-rules"></div><button id="rh-add-rule" class="rh-btn-secondary rh-btn-mini" type="button">+ adicionar regra</button><label class="rh-check" style="margin-top:6px;"><input type="checkbox" id="rh-pontos-numerar"> Numerar sequencialmente dentro de cada regra</label><span class="rh-label">Nome p/ aldeias fora das regras (deixe vazio p/ pular)</span><input type="text" id="rh-pontos-fallback" placeholder="opcional"></div></div><div class="rh-section"><span class="rh-label">Filtro de aldeias na tela</span><select id="rh-filtro-tipo"><option value="todas">Todas as linhas visíveis nesta aba</option><option value="barbaras">Só aldeias de bárbaros</option><option value="minhas">Só minhas aldeias (com nome de jogador)</option></select><span class="rh-label">Intervalo entre aldeias (ms)</span><input type="number" id="rh-delay" value="800" min="150" step="50"></div><div id="rh-actions"><button id="rh-diag" class="rh-btn-secondary">Diagnosticar</button><button id="rh-diag2" class="rh-btn-secondary">Diagnosticar clique</button><button id="rh-test" class="rh-btn-secondary">Testar 1 aldeia</button><button id="rh-start" class="rh-btn-primary">Iniciar</button><button id="rh-pause" class="rh-btn-secondary" disabled>Pausar</button><button id="rh-stop" class="rh-btn-danger" disabled>Parar</button></div><div id="rh-progress-wrap"><div id="rh-progress-bar"></div></div><div id="rh-status">Pronto.</div><textarea id="rh-diag-area" class="rh-hide" rows="6" readonly style="width:100%;box-sizing:border-box;background:#0d0d0d;color:#8fdc7a;font-family:Consolas,monospace;font-size:10px;border:1px solid #333;border-radius:5px;margin-bottom:6px;padding:5px;"></textarea><div id="rh-log"></div></div></div>'),e=document.getElementById("rh-popup"),o=document.getElementById("rh-header"),r=!1,a=0,t=0,o.addEventListener("mousedown",function(o){r=!0;var n=e.getBoundingClientRect();a=o.clientX-n.left,t=o.clientY-n.top,e.style.transform="none",e.style.left=n.left+"px",e.style.top=n.top+"px"}),document.addEventListener("mousemove",function(o){r&&(e.style.left=o.clientX-a+"px",e.style.top=o.clientY-t+"px")}),document.addEventListener("mouseup",function(){r=!1}),l(0,999,"BARBARA PEQUENA"),l(1e3,999999,"BARBARA GRANDE"),$("#rh-add-rule").on("click",function(){l()}),$("#rh-modo").on("change",s),s();var n={rodando:!1,pausado:!1,parar:!1,fila:[],indice:0,ok:0,erro:0,pulados:0},i=null;$("#rh-diag").on("click",function(){var e=h("todas");if(e.length){for(var o=Math.min(2,e.length),r=[],a=0;a<o;a++)r.push("----- LINHA "+(a+1)+" -----\n"+e[a].row.outerHTML);var t=r.join("\n\n");$("#rh-diag-area").removeClass("rh-hide").val(t),$("#rh-diag-area")[0].select();try{document.execCommand("copy"),d("HTML copiado para a área de transferência (e visível na caixa acima). Cole e me envie.","ok")}catch(e){d("Não deu pra copiar automático. Selecione o texto da caixa acima e copie manualmente (Ctrl+C).","info")}}else d("Nenhuma aldeia encontrada para diagnóstico.","err")}),$("#rh-diag2").on("click",function(){var e=h("todas");if(e.length){var o=e[0].row,r=f(o);r?(r.click(),setTimeout(function(){var e="----- LINHA APÓS CLICAR NO ÍCONE -----\n"+o.outerHTML;$("#rh-diag-area").removeClass("rh-hide").val(e),$("#rh-diag-area")[0].select();try{document.execCommand("copy"),d("HTML pós-clique copiado. Cole e me envie.","ok")}catch(e){d("Selecione o texto da caixa acima e copie manualmente (Ctrl+C).","info")}},600)):d("Ícone de edição não encontrado nesta linha.","err")}else d("Nenhuma aldeia encontrada para diagnóstico.","err")}),$("#rh-test").on("click",function(){var e=w(i=m(),!0);e.length&&(d("Testando em 1 aldeia...","info"),v(e[0].item,e[0].novoNome,function(o,r){o?d('Teste OK: "'+e[0].item.nomeAtual+'" -> "'+e[0].novoNome+'"',"ok"):d("Teste falhou: "+r,"err")}))}),$("#rh-start").on("click",function(){var e=w(i=m(),!1);e.length&&(n={rodando:!0,pausado:!1,parar:!1,fila:e,indice:0,ok:0,erro:0,pulados:0},$("#rh-log").empty(),d("Iniciando renomeação de "+e.length+" aldeia(s)...","info"),$("#rh-start").prop("disabled",!0),$("#rh-pause").prop("disabled",!1),$("#rh-stop").prop("disabled",!1),y())}),$("#rh-pause").on("click",function(){n.pausado=!n.pausado,$(this).text(n.pausado?"Continuar":"Pausar"),p(n.pausado?"Pausado.":"Retomando...")}),$("#rh-stop").on("click",function(){n.parar=!0}),$("#rh-close").on("click",function(){$("#rh-popup").remove(),$("#rh-style").remove()}),p('Configure as opções e clique em "Testar 1 aldeia" antes de rodar em todas.')}else alert("jQuery não encontrado nesta página. Abra o script estando dentro do jogo (game.php).");function l(e,o,r){var a="r"+Math.random().toString(36).slice(2,8),t=$('<div class="rh-rule-row" data-id="'+a+'"><input type="number" class="rh-rule-min" placeholder="mín" value="'+(null!=e?e:"")+'"><input type="number" class="rh-rule-max" placeholder="máx" value="'+(null!=o?o:"")+'"><input type="text" class="rh-rule-nome" placeholder="nome desta faixa" value="'+(r||"")+'"><button type="button" class="rh-rule-del">×</button></div>');t.find(".rh-rule-del").on("click",function(){t.remove()}),$("#rh-rules").append(t)}function s(){var e=$("#rh-modo").val();$("#rh-opts-sequencial, #rh-opts-lote, #rh-opts-pontos").addClass("rh-hide"),"sequencial"===e&&$("#rh-opts-sequencial").removeClass("rh-hide"),"lote"===e&&$("#rh-opts-lote").removeClass("rh-hide"),"pontos"===e&&$("#rh-opts-pontos").removeClass("rh-hide")}function d(e,o){var r=$('<div class="'+("ok"===o?"rh-log-ok":"err"===o?"rh-log-err":"rh-log-info")+'"></div>').text(e);$("#rh-log").append(r),$("#rh-log").scrollTop($("#rh-log")[0].scrollHeight)}function p(e){$("#rh-status").text(e)}function c(e){$("#rh-progress-bar").css("width",Math.max(0,Math.min(100,e))+"%")}function u(e){var o=e.closest("table");if(!o)return null;if(void 0===o.__rhPontosIdx){var r=o.querySelectorAll("thead th");r.length||(r=o.querySelectorAll("tr:first-child th"));var a=-1;r.forEach(function(e,o){/pontos/i.test(e.textContent)&&(a=o)}),o.__rhPontosIdx=a}if((a=o.__rhPontosIdx)<0)return null;var t=e.querySelectorAll("td");if(!t[a])return null;var n=t[a].textContent.replace(/\./g,"").replace(/[^\d]/g,"");return n?parseInt(n,10):null}function h(e){var o=[],r={};return document.querySelectorAll('a[href*="village="]').forEach(function(a){var t=a.closest("tr");if(t&&(!t.id||0!==t.id.indexOf("menu_row"))&&t.querySelector(".quickedit-vn, .rename-icon")){var n=t.textContent.match(/\((\d{1,3})\|(\d{1,3})\)/);if(n){var i=a.getAttribute("href").match(/village=(\d+)/);if(i){var l=i[1];if(!r[l]){r[l]=!0;var s,d=parseInt(n[1],10),p=parseInt(n[2],10),c=t.textContent.match(/K(\d{2,3})\b/),h=c?c[1]:String(Math.floor(p/100))+String(Math.floor(d/100)),m=t.querySelector(".quickedit-label");s=m?m.textContent.replace(/\(\d{1,3}\|\d{1,3}\)\s*K?\d{0,3}\s*$/,"").trim():a.textContent.replace(/\(\d{1,3}\|\d{1,3}\)\s*K?\d{0,3}\s*$/,"").trim();var f=/árbaro|barbar/i.test(s);("barbaras"!==e||f)&&("minhas"===e&&f||o.push({id:l,row:t,link:a,x:d,y:p,continente:h,pontos:u(t),nomeAtual:s}))}}}}}),o}function m(){var e=[];return $("#rh-rules .rh-rule-row").each(function(){var o=$(this),r=parseFloat(o.find(".rh-rule-min").val()),a=parseFloat(o.find(".rh-rule-max").val()),t=o.find(".rh-rule-nome").val().trim();""===t||isNaN(r)||isNaN(a)||e.push({min:r,max:a,nome:t})}),{nomeBase:$("#rh-nomebase").val().trim()||"ALDEIA",modo:$("#rh-modo").val(),pularIguais:$("#rh-pular-iguais").is(":checked"),seqInicio:parseInt($("#rh-seq-inicio").val(),10)||0,seqDigitos:parseInt($("#rh-seq-digitos").val(),10)||3,loteTam:parseInt($("#rh-lote-tam").val(),10)||20,regrasPontos:e,pontosNumerar:$("#rh-pontos-numerar").is(":checked"),pontosFallback:$("#rh-pontos-fallback").val().trim(),filtroTipo:$("#rh-filtro-tipo").val(),delay:Math.max(150,parseInt($("#rh-delay").val(),10)||800)}}function f(e){return e.querySelector("a.rename-icon")}function b(e){var o=e.querySelectorAll(".quickedit-edit");return o.length?o[o.length-1].querySelector('input[type="text"]'):null}function g(e,o,r){var a=b(e);a?r(a):o<=0?r(null):setTimeout(function(){g(e,o-1,r)},150)}function v(e,o,r){var a=e.row,t=b(a);if(!t){var n=f(a);return n?(n.click(),void g(a,12,function(e){e?x(e,o,r):r(!1,"campo de edição não apareceu após clicar no ícone")})):void r(!1,"ícone de edição não encontrado nesta linha")}x(t,o,r)}function x(e,o,r){e.value=o,$(e).trigger("input").trigger("change");var a=e.closest(".quickedit-edit"),t=a?a.querySelector('input.btn, input[type="button"]'):null;t?(t.click(),setTimeout(function(){r(!0,"renomeada")},150)):r(!1,"botão de confirmar (Renomear) não encontrado")}function y(){if(n.parar)k("Parado pelo usuário.");else if(n.pausado)setTimeout(y,300);else{if(!(n.indice>=n.fila.length)){var e=n.fila[n.indice];return c(n.indice/n.fila.length*100),p("Processando "+(n.indice+1)+"/"+n.fila.length+"  (OK: "+n.ok+" | Erros: "+n.erro+" | Pulados: "+n.pulados+")"),null===e.novoNome?(n.pulados++,d("— pulada (fora das regras): "+e.item.nomeAtual,"info"),n.indice++,void setTimeout(y,40)):i.pularIguais&&e.item.nomeAtual===e.novoNome?(n.pulados++,d("— já está com o nome certo: "+e.novoNome,"info"),n.indice++,void setTimeout(y,40)):void v(e.item,e.novoNome,function(o,r){o?(n.ok++,d("OK ("+e.item.x+"|"+e.item.y+'): "'+e.item.nomeAtual+'" -> "'+e.novoNome+'"',"ok")):(n.erro++,d("ERRO ("+e.item.x+"|"+e.item.y+"): "+r,"err")),n.indice++,setTimeout(y,i.delay)})}k("Concluído.")}}function k(e){n.rodando=!1,c(100),p(e+"  (OK: "+n.ok+" | Erros: "+n.erro+" | Pulados: "+n.pulados+")"),$("#rh-start").prop("disabled",!1).text("Iniciar"),$("#rh-pause").prop("disabled",!0).text("Pausar"),$("#rh-stop").prop("disabled",!0)}function w(e,o){var r=h(e.filtroTipo);if(!r.length)return d("Nenhuma aldeia encontrada nesta tabela.","err"),[];var a={},t=[];return r.forEach(function(o,r){var n=function(e,o,r,a){switch(r.modo){case"unico":return r.nomeBase;case"continente":return r.nomeBase+" K"+e.continente;case"sequencial":for(var t=r.seqInicio+o,n=String(t);n.length<r.seqDigitos;)n="0"+n;return r.nomeBase+" "+n;case"lote":var i=Math.floor(o/r.loteTam)+1;return r.nomeBase+" - Lote "+i;case"pontos":for(var l=null,s=0;s<r.regrasPontos.length;s++){var d=r.regrasPontos[s];if(null!=e.pontos&&e.pontos>=d.min&&e.pontos<=d.max){l=d;break}}if(!l)return r.pontosFallback||null;if(r.pontosNumerar){a[l.nome]=(a[l.nome]||0)+1;for(var p=String(a[l.nome]);p.length<r.seqDigitos;)p="0"+p;return l.nome+" "+p}return l.nome}return r.nomeBase}(o,r,e,a);t.push({item:o,novoNome:n})}),o&&(t=t.slice(0,1)),t}}();
@@ -1451,7 +1550,7 @@
   }
 
   function checaOcultar() {
-    return document.querySelector('table#villages_list') !== null || document.URL.indexOf('screen=info_player') !== -1;
+    return document.URL.indexOf('screen=info_player') !== -1;
   }
   function rodarOcultar() {
     var aux = 0; var villages_total = $('table #villages_list tbody tr:last td a'); var element = $('table #villages_list tbody tr td span[class="icon command command-attack-ally"]'); var element1 = $('table #villages_list tbody tr td span[class="icon command command-attack"]'); var element2 = $('table #villages_list tbody tr td span[class="icon command command-support-ally"]'); var element3 = $('table #villages_list tbody tr td span[class="icon command command-support"]'); if (villages_total.length) { villages_total.click(); } element.parent().parent().remove(); element1.parent().parent().remove(); element2.parent().parent().remove(); element3.parent().parent().remove(); void(0);
@@ -1480,7 +1579,7 @@
       id: 'rename',
       nome: 'Renomeador Hard',
       icone: '✏️',
-      dica: 'Ao clicar, leva para Visão Geral de Aldeias e já abre o renomeador.',
+      dica: 'Ao clicar, leva para a tela Combinado (onde ficam os ícones de renomear) e já abre o renomeador.',
       checar: checaRename,
       rodar: rodarRename,
       destino: 'rename'
@@ -1496,8 +1595,9 @@
     },
     {
       id: 'defender',
-      nome: 'Coletar Ataques (ATK/DEF)',
+      nome: 'Coletar Operação',
       icone: '🛡️',
+      categoria: 'Coleta',
       dica: 'Ao clicar, leva para Comandos → Ataques Recebidos e já coleta.',
       checar: checaDefender,
       rodar: rodarDefender,
@@ -1505,9 +1605,10 @@
     },
     {
       id: 'barbaras',
-      nome: 'Coletar Bárbaras (Mapa)',
+      nome: 'Coletar Mapa',
       icone: '🗺️',
-      dica: 'Ao clicar, leva para o Mapa e já abre o coletor.',
+      categoria: 'Coleta',
+      dica: 'Ao clicar, leva para o Mapa e já abre o coletor de bárbaras.',
       checar: checaBarbaras,
       rodar: rodarBarbaras,
       destino: 'barbaras'
@@ -1516,19 +1617,22 @@
       id: 'perfil',
       nome: 'Coletar Perfil',
       icone: '👤',
-      dica: 'Abra o perfil público de um jogador (screen=info_player) e clique aqui. Requer Conta Premium.',
+      categoria: 'Coleta',
+      dica: 'Digite o nick do jogador — o painel busca no ranking e abre o perfil dele sozinho. Requer Conta Premium.',
       checar: checaPerfil,
       rodar: rodarPerfil,
-      destino: null
+      destino: null,
+      buscaPorNick: true
     },
     {
       id: 'ocultar',
       nome: 'Ocultar Perfil',
       icone: '🙈',
-      dica: 'Abra o perfil público de um jogador e clique aqui.',
+      dica: 'Digite o nick do jogador — o painel busca no ranking e abre o perfil dele sozinho.',
       checar: checaOcultar,
       rodar: rodarOcultar,
-      destino: null
+      destino: null,
+      buscaPorNick: true
     }
   ];
 
@@ -1537,23 +1641,147 @@
 
   /* ============================================================
      RETOMAR EXECUÇÃO PENDENTE APÓS NAVEGAR DE TELA
-     (roda em QUALQUER tela do jogo, mesmo sem o painel aberto)
+     (roda em QUALQUER tela, mesmo sem o painel aberto; expira sozinho)
   ============================================================ */
-  (function tentarExecutarPendente() {
-    var pendenteId = null;
-    try { pendenteId = localStorage.getItem('ork_pendente'); } catch (e) {}
-    if (!pendenteId) return;
+  var VALIDADE_PENDENTE_MS = 5 * 60 * 1000;
+
+  function lerPendente() {
+    try {
+      var bruto = localStorage.getItem('ork_pendente');
+      if (!bruto) return null;
+      var obj = JSON.parse(bruto);
+      if (!obj || (Date.now() - obj.ts) > VALIDADE_PENDENTE_MS) {
+        localStorage.removeItem('ork_pendente');
+        return null;
+      }
+      return obj;
+    } catch (e) { return null; }
+  }
+
+  function gravarPendente(id, nick) {
+    try {
+      localStorage.setItem('ork_pendente', JSON.stringify({ id: id, nick: nick || null, ts: Date.now() }));
+    } catch (e) {}
+  }
+
+  function limparPendente() {
     try { localStorage.removeItem('ork_pendente'); } catch (e) {}
-    var f = FERRAMENTAS_POR_ID[pendenteId];
-    if (!f) return;
+  }
+
+  (function tentarExecutarPendente() {
+    var pend = lerPendente();
+    if (!pend) return;
+    var f = FERRAMENTAS_POR_ID[pend.id];
+    if (!f) { limparPendente(); return; }
+
+    // Se ainda estivermos na etapa de busca por nick (tela de ranking), tenta buscar.
+    if (pend.nick && window.game_data && game_data.screen === 'ranking') {
+      tentarBuscarNoRanking(pend.nick);
+      return;
+    }
+
     setTimeout(function () {
       try {
-        if (f.checar()) { f.rodar(); }
+        if (f.checar()) {
+          f.rodar();
+          limparPendente();
+        }
       } catch (e) {
         console.error('[OROCHIKING] erro ao retomar', f.nome, e);
       }
     }, 500);
   })();
+
+  /* ============================================================
+     BUSCA DE JOGADOR PELO RANKING (Coletar Perfil / Ocultar Perfil)
+  ============================================================ */
+  function tentarBuscarNoRanking(nick) {
+    var tentativas = 0;
+    function tentar() {
+      tentativas++;
+      var campo = document.querySelector('#player_search') ||
+        document.querySelector('input[name="id"]') ||
+        document.querySelector('input.autocomplete_input') ||
+        document.querySelector('input[placeholder*="jogador" i]') ||
+        document.querySelector('input[placeholder*="player" i]');
+
+      if (campo && tentativas === 1) {
+        campo.focus();
+        campo.value = nick;
+        campo.dispatchEvent(new Event('input', { bubbles: true }));
+        campo.dispatchEvent(new Event('keyup', { bubbles: true }));
+      }
+
+      var links = document.querySelectorAll('a[href*="screen=info_player"]');
+      var alvo = null;
+      links.forEach(function (a) {
+        if (alvo) return;
+        var texto = (a.textContent || '').trim().toLowerCase();
+        if (texto && texto === nick.trim().toLowerCase()) { alvo = a; }
+      });
+      if (!alvo) {
+        links.forEach(function (a) {
+          if (alvo) return;
+          var texto = (a.textContent || '').trim().toLowerCase();
+          if (texto && texto.indexOf(nick.trim().toLowerCase()) !== -1) { alvo = a; }
+        });
+      }
+
+      if (alvo) {
+        window.location.href = alvo.getAttribute('href');
+        return;
+      }
+      if (tentativas < 14) {
+        setTimeout(tentar, 500);
+      } else {
+        console.warn('[OROCHIKING] não encontrei "' + nick + '" automaticamente no ranking. Clique no jogador certo — o script continua sozinho na página do perfil.');
+      }
+    }
+    tentar();
+  }
+
+  /* ============================================================
+     MODAL PEQUENO PARA DIGITAR O NICK (Coletar Perfil / Ocultar Perfil)
+  ============================================================ */
+  function abrirModalNick(f) {
+    if (document.getElementById('ork-modal-nick')) return;
+    var overlay = document.createElement('div');
+    overlay.id = 'ork-modal-nick';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;' +
+      'display:flex;align-items:center;justify-content:center;font-family:Verdana,Arial,sans-serif';
+    overlay.innerHTML =
+      '<div style="background:linear-gradient(160deg,#181818,#050505);border:1px solid #3a3a3a;' +
+      'border-radius:12px;padding:18px 20px;width:280px;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75)">' +
+        '<div style="font-weight:800;color:#ffd84d;margin-bottom:10px">' + f.icone + ' ' + f.nome + '</div>' +
+        '<div style="font-size:11.5px;color:#9a9a9a;margin-bottom:10px">Digite o nick exato do jogador:</div>' +
+        '<input id="ork-nick-input" type="text" placeholder="Ex: Orochi.2009" ' +
+          'style="width:100%;box-sizing:border-box;background:#111;border:1px solid #444;color:#eee;' +
+          'padding:8px 9px;border-radius:6px;font-size:12.5px;margin-bottom:12px">' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="ork-nick-cancelar" style="flex:1;background:#232323;color:#ccc;border:1px solid #3a3a3a;' +
+            'border-radius:7px;padding:8px 0;cursor:pointer;font-weight:700;font-size:11.5px">Cancelar</button>' +
+          '<button id="ork-nick-buscar" style="flex:1;background:linear-gradient(100deg,#f0b90b,#ffd84d);' +
+            'color:#141200;border:none;border-radius:7px;padding:8px 0;cursor:pointer;font-weight:800;font-size:11.5px">Buscar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var input = document.getElementById('ork-nick-input');
+    input.focus();
+
+    function fechar() { overlay.remove(); }
+    document.getElementById('ork-nick-cancelar').addEventListener('click', fechar);
+
+    function confirmar() {
+      var nick = input.value.trim();
+      if (!nick) { input.focus(); return; }
+      gravarPendente(f.id, nick);
+      fechar();
+      window.location.href = urlPara('ranking');
+    }
+    document.getElementById('ork-nick-buscar').addEventListener('click', confirmar);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmar(); });
+  }
 
   /* ============================================================
      O PAINEL COMPLETO SÓ APARECE NO ASSISTENTE DE SAQUE
@@ -1562,11 +1790,14 @@
     return;
   }
 
+  if (window.__OROCHIKING_PAINEL_ATIVO__) {
+    var jaAberto = document.getElementById('ork-painel');
+    if (jaAberto) { jaAberto.style.display = 'block'; return; }
+  }
   window.__OROCHIKING_PAINEL_ATIVO__ = true;
 
   /* ============================================================
-     ESTILO (preto / dourado - padrão OROCHIKING, docado à direita
-     com abas no topo, no estilo do painel de referência)
+     ESTILO
   ============================================================ */
   var css = `
     #ork-painel{position:fixed;top:60px;right:16px;width:360px;background:linear-gradient(160deg,#181818,#050505);
@@ -1587,6 +1818,7 @@
     .ork-tab.ork-tab-ativa{background:linear-gradient(100deg,#f0b90b,#ffd84d);color:#141200;border-color:#f0b90b}
     #ork-body{padding:14px}
     #ork-content-titulo{font-size:14px;font-weight:800;color:#ffd84d;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+    .ork-tag-tipo{font-size:9px;font-weight:800;color:#141200;background:#ffc400;padding:2px 7px;border-radius:8px;letter-spacing:.3px}
     #ork-content-dica{font-size:11.5px;color:#9a9a9a;line-height:1.5;margin-bottom:12px;min-height:34px}
     .ork-btn-grande{width:100%;background:linear-gradient(100deg,#f0b90b,#ffd84d);color:#141200;border:none;
       border-radius:8px;font-weight:800;font-size:13px;padding:10px 12px;cursor:pointer}
@@ -1600,7 +1832,7 @@
   document.head.appendChild(styleEl);
 
   /* ============================================================
-     HTML DO PAINEL (abas no topo + conteúdo da ferramenta ativa)
+     HTML DO PAINEL
   ============================================================ */
   var tabsHtml = FERRAMENTAS.map(function (f) {
     return '<button class="ork-tab" data-id="' + f.id + '">' + f.icone + ' ' + f.nome.split(' ')[0] + '</button>';
@@ -1635,7 +1867,8 @@
     painel.querySelectorAll('.ork-tab').forEach(function (t) {
       t.classList.toggle('ork-tab-ativa', t.getAttribute('data-id') === id);
     });
-    document.getElementById('ork-content-titulo').textContent = f.icone + ' ' + f.nome;
+    document.getElementById('ork-content-titulo').innerHTML =
+      f.icone + ' ' + f.nome + (f.categoria ? ' <span class="ork-tag-tipo">Tipo: ' + f.categoria + '</span>' : '');
     document.getElementById('ork-content-dica').textContent = f.dica;
     document.getElementById('ork-status').textContent = '';
   }
@@ -1680,7 +1913,7 @@
   });
 
   /* ============================================================
-     BOTÃO "ATIVAR" — usa a ferramenta selecionada na aba atual
+     BOTÃO "ATIVAR"
   ============================================================ */
   function mostrarAviso(msg) {
     var el = document.getElementById('ork-status');
@@ -1692,6 +1925,11 @@
   document.getElementById('ork-ativar').addEventListener('click', function () {
     var f = ferramentaSelecionada;
     if (!f) return;
+
+    if (f.buscaPorNick) {
+      abrirModalNick(f);
+      return;
+    }
 
     var telaOk = true;
     try { telaOk = f.checar(); } catch (e) { telaOk = true; }
@@ -1711,7 +1949,7 @@
       return;
     }
 
-    try { localStorage.setItem('ork_pendente', f.id); } catch (e) {}
+    gravarPendente(f.id, null);
     window.location.href = urlPara(f.destino);
   });
 
