@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      3.1
-// @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo, com monitor de captcha (alerta visual + sonoro).
+// @version      4.0
+// @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*.tribalwars.com.br/game.php*
 // @match        https://*.tribalwars.net/game.php*
 // @match        https://*.die-staemme.de/game.php*
@@ -1544,7 +1544,79 @@
     return !!(window.game_data && game_data.screen === 'overview_villages' && game_data.mode === 'incomings');
   }
   function rodarDefender() {
-    function adicionarElem(array, elem, id) { let string = id + "&" + elem; if ($.inArray(string, array) == -1) { return elem; } return false; } let atkComing = $('#incomings_table tbody tr'); if (atkComing.length) { let strAtt, strSup, strId, aux, arrayLength; let coords = [], coordsS = []; let windowM; for (let i = 0; i < (atkComing.length - 2); i++) { strAtt = $('#incomings_table tbody tr:eq(' + (1 + i) + ') td:eq(2) a').text(); strSup = $('#incomings_table tbody tr:eq(' + (1 + i) + ') td:eq(1) a').text(); strId = $('#incomings_table tbody tr:eq(' + (1 + i) + ') td:eq(2) a').attr("href"); strId = strId.match(/\d+/g)[1]; strAtt = strAtt.match(/\d{3}[|]?\d{3}/g).toString(); strSup = strSup.match(/\d{3}[|]?\d{3}/g).toString(); aux = adicionarElem(coords, strAtt, strId); if (aux) { arrayLength = coords.length; coords[arrayLength] = strId + "&" + aux; } strId = $('#incomings_table tbody tr:eq(' + (1 + i) + ') td:eq(1) a').attr("href"); strId = strId.match(/\d+/g); aux = adicionarElem(coordsS, strSup, strId); if (aux) { arrayLength = coordsS.length; coordsS[arrayLength] = strId + "&" + aux; } } windowM = window.open('Incomings.html', 'Incomings', 'width=720, height=500, top=100, left=110, scrollbars=yes'); windowM.document.write("<html><body><h1>Origin</h1><textarea cols='80' rows='10' disabled>"+coords.join(",")+"</textarea>"+ "<h1>Destination</h1><textarea cols='80' rows='10' disabled>"+coordsS.join(",")+"</textarea></body></html>"); } void(0);
+    (function () {
+      function coordenadaDoTexto(texto) {
+        var m = (texto || '').match(/\d{1,3}\|\d{1,3}/);
+        return m ? m[0] : null;
+      }
+    
+      function coordenadasDaLinha(tr) {
+        var coords = [];
+        tr.querySelectorAll('a').forEach(function (a) {
+          var c = coordenadaDoTexto(a.textContent);
+          if (c && coords.indexOf(c) === -1) coords.push(c);
+        });
+        return coords;
+      }
+    
+      function copiarHtmlParaDiagnostico() {
+        try {
+          var ta = document.createElement('textarea');
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          ta.value = document.body.innerHTML.slice(0, 20000);
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        } catch (e) {}
+      }
+    
+      // linha típica dessa tela tem um checkbox de seleção na primeira coluna
+      var linhas = Array.prototype.slice.call(document.querySelectorAll('tr'))
+        .filter(function (tr) { return tr.querySelector('input[type="checkbox"]') && tr.querySelectorAll('a').length; });
+    
+      if (!linhas.length) {
+        var tabelaClassica = document.getElementById('incomings_table') || document.getElementById('commands_table');
+        if (tabelaClassica) {
+          linhas = Array.prototype.slice.call(tabelaClassica.querySelectorAll('tbody tr'));
+        }
+      }
+    
+      if (!linhas.length) {
+        copiarHtmlParaDiagnostico();
+        alert('OROCHIKING: não encontrei nenhuma linha de comando nesta tela. Copiei o HTML da página — cole e me envie para eu ajustar.');
+        return;
+      }
+    
+      var origem = [], destino = [];
+      linhas.forEach(function (tr) {
+        var coords = coordenadasDaLinha(tr);
+        if (coords.length >= 2) {
+          destino.push(coords[0]);
+          origem.push(coords[1]);
+        } else if (coords.length === 1) {
+          origem.push(coords[0]);
+        }
+      });
+    
+      if (!origem.length && !destino.length) {
+        copiarHtmlParaDiagnostico();
+        alert('OROCHIKING: achei as linhas mas não reconheci as coordenadas. Copiei o HTML da página — cole e me envie para eu ajustar.');
+        return;
+      }
+    
+      var windowM = window.open('Incomings.html', 'Incomings', 'width=720, height=500, top=100, left=110, scrollbars=yes');
+      if (!windowM) {
+        alert('OROCHIKING: o navegador bloqueou o popup. Permita popups para este site e clique em Ativar de novo.');
+        return;
+      }
+      windowM.document.write(
+        "<html><body><h1>Origem</h1><textarea cols='80' rows='10' disabled>" + origem.join(",") + "</textarea>" +
+        "<h1>Destino</h1><textarea cols='80' rows='10' disabled>" + destino.join(",") + "</textarea></body></html>"
+      );
+    })();
+    
   }
 
   function checaBarbaras() {
@@ -1558,14 +1630,45 @@
     return document.URL.indexOf('screen=info_player') !== -1;
   }
   function rodarPerfil() {
-    if (game_data.player.premium == false) { alert("Para utilizar esse script é necessário uma Conta Premium."); return; } if ( typeof bb === 'undefined') var bb = false; if (document.URL.indexOf('screen=info_player') == -1) { alert('Você deve executar o script no perfil de algum jogador!'); } else { var tds = document.getElementsByTagName("TD"); var K = new Array(); for (var idx = 0; idx < 100; idx++) K[idx] = new Array(); var C = new Array(); for (var idx = 0; idx < tds.length; idx++) { var xy = tds[idx].innerHTML; if (/^\d+\|\d+$/.test(xy)) { C.push(xy); var xys = xy.split('|'); K[Math.floor(parseInt(xys[0]) / 100) + Math.floor(parseInt(xys[1]) / 100) * 10].push(xy); } } if (bb == true) { C = "Esta aldeia não existe Esta aldeia não existe"; } if (bb == false) { C = C.join(' '); } var prefix = '<textarea cols=80 rows=10>'; var postfix = '<\/textarea>'; var S = '<html>' + '<head>' + '<title>Coletor de Coordenadas</title>' + '<meta http-equiv=\"content-type\" content=\"text/html; charset=UTF-8\" />' + '</head>' + '<body>' + '<b>Coletor de Coordenadas</b><hr>Todas as Aldeias do Jogador:<br>' + prefix + C + postfix; for (var idx = 0; idx < 100; idx++) if (K[idx].length > 0) { if (bb == true) { var Ks = "Esta aldeia não existe Esta aldeia não existe"; } if (bb == false) { var Ks = K[idx].join(' '); } S += '<br><br> Aldeias do Continente ' + idx + ' <br>' + prefix + Ks + postfix; } S += '</body></html>'; var popup = window.open('about:blank', 'twcc', 'width=720,height=480,scrollbars=1'); popup.document.open('text/html', 'replace'); popup.document.write(S); popup.document.close(); };void(0);
+    if (game_data.player.premium == false) { alert("Para utilizar esse script é necessário uma Conta Premium."); return; } if ( typeof bb === 'undefined') var bb = false; if (document.URL.indexOf('screen=info_player') == -1) { alert('Você deve executar o script no perfil de algum jogador!'); } else { var tds = document.getElementsByTagName("TD"); var K = new Array(); for (var idx = 0; idx < 100; idx++) K[idx] = new Array(); var C = new Array(); for (var idx = 0; idx < tds.length; idx++) { var xy = tds[idx].innerHTML; if (/^\d+\|\d+$/.test(xy)) { C.push(xy); var xys = xy.split('|'); K[Math.floor(parseInt(xys[0]) / 100) + Math.floor(parseInt(xys[1]) / 100) * 10].push(xy); } } if (bb == true) { C = "Esta aldeia não existe Esta aldeia não existe"; } if (bb == false) { C = C.join(' '); } var prefix = '<textarea cols=80 rows=10>'; var postfix = '<\/textarea>'; var S = '<html>' + '<head>' + '<title>Coletor de Coordenadas</title>' + '<meta http-equiv=\"content-type\" content=\"text/html; charset=UTF-8\" />' + '</head>' + '<body>' + '<b>Coletor de Coordenadas</b><hr>Todas as Aldeias do Jogador:<br>' + prefix + C + postfix; for (var idx = 0; idx < 100; idx++) if (K[idx].length > 0) { if (bb == true) { var Ks = "Esta aldeia não existe Esta aldeia não existe"; } if (bb == false) { var Ks = K[idx].join(' '); } S += '<br><br> Aldeias do Continente ' + idx + ' <br>' + prefix + Ks + postfix; } S += '</body></html>'; var popup = window.open('about:blank', 'twcc', 'width=720,height=480,scrollbars=1'); if (!popup) { alert('OROCHIKING: o navegador bloqueou o popup. Permita popups para este site e clique em Ativar de novo.'); } else { popup.document.open('text/html', 'replace'); popup.document.write(S); popup.document.close(); } };void(0);
   }
 
   function checaOcultar() {
     return document.URL.indexOf('screen=info_player') !== -1;
   }
   function rodarOcultar() {
-    var aux = 0; var villages_total = $('table #villages_list tbody tr:last td a'); var element = $('table #villages_list tbody tr td span[class="icon command command-attack-ally"]'); var element1 = $('table #villages_list tbody tr td span[class="icon command command-attack"]'); var element2 = $('table #villages_list tbody tr td span[class="icon command command-support-ally"]'); var element3 = $('table #villages_list tbody tr td span[class="icon command command-support"]'); if (villages_total.length) { villages_total.click(); } element.parent().parent().remove(); element1.parent().parent().remove(); element2.parent().parent().remove(); element3.parent().parent().remove(); void(0);
+    (function () {
+      function ocultarComandos() {
+        var seletores = [
+          'table #villages_list tbody tr td span[class="icon command command-attack-ally"]',
+          'table #villages_list tbody tr td span[class="icon command command-attack"]',
+          'table #villages_list tbody tr td span[class="icon command command-support-ally"]',
+          'table #villages_list tbody tr td span[class="icon command command-support"]'
+        ];
+        var total = 0;
+        seletores.forEach(function (sel) {
+          document.querySelectorAll(sel).forEach(function (span) {
+            var linha = span.closest('tr');
+            if (linha) { linha.remove(); total++; }
+          });
+        });
+        return total;
+      }
+    
+      var linkMostrarTodas = null;
+      document.querySelectorAll('#villages_list a').forEach(function (a) {
+        var t = (a.textContent || '').toLowerCase();
+        if (t.indexOf('exibir') !== -1 && t.indexOf('aldeia') !== -1) { linkMostrarTodas = a; }
+      });
+    
+      if (linkMostrarTodas) {
+        linkMostrarTodas.click();
+        setTimeout(function () { ocultarComandos(); }, 1200);
+      } else {
+        ocultarComandos();
+      }
+    })();
+    
   }
 
   var FERRAMENTAS = [
@@ -1582,7 +1685,7 @@
       id: 'ataque',
       nome: 'Ataque Mass',
       icone: '⚔️',
-      dica: 'Ao clicar, leva para a tela Combinado e já abre o planejador lá.',
+      dica: 'Ao clicar, leva para a tela Combinado; ao chegar, clique em "Ativar agora" pra abrir o planejador.',
       checar: checaAtaque,
       rodar: rodarAtaque,
       destino: 'ataque'
@@ -1591,7 +1694,7 @@
       id: 'rename',
       nome: 'Renomeador Hard',
       icone: '✏️',
-      dica: 'Ao clicar, leva para a tela Combinado (onde ficam os ícones de renomear) e já abre o renomeador.',
+      dica: 'Ao clicar, leva para a tela Combinado; ao chegar, clique em "Ativar agora" pra abrir o renomeador.',
       checar: checaRename,
       rodar: rodarRename,
       destino: 'rename'
@@ -1600,7 +1703,7 @@
       id: 'cancelar',
       nome: 'Cancelar Recrutamento',
       icone: '🚫',
-      dica: 'Ao clicar, leva para Visão Geral → Produção e já cancela.',
+      dica: 'Ao clicar, leva para Visão Geral → Produção; ao chegar, clique em "Ativar agora" pra cancelar.',
       checar: checaCancelar,
       rodar: rodarCancelar,
       destino: 'cancelar'
@@ -1610,7 +1713,7 @@
       nome: 'Coletar Operação',
       icone: '🛡️',
       categoria: 'Coleta',
-      dica: 'Ao clicar, leva para Comandos → Ataques Recebidos e já coleta.',
+      dica: 'Ao clicar, leva para Comandos → Ataques Recebidos; ao chegar, clique em "Ativar agora" pra coletar.',
       checar: checaDefender,
       rodar: rodarDefender,
       destino: 'defender'
@@ -1620,7 +1723,7 @@
       nome: 'Coletar Mapa',
       icone: '🗺️',
       categoria: 'Coleta',
-      dica: 'Ao clicar, leva para o Mapa e já abre o coletor de bárbaras.',
+      dica: 'Ao clicar, leva para o Mapa; ao chegar, clique em "Ativar agora" pra abrir o coletor de bárbaras.',
       checar: checaBarbaras,
       rodar: rodarBarbaras,
       destino: 'barbaras'
@@ -1630,7 +1733,7 @@
       nome: 'Coletar Perfil',
       icone: '👤',
       categoria: 'Coleta',
-      dica: 'Digite o nick do jogador — o painel busca no ranking e abre o perfil dele sozinho. Requer Conta Premium.',
+      dica: 'Digite o nick do jogador — o painel busca no ranking, abre o perfil e exibe todas as aldeias dele. Depois é só clicar em "Ativar agora". Requer Conta Premium.',
       checar: checaPerfil,
       rodar: rodarPerfil,
       destino: null,
@@ -1640,7 +1743,7 @@
       id: 'ocultar',
       nome: 'Ocultar Perfil',
       icone: '🙈',
-      dica: 'Digite o nick do jogador — o painel busca no ranking e abre o perfil dele sozinho.',
+      dica: 'Digite o nick do jogador — o painel busca no ranking, abre o perfil e exibe todas as aldeias dele. Depois é só clicar em "Ativar agora".',
       checar: checaOcultar,
       rodar: rodarOcultar,
       destino: null,
@@ -1694,15 +1797,66 @@
 
     setTimeout(function () {
       try {
-        if (f.checar()) {
-          f.rodar();
-          limparPendente();
+        var telaOk = false;
+        try { telaOk = f.checar(); } catch (e) {}
+        if (!telaOk) return; // ainda não chegou na tela certa; não faz nada
+
+        if (pend.nick) {
+          // acabou de chegar no perfil via busca por nick: clica "exibir todas as aldeias" antes, se existir
+          var linkTodas = acharLinkExibirTodasAldeias();
+          if (linkTodas) {
+            linkTodas.click();
+            setTimeout(function () { mostrarBotaoConfirmar(f); }, 1200);
+            return;
+          }
         }
+        mostrarBotaoConfirmar(f);
       } catch (e) {
-        console.error('[OROCHIKING] erro ao retomar', f.nome, e);
+        console.error('[OROCHIKING] erro ao preparar', f.nome, e);
       }
     }, 500);
   })();
+
+  function acharLinkExibirTodasAldeias() {
+    var alvo = null;
+    document.querySelectorAll('a').forEach(function (a) {
+      if (alvo) return;
+      var t = (a.textContent || '').toLowerCase();
+      if (t.indexOf('exibir') !== -1 && t.indexOf('aldeia') !== -1) { alvo = a; }
+    });
+    return alvo;
+  }
+
+  /* ============================================================
+     BOTÃO FLUTUANTE "ATIVAR AGORA" — aparece quando chega na tela
+     certa depois de navegar. Só roda o script de fato no clique
+     (gesto real do usuário), pra não cair no bloqueio de popup
+     do navegador em scripts que abrem janela (Coletar Perfil,
+     Ocultar Perfil, Coletar Operação).
+  ============================================================ */
+  function mostrarBotaoConfirmar(f) {
+    if (document.getElementById('ork-confirmar')) return;
+    var caixa = document.createElement('div');
+    caixa.id = 'ork-confirmar';
+    caixa.style.cssText = 'position:fixed;bottom:20px;right:20px;background:linear-gradient(160deg,#181818,#050505);' +
+      'border:1px solid #3a3a3a;border-radius:12px;padding:12px 14px;z-index:9999997;width:220px;' +
+      'font-family:Verdana,Arial,sans-serif;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75)';
+    caixa.innerHTML =
+      '<div style="font-weight:800;color:#ffd84d;margin-bottom:8px;font-size:12.5px">' + f.icone + ' ' + f.nome + ' pronto</div>' +
+      '<button id="ork-confirmar-btn" style="width:100%;background:linear-gradient(100deg,#f0b90b,#ffd84d);' +
+        'color:#141200;border:none;border-radius:7px;padding:8px 10px;cursor:pointer;font-weight:800;font-size:12px">Ativar agora</button>';
+    document.body.appendChild(caixa);
+    document.getElementById('ork-confirmar-btn').addEventListener('click', function () {
+      caixa.remove();
+      limparPendente();
+      try {
+        f.rodar();
+      } catch (e) {
+        console.error('[OROCHIKING]', f.nome, e);
+        alert('OROCHIKING: erro ao rodar ' + f.nome + ': ' + (e && e.message ? e.message : e));
+      }
+    });
+  }
 
   /* ============================================================
      BUSCA DE JOGADOR PELO RANKING (Coletar Perfil / Ocultar Perfil)
