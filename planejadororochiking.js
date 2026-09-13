@@ -25,7 +25,7 @@
   /* ============================================================
      LIBERAÇÃO POR NICK
   ============================================================ */
-  var NICKS_LIBERADOS = ['Orochi.2009', 'Juniro1717', 'Jordy Alba', 'Bleda', 'EliteTeam5', 'Mr-magg'];
+  var NICKS_LIBERADOS = ['- Orochi.2009', 'Juniro1717', 'Jordy Alba', 'Bleda', 'EliteTeam5', 'Mr-magg'];
 
   function nickAtual() {
     try {
