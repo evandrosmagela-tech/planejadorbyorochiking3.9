@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      3.0
+// @version      3.1
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo, com monitor de captcha (alerta visual + sonoro).
 // @match        https://*.tribalwars.com.br/game.php*
 // @match        https://*.tribalwars.net/game.php*
@@ -42,48 +42,60 @@
   ============================================================ */
   (function monitorCaptcha() {
     var SELETORES_CAPTCHA = [
-      '#bot_check', '.bot-protect-row', '#bot_check_wrapper',
+      '#bot_check', '.bot-protect-row', '#bot_check_wrapper', '.captcha',
       '[id*="captcha" i]', '[class*="captcha" i]',
       'iframe[src*="hcaptcha" i]', 'iframe[src*="recaptcha" i]',
       'iframe[title*="human" i]', 'iframe[title*="challenge" i]'
     ];
+    var TEXTOS_CAPTCHA = ['proteção contra bots', 'proteção de bot', 'sou humano'];
+
+    function elementoVisivel(el) {
+      if (!el) return false;
+      var estilo = window.getComputedStyle ? window.getComputedStyle(el) : null;
+      return !(estilo && (estilo.display === 'none' || estilo.visibility === 'hidden'));
+    }
 
     function captchaNaTela() {
       for (var i = 0; i < SELETORES_CAPTCHA.length; i++) {
         try {
           var el = document.querySelector(SELETORES_CAPTCHA[i]);
-          if (el) {
-            var estilo = window.getComputedStyle ? window.getComputedStyle(el) : null;
-            var escondido = estilo && (estilo.display === 'none' || estilo.visibility === 'hidden');
-            if (!escondido) { return true; }
-          }
+          if (el && elementoVisivel(el)) { return true; }
         } catch (e) {}
       }
+      try {
+        var texto = (document.body.innerText || '').toLowerCase();
+        for (var j = 0; j < TEXTOS_CAPTCHA.length; j++) {
+          if (texto.indexOf(TEXTOS_CAPTCHA[j]) !== -1) { return true; }
+        }
+      } catch (e) {}
       return false;
     }
 
     var alarmeAtivo = false;
     var audioCtx = null;
-    var osciladores = [];
 
     function tocarAlarme() {
       try {
         if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
         var tocando = true;
+        var grave = false;
         function bipe() {
           if (!tocando || !alarmeAtivo) return;
+          if (audioCtx.state === 'suspended') { audioCtx.resume(); }
           var osc = audioCtx.createOscillator();
           var gain = audioCtx.createGain();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-          osc.frequency.linearRampToValueAtTime(440, audioCtx.currentTime + 0.35);
-          gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(grave ? 620 : 1250, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.5, audioCtx.currentTime + 0.02);
+          gain.gain.setValueAtTime(0.5, audioCtx.currentTime + 0.16);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
           osc.connect(gain);
           gain.connect(audioCtx.destination);
           osc.start();
-          osc.stop(audioCtx.currentTime + 0.35);
-          osciladores.push(osc);
-          setTimeout(bipe, 450);
+          osc.stop(audioCtx.currentTime + 0.22);
+          grave = !grave;
+          setTimeout(bipe, 220);
         }
         bipe();
         return function pararSom() { tocando = false; };
