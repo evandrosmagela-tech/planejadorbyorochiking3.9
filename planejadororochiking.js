@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      4.0
+// @version      6.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*.tribalwars.com.br/game.php*
 // @match        https://*.tribalwars.net/game.php*
@@ -110,6 +110,12 @@
         if (fechar) { fechar.click(); return; }
         var pausar = document.getElementById('fh-pausar');
         if (pausar) { pausar.click(); }
+      } catch (e) {}
+      try {
+        if (window.__ORK_ColetorFarmInterval) {
+          clearInterval(window.__ORK_ColetorFarmInterval);
+          window.__ORK_ColetorFarmInterval = null;
+        }
       } catch (e) {}
     }
 
@@ -1590,14 +1596,21 @@
       }
     
       var origem = [], destino = [];
+      var vistos = {};
       linhas.forEach(function (tr) {
         var coords = coordenadasDaLinha(tr);
+        var o = null, d = null;
         if (coords.length >= 2) {
-          destino.push(coords[0]);
-          origem.push(coords[1]);
+          d = coords[0];
+          o = coords[1];
         } else if (coords.length === 1) {
-          origem.push(coords[0]);
+          o = coords[0];
         }
+        var chave = (o || '') + '>>' + (d || '');
+        if (chave === '>>' || vistos[chave]) return;
+        vistos[chave] = true;
+        if (d) destino.push(d);
+        if (o) origem.push(o);
       });
     
       if (!origem.length && !destino.length) {
@@ -1623,7 +1636,7 @@
     return window.game_data && window.game_data.screen === 'map';
   }
   function rodarBarbaras() {
-    !function(){var n,e="OROCHIKING - Barb Finder",a="orkBarbList",o="screen=map",t="",i=[],r=[];function s(){window.localStorage.setItem(`${a}_Settings`,JSON.stringify(n))}function c(){let n=$.grep(Object.values(TWMap.villages),n=>"0"==n.owner&&n.points),[e,a]=[game_data.village.x,game_data.village.y];n.forEach(n=>{n.x=Math.floor(n.xy/1e3),n.y=n.xy%1e3,n.distance=Math.sqrt((n.x-e)**2+(n.y-a)**2)}),n.sort((n,e)=>n.distance-e.distance),l(n)}function d(n){$(`#${a}_textarea`).val("Buscando dados do mapa ao vivo...");let e=Math.ceil(2*n)+2;TWMap.resize(e),setTimeout(()=>{let[e,a]=[game_data.village.x,game_data.village.y],o=$.grep(Object.values(TWMap.villages),n=>"0"==n.owner&&n.points);o.forEach(n=>{n.x=Math.floor(n.xy/1e3),n.y=n.xy%1e3,n.distance=Math.sqrt((n.x-e)**2+(n.y-a)**2)}),o=o.filter(e=>e.distance<=n),o.sort((n,e)=>n.distance-e.distance),l(o)},1200)}function l(n){r=n,p()}function p(){i=function(e){if("spaced"===n.strategy){let a=n.spacing,o=[];return e.forEach(n=>{o.every(e=>Math.sqrt((e.x-n.x)**2+(e.y-n.y)**2)>=a)&&o.push(n)}),o}return e}(r),$(`#${a}_count`).text(i.length),u()}function u(){let e=n.format,o=i.map(n=>"coords_comma"==e?`${n.x}|${n.y},`:"link"==e?`[village]${n.x}|${n.y}[/village]`:`${n.x}|${n.y}`);$(`#${a}_textarea`).val(o.join(" "))}function g(){let n=document.getElementById(`${a}_textarea`);n.select(),n.setSelectionRange(0,999999),navigator.clipboard.writeText(n.value).then(()=>{UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)}).catch(()=>{document.execCommand("copy"),UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)})}!function(){if($(`#${a}_popup_container`).length)return void UI.ErrorMessage("Script já foi carregado, recarregue a página antes de chamá-lo novamente");let i=window.location.search.match(/t=\d+/g);if(i&&(t=i),-1==window.location.href.indexOf(`${o}`))return UI.ErrorMessage("Script precisa ser executado no mapa"),void(window.location.href=window.location.pathname+`?${t?t+"&":""}${o}`);!function(){let e=window.localStorage.getItem(`${a}_Settings`);n=e?JSON.parse(e):{mode:"loaded",radius:30,format:"coords",strategy:"cluster",spacing:5}}(),function(){let o=`\n    <div id="${a}_popup_container" class="ork_popup_container">\n        <div>\n            <a class="popup_box_close tooltip-delayed ork_close" id="${a}_popup_cross" href="javascript:void(0)">✕</a>\n            <div id="${a}_popup_content" class="ork_popup_content">\n                <h3 class="ork_centered">${e}</h3>\n\n                <div style="padding:5px;">\n                    <label class="ork_label">Fonte de dados</label>\n                    <select id="${a}_mode" class="ork_select">\n                        <option value="loaded">Mapa carregado atualmente</option>\n                        <option value="radius">Scan ao vivo: dentro do raio</option>\n                    </select>\n\n                    <div id="${a}_radiusRow" class="ork_row" style="display:none;">\n                        <span>Raio (campos): </span>\n                        <input type="text" id="${a}_radius" class="ork_input" value="${n.radius}" size="4">\n                    </div>\n\n                    <br>\n                    <label class="ork_label">Estratégia de nobre</label>\n                    <select id="${a}_strategy" class="ork_select">\n                        <option value="cluster">Cluster (aldeias coladas)</option>\n                        <option value="spaced">Espaçada (com farm ao redor)</option>\n                    </select>\n\n                    <div id="${a}_spacingRow" class="ork_row" style="display:none;">\n                        <span>Espaçamento mínimo (campos): </span>\n                        <input type="text" id="${a}_spacing" class="ork_input" value="${n.spacing}" size="4">\n                    </div>\n\n                    <br><br>\n                    <input type="submit" class="ork_btn" id="${a}_scan" value="Scan">\n                    <br><br>\n                    <span><b id="${a}_count" class="ork_gold">0</b> aldeias bárbaras encontradas</span>\n                    <br><br>\n                    <textarea id="${a}_textarea" rows="8" cols="20" class="ork_textarea" readonly></textarea>\n                    <br><br>\n                    <select id="${a}_format" class="ork_select">\n                        <option value="coords">x|y</option>\n                        <option value="coords_comma">x|y,</option>\n                        <option value="link">BB link</option>\n                    </select>\n                    <input type="submit" class="ork_btn" id="${a}_copy" value="Copiar">\n                </div>\n            </div>\n        </div>\n    </div>\n    <style>\n        .ork_popup_container {\n            border: 3px solid #D4AF37;\n            border-radius: 8px;\n            display: block;\n            position: fixed;\n            top: 8%;\n            left: 65%;\n            z-index: 14000;\n            background: linear-gradient(180deg, #0c0c0c 0%, #1b1b1b 100%);\n            box-shadow: 0 0 18px rgba(212,175,55,0.55), inset 0 0 8px rgba(212,175,55,0.15);\n            font-family: Verdana, Arial, sans-serif;\n        }\n        .ork_popup_content {\n            min-width: 250px;\n            padding: 8px 10px 12px 10px;\n            color: #E9C25E;\n        }\n        .ork_centered {\n            text-align: center;\n            color: #D4AF37;\n            text-shadow: 0 0 6px rgba(212,175,55,0.5);\n            letter-spacing: 1px;\n            margin: 4px 0 10px 0;\n            padding-right: 26px;\n            box-sizing: border-box;\n            font-size: 14px;\n            white-space: nowrap;\n            border-bottom: 1px solid #D4AF37;\n            padding-bottom: 6px;\n        }\n        .ork_close {\n            position: absolute;\n            top: 6px;\n            right: 8px;\n            width: 16px;\n            height: 16px;\n            line-height: 16px;\n            text-align: center;\n            color: #D4AF37;\n            font-weight: bold;\n            font-size: 13px;\n            cursor: pointer;\n            text-decoration: none;\n            z-index: 1;\n        }\n        .ork_label {\n            display: block;\n            font-size: 11px;\n            color: #B8952E;\n            margin-top: 6px;\n            margin-bottom: 2px;\n            text-transform: uppercase;\n        }\n        .ork_select, .ork_input, .ork_textarea {\n            background: #111111;\n            color: #E9C25E;\n            border: 1px solid #D4AF37;\n            border-radius: 4px;\n            padding: 3px 5px;\n        }\n        .ork_select { width: 100%; }\n        .ork_textarea { width: 100%; box-sizing: border-box; resize: vertical; }\n        .ork_row { margin-top: 4px; }\n        .ork_gold { color: #D4AF37; }\n        .ork_btn {\n            background: #D4AF37;\n            color: #0c0c0c;\n            font-weight: bold;\n            border: none;\n            border-radius: 4px;\n            padding: 5px 12px;\n            margin-top: 6px;\n            cursor: pointer;\n        }\n        .ork_btn:hover { background: #E9C25E; }\n    </style>`;$("body").append(o),$(`#${a}_popup_container`).draggable(),$(`#${a}_popup_cross`).click(()=>$(`#${a}_popup_container`).remove()),$(`#${a}_mode`).val(n.mode),$(`#${a}_strategy`).val(n.strategy),$(`#${a}_format`).val(n.format),$(`#${a}_radiusRow`).toggle("radius"===n.mode),$(`#${a}_spacingRow`).toggle("spaced"===n.strategy),$(`#${a}_mode`).on("change",function(){n.mode=this.value,s(),$(`#${a}_radiusRow`).toggle("radius"===this.value)}),$(`#${a}_strategy`).on("change",function(){n.strategy=this.value,s(),$(`#${a}_spacingRow`).toggle("spaced"===this.value),p()}),$(`#${a}_radius`).click(function(){this.focus(),this.select()}),$(`#${a}_radius`).on("change",function(){n.radius=parseFloat(this.value)||n.radius,s()}),$(`#${a}_spacing`).click(function(){this.focus(),this.select()}),$(`#${a}_spacing`).on("change",function(){n.spacing=parseFloat(this.value)||n.spacing,s(),p()}),$(`#${a}_format`).on("change",function(){n.format=this.value,s(),u()}),$(`#${a}_copy`).click(g),$(`#${a}_scan`).click(function(){"loaded"===n.mode?c():"radius"===n.mode&&d(n.radius)}),"radius"===n.mode?d(n.radius):c()}()}()}()
+    !function(){var n,e="OROCHIKING - Barb Finder",o="orkBarbList",a="screen=map",t="",i=[],r=[],s=["barracks","stable","farm","resources"],l={};function c(){window.localStorage.setItem(`${o}_Settings`,JSON.stringify(n))}function p(){let n=$.grep(Object.values(TWMap.villages),n=>"0"==n.owner&&n.points),[e,o]=[game_data.village.x,game_data.village.y];n.forEach(n=>{n.x=Math.floor(n.xy/1e3),n.y=n.xy%1e3,n.distance=Math.sqrt((n.x-e)**2+(n.y-o)**2)}),n.sort((n,e)=>n.distance-e.distance),u(n)}function d(n){$(`#${o}_textarea`).val("Buscando dados do mapa ao vivo...");let e=Math.ceil(2*n)+2;TWMap.resize(e),setTimeout(()=>{let[e,o]=[game_data.village.x,game_data.village.y],a=$.grep(Object.values(TWMap.villages),n=>"0"==n.owner&&n.points);a.forEach(n=>{n.x=Math.floor(n.xy/1e3),n.y=n.xy%1e3,n.distance=Math.sqrt((n.x-e)**2+(n.y-o)**2)}),a=a.filter(e=>e.distance<=n),a.sort((n,e)=>n.distance-e.distance),u(a)},1200)}function u(n){r=n,_()}function g(n){let e=function(n){let e=n.bonus??n.bonus_id??n.bonusId??null;if(null==e)return null;let o=Array.isArray(e)?e:[e];for(let n of o)if(l[n])return l[n];return null}(n),o=e?s.indexOf(e):-1;return-1===o?s.length:o}function _(){i=function(e){if("spaced"===n.strategy){let o=n.spacing,a=[];return e.forEach(n=>{a.every(e=>Math.sqrt((e.x-n.x)**2+(e.y-n.y)**2)>=o)&&a.push(n)}),a}return e}(r),n.prioritizeBonus&&(i=i.slice().sort((n,e)=>g(n)-g(e))),$(`#${o}_count`).text(i.length),x()}function x(){let e=n.format,a=i.map(n=>"coords_comma"==e?`${n.x}|${n.y},`:"link"==e?`[village]${n.x}|${n.y}[/village]`:`${n.x}|${n.y}`);$(`#${o}_textarea`).val(a.join(" "))}function b(){let n=document.getElementById(`${o}_textarea`);n.select(),n.setSelectionRange(0,999999),navigator.clipboard.writeText(n.value).then(()=>{UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)}).catch(()=>{document.execCommand("copy"),UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)})}!function(){if($(`#${o}_popup_container`).length)return void UI.ErrorMessage("Script já foi carregado, recarregue a página antes de chamá-lo novamente");let i=window.location.search.match(/t=\d+/g);if(i&&(t=i),-1==window.location.href.indexOf(`${a}`))return UI.ErrorMessage("Script precisa ser executado no mapa"),void(window.location.href=window.location.pathname+`?${t?t+"&":""}${a}`);!function(){let e=window.localStorage.getItem(`${o}_Settings`);n=e?JSON.parse(e):{mode:"loaded",radius:30,format:"coords",strategy:"cluster",spacing:5,prioritizeBonus:!0}}(),function(){let a=`\n    <div id="${o}_popup_container" class="ork_popup_container">\n        <div>\n            <a class="popup_box_close tooltip-delayed ork_close" id="${o}_popup_cross" href="javascript:void(0)">✕</a>\n            <div id="${o}_popup_content" class="ork_popup_content">\n                <h3 class="ork_centered">${e}</h3>\n\n                <div style="padding:5px;">\n                    <label class="ork_label">Fonte de dados</label>\n                    <select id="${o}_mode" class="ork_select">\n                        <option value="loaded">Mapa carregado atualmente</option>\n                        <option value="radius">Scan ao vivo: dentro do raio</option>\n                    </select>\n\n                    <div id="${o}_radiusRow" class="ork_row" style="display:none;">\n                        <span>Raio (campos): </span>\n                        <input type="text" id="${o}_radius" class="ork_input" value="${n.radius}" size="4">\n                    </div>\n\n                    <br>\n                    <label class="ork_label">Estratégia de nobre</label>\n                    <select id="${o}_strategy" class="ork_select">\n                        <option value="cluster">Cluster (aldeias coladas)</option>\n                        <option value="spaced">Espaçada (com farm ao redor)</option>\n                    </select>\n\n                    <div id="${o}_spacingRow" class="ork_row" style="display:none;">\n                        <span>Espaçamento mínimo (campos): </span>\n                        <input type="text" id="${o}_spacing" class="ork_input" value="${n.spacing}" size="4">\n                    </div>\n\n                    <br>\n                    <label class="ork_label">Preferência de aldeia bônus</label>\n                    <div class="ork_row">\n                        <label class="ork_checkbox_label">\n                            <input type="checkbox" id="${o}_prioritizeBonus" ${n.prioritizeBonus?"checked":""}>\n                            Priorizar aldeias bônus\n                        </label>\n                        <div class="ork_hint">Prioriza: Quartel &gt; Estábulo &gt; Fazenda &gt; Recursos (se não achar, pega outras aldeias normalmente)</div>\n                    </div>\n\n                    <br>\n                    <input type="submit" class="ork_btn" id="${o}_scan" value="Scan">\n                    <br><br>\n                    <span><b id="${o}_count" class="ork_gold">0</b> aldeias bárbaras encontradas</span>\n                    <br><br>\n                    <textarea id="${o}_textarea" rows="8" cols="20" class="ork_textarea" readonly></textarea>\n                    <br><br>\n                    <select id="${o}_format" class="ork_select">\n                        <option value="coords">x|y</option>\n                        <option value="coords_comma">x|y,</option>\n                        <option value="link">BB link</option>\n                    </select>\n                    <input type="submit" class="ork_btn" id="${o}_copy" value="Copiar">\n                </div>\n            </div>\n        </div>\n    </div>\n    <style>\n        .ork_popup_container {\n            border: 3px solid #D4AF37;\n            border-radius: 8px;\n            display: block;\n            position: fixed;\n            top: 8%;\n            left: 65%;\n            z-index: 14000;\n            background: linear-gradient(180deg, #0c0c0c 0%, #1b1b1b 100%);\n            box-shadow: 0 0 18px rgba(212,175,55,0.55), inset 0 0 8px rgba(212,175,55,0.15);\n            font-family: Verdana, Arial, sans-serif;\n        }\n        .ork_popup_content {\n            min-width: 250px;\n            padding: 8px 10px 12px 10px;\n            color: #E9C25E;\n        }\n        .ork_centered {\n            text-align: center;\n            color: #D4AF37;\n            text-shadow: 0 0 6px rgba(212,175,55,0.5);\n            letter-spacing: 1px;\n            margin: 4px 0 10px 0;\n            padding-right: 26px;\n            box-sizing: border-box;\n            font-size: 14px;\n            white-space: nowrap;\n            border-bottom: 1px solid #D4AF37;\n            padding-bottom: 6px;\n        }\n        .ork_close {\n            position: absolute;\n            top: 6px;\n            right: 8px;\n            width: 16px;\n            height: 16px;\n            line-height: 16px;\n            text-align: center;\n            color: #D4AF37;\n            font-weight: bold;\n            font-size: 13px;\n            cursor: pointer;\n            text-decoration: none;\n            z-index: 1;\n        }\n        .ork_label {\n            display: block;\n            font-size: 11px;\n            color: #B8952E;\n            margin-top: 6px;\n            margin-bottom: 2px;\n            text-transform: uppercase;\n        }\n        .ork_select, .ork_input, .ork_textarea {\n            background: #111111;\n            color: #E9C25E;\n            border: 1px solid #D4AF37;\n            border-radius: 4px;\n            padding: 3px 5px;\n        }\n        .ork_select { width: 100%; }\n        .ork_textarea { width: 100%; box-sizing: border-box; resize: vertical; }\n        .ork_row { margin-top: 4px; }\n        .ork_checkbox_label {\n            display: flex;\n            align-items: center;\n            gap: 6px;\n            font-size: 12px;\n            cursor: pointer;\n        }\n        .ork_hint {\n            font-size: 10px;\n            color: #8a7327;\n            font-style: italic;\n            margin-top: 2px;\n        }\n        .ork_gold { color: #D4AF37; }\n        .ork_btn {\n            background: #D4AF37;\n            color: #0c0c0c;\n            font-weight: bold;\n            border: none;\n            border-radius: 4px;\n            padding: 5px 12px;\n            margin-top: 6px;\n            cursor: pointer;\n        }\n        .ork_btn:hover { background: #E9C25E; }\n    </style>`;$("body").append(a),$(`#${o}_popup_container`).draggable(),$(`#${o}_popup_cross`).click(()=>$(`#${o}_popup_container`).remove()),$(`#${o}_mode`).val(n.mode),$(`#${o}_strategy`).val(n.strategy),$(`#${o}_format`).val(n.format),$(`#${o}_radiusRow`).toggle("radius"===n.mode),$(`#${o}_spacingRow`).toggle("spaced"===n.strategy),$(`#${o}_prioritizeBonus`).prop("checked",n.prioritizeBonus),$(`#${o}_mode`).on("change",function(){n.mode=this.value,c(),$(`#${o}_radiusRow`).toggle("radius"===this.value)}),$(`#${o}_strategy`).on("change",function(){n.strategy=this.value,c(),$(`#${o}_spacingRow`).toggle("spaced"===this.value),_()}),$(`#${o}_radius`).click(function(){this.focus(),this.select()}),$(`#${o}_radius`).on("change",function(){n.radius=parseFloat(this.value)||n.radius,c()}),$(`#${o}_spacing`).click(function(){this.focus(),this.select()}),$(`#${o}_spacing`).on("change",function(){n.spacing=parseFloat(this.value)||n.spacing,c(),_()}),$(`#${o}_prioritizeBonus`).on("change",function(){n.prioritizeBonus=this.checked,c(),_()}),$(`#${o}_format`).on("change",function(){n.format=this.value,c(),x()}),$(`#${o}_copy`).click(b),$(`#${o}_scan`).click(function(){"loaded"===n.mode?p():"radius"===n.mode&&d(n.radius)}),"radius"===n.mode?d(n.radius):p()}()}()}()
   }
 
   function checaPerfil() {
@@ -1669,6 +1682,426 @@
       }
     })();
     
+  }
+
+  function checaColetorFarm() {
+    return window.game_data && window.game_data.screen === 'map';
+  }
+  function rodarColetorFarm() {
+    var LA_ids=[];
+    var toToggleBack = [];
+    var depthMax = 3;
+    var loadingLAstuff = false;
+    var fmMapLASettings;
+    
+    //general
+    const scriptName = "FM";
+    var scriptTag = "fmMapLA";
+    var countapikey = "mapFarm";
+    var sitter = "";
+    var runScreen = "screen=map";
+    /******PROGRAM VARS**********/
+    
+    
+    
+    function main(){
+    hitCountApi();
+    if($(`#${scriptTag}_popup_container`).length){
+    UI.ErrorMessage("Script has already been loaded, reload the page before calling it again");
+    return;
+    }
+    let sitterQuery = window.location.search.match(/t=\d+/g);
+    if(sitterQuery)
+    sitter = sitterQuery;
+    if(window.location.href.indexOf(`${runScreen}`)==-1)
+    {
+    UI.ErrorMessage("Script must be run in map");
+    window.location.href = window.location.pathname+ `?${sitter?sitter+"&":""}${runScreen}`;
+    return;
+    }
+    
+    
+    getCache();
+    setHTML();
+    }
+    
+    function hitCountApi(){
+    $.getJSON(`https://api.countapi.xyz/hit/fmthemasterScripts/${countapikey}`, function(response) {
+    console.log(`This script has been run ${response.value} times`);
+    });
+    }
+    
+    
+    /**************HTML***************/
+    
+    
+    function setHTML(){
+    
+    let html =`
+    <div id="${scriptTag}_popup_container" class="fm_popup_container">
+    <div>
+    <a class="popup_box_close tooltip-delayed" id="${scriptTag}_popup_cross" href="javascript:void(0)">
+    </a>
+    <div id="${scriptTag}_popup_content" class="fm_popup_content">
+    <div style="padding:5px;">
+    <div style="border: 1px solid #804000; padding: 5px;">
+    <span>
+    </span>
+    <div id="${scriptTag}_LAlist">
+    <table>
+    <thead>
+    <tr>
+    <th style="min-width:70px;">Village</th>
+    <th style="min-width:40px;"><img src="/graphic/rechts.png"></th>
+    <th colspan="5">LA</th>
+    </tr>
+    </thead>
+    <tbody id="${scriptTag}_popupTable" class="vis">
+    </tbody>
+    </table>
+    </div>
+    <p>
+    <input type="text" id="${scriptTag}_mapSize" value ="${TWMap.size[0]}" size="1">
+    <input id="${scriptTag}_resizeMap" value ="Resize Map" class="btn" type="submit">
+    
+    </p>
+    <p>
+    <input class="btn btn-confirm-yes" id="${scriptTag}_reloadTable" type="submit" value="Reload table">
+    </p>
+    <input class="btn" id="startAttack" type="submit" onclick="attacknow()" value="Start Attacks">
+    <input class="btn btn-confirm-no" id="stopAttack" type="submit" onclick="pararAttack()" value="Parar">
+    <br>
+    <br>
+    <br>
+    </div>
+    </div>
+    </div>
+    <script>
+    function attacknow(){
+    console.log('Start Attack')
+    if(window.__ORK_ColetorFarmInterval) clearInterval(window.__ORK_ColetorFarmInterval);
+    window.__ORK_ColetorFarmInterval = setInterval(() => {
+    document.querySelectorAll('.fmMapLA_td_farm_icon')[2].firstChild.click()
+    },280);
+    }
+    function pararAttack(){
+    if(window.__ORK_ColetorFarmInterval){
+    clearInterval(window.__ORK_ColetorFarmInterval);
+    window.__ORK_ColetorFarmInterval = null;
+    console.log('Ataque parado');
+    }
+    }</script>
+    <style>
+    /*general css*/
+    .fm_popup_container {
+    border: 19px solid #804000;
+    -moz-border-image: url("/graphic/popup/border.png") 9 19 19 19 repeat;
+    -webkit-border-image: url("/graphic/popup/border.png") 9 19 19 19 repeat;
+    -o-border-image: url("/graphic/popup/border.png") 19 19 19 19 repeat;
+    border-image: url("/graphic/popup/border.png") 19 19 19 19 repeat;
+    display: block;
+    position: fixed;
+    top: 8%;
+    left: 0%;
+    z-index: 1200;
+    }
+    .fm_popup_content {
+    min-width: 100px;
+    min-height: 70px;
+    height:100%;
+    overflow: hidden;
+    background-image: url('/graphic/popup/content_background.png');
+    }
+    /*specific css*/
+    .${scriptTag}_tableHeader{
+    height: 35px;
+    text-align: text-bottom;
+    }
+    #${scriptTag}_LAlist {
+    overflow-y:auto;
+    max-height:30vh;
+    }
+    #${scriptTag}_LAlist td, ${scriptTag}_LAlist th{
+    text-align: center;
+    }
+    .${scriptTag}_farm_icon{
+    transform: scale(1.5);
+    width: 24px;
+    height: 24px;
+    }
+    .${scriptTag}_td_farm_icon{
+    min-width: 55px;
+    height: 30px;
+    }
+    
+    .btn-confirm-yes{
+    position: absolute;
+    right: 5px;
+    }
+    </style>`;
+    
+    $("body").append(html);
+    $(`#${scriptTag}_popup_container`).draggable();
+    $(`#${scriptTag}_popup_cross`).click(closePopup);
+    $(`#${scriptTag}_reloadTable`).click(getFirstFarmPage);
+    $(`#${scriptTag}_mapSize`).click(focusSelect);
+    $(`#${scriptTag}_resizeMap`).click(function(){
+    TWMap.resize(parseInt($(`#${scriptTag}_mapSize`).val()));
+    setTimeout(getFirstFarmPage, 0);
+    });
+    
+    setHTMLOptions();
+    getHTMLOptions();
+    
+    $(`.${scriptTag}_checkbox`).on("change",()=>{
+    getHTMLOptions();
+    setCache();
+    });
+    
+    addAuthor(`#${scriptTag}_popup_content`);
+    getFirstFarmPage();
+    }
+    
+    function addLARow(village){
+    if( typeof addLARow.counter == 'undefined' ) {
+    addLARow.counter = 0;
+    }
+    if(LA_ids.indexOf(village.id)!=-1)
+    return;
+    
+    addLARow.counter++;
+    $("#fmMapLA_popupTable").append(`
+    <tr class=${addLARow.counter%2?"row_a":"row_b"}>
+    <td><a href="${window.location.pathname}?${sitter?sitter+"&":""}&screen=info_village&id=${village.id}" target="_blank">${parseInt(village.xy/1000)}|${village.xy%1000}</a></td>
+    <td>${village.distance}</td>
+    <td class="${scriptTag}_td_farm_icon"><a href="javascript:void(0);" class="fm_centered ${scriptTag}_farm_icon ${scriptTag}_sendFarm farm_icon farm_icon_a" data-farmtype="a" data-villagexy="${village.xy}"></a></td>
+    <td class="${scriptTag}_td_farm_icon"><a href="javascript:void(0);" class="${scriptTag}_farm_icon ${scriptTag}_sendFarm farm_icon farm_icon_b" data-farmtype="b" data-villagexy="${village.xy}"></a></td>
+    </tr>`);
+    }
+    
+    function closePopup(){
+    $(`#${scriptTag}_popup_container`).remove();
+    }
+    
+    function focusSelect(){
+    this.focus();
+    this.select();
+    }
+    
+    function makeLATable(){
+    let barbs = $.grep(Object.values(TWMap.villages), (obj)=>obj.owner=="0"&&obj.points);
+    barbs.sort(function(a, b){
+    let [x0,y0] = [game_data.village.x, game_data.village.y];
+    let [xa,ya] = [Math.floor(a.xy/1000), a.xy%1000];
+    let [xb,yb] = [Math.floor(b.xy/1000), b.xy%1000];
+    a.distance = Math.sqrt((xa-x0)**2 + (ya-y0)**2).toFixed(1);
+    b.distance = Math.sqrt((xb-x0)**2 + (yb-y0)**2).toFixed(1);
+    return a.distance - b.distance;
+    });
+    
+    $.each(barbs, (key, barb)=> addLARow(barb));
+    $(`.${scriptTag}_sendFarm`).off("click");
+    $(`.${scriptTag}_sendFarm`).click(function(){
+    console.log(this.dataset.villagexy);
+    farmVillage(parseInt(this.dataset.villagexy), this.dataset.farmtype);
+    $(this).closest("tr").remove();
+    });
+    }
+    
+    function addAuthor(cointainerSelector){
+    let authorHTML = `
+    
+    `;
+    $(cointainerSelector).append(authorHTML);
+    
+    }
+    
+    function startLoader(length)
+    {
+    let width = $("#contentContainer")[0].clientWidth;
+    $("#contentContainer").eq(0).prepend(`
+    <div id="progressbar" class="progress-bar">
+    <span class="count label">0/${length}</span>
+    <div id="progress"><span class="count label" style="width: ${width}px;">0/${length}</span></div>
+    </div>`);
+    }
+    
+    function loaded(num, length, action)
+    {
+    $("#progress").css("width", `${(num + 1) / length * 100}%`);
+    $(".count").text(`${action} ${(num + 1)} / ${length}`);
+    if(num+1==length)
+    endLoader();
+    }
+    
+    function endLoader()
+    {
+    if($("#progressbar").length > 0)
+    $("#progressbar").remove();
+    }
+    
+    
+    /*****FROM HIDE BARBS IN MAP******/
+    
+    function executeQueue(queue, timeout, {loadText="",callback=()=>null}){
+    if(queue.length){
+    startLoader(queue.length);
+    $.each(queue,(key, func)=>{
+    setTimeout(()=>{
+    loaded(key, queue.length, loadText);
+    if(key==queue.length -1){
+    setTimeout(callback, timeout);
+    endLoader();
+    }
+    func();
+    }, timeout*key);
+    });
+    }
+    else
+    setTimeout(callback, timeout);
+    }
+    
+    async function getFirstFarmPage(){
+    $(`#${scriptTag}_LAlist`).find("tbody > tr").each(function(){$(this).remove();});
+    if(fmMapLASettings.ignoreLA){
+    makeLATable();
+    return;
+    }
+    loadingLAstuff = true;
+    $.get(`/game.php?${sitter?sitter+"&":""}village=${game_data.village.id}&screen=am_farm&Farm_page=0`, async (data)=> {
+    const parser = new DOMParser();
+    const doc= await parser.parseFromString(data, "text/html");
+    let currentCheckBoxValues = Object.assign({},...$("#plunder_list_filters", doc).find("input[type=checkbox]", doc).map((key,obj)=>{return{[obj.id]:obj};}));
+    // console.log(currentCheckBoxValues);
+    let postGetQueue = [];
+    
+    let toggleBox =(key, url, val)=>{
+    let data = `extended=1&target_screen=am_farm&${key}=${val}&h=${csrf_token}`;
+    console.log(key, url, data);
+    TribalWars.post(url,null,{extended:0+true, target_screen:"am_farm", [key]:val});
+    };
+    let setToggleFunction =(checkboxName, key, url, intendedValue)=>{
+    console.log(checkboxName, url, intendedValue);
+    if(fmMapLASettings.replaceFilters && currentCheckBoxValues[checkboxName].checked!=intendedValue){
+    postGetQueue.push(()=>toggleBox(key, url, Number(intendedValue)));
+    toToggleBack.push(()=>toggleBox(key, url, Number(!intendedValue)));
+    }
+    };
+    let LAscript = $("#am_widget_Farm", doc).find("script")[0];
+    if(!LAscript){
+    UI.ErrorMessage("Loot assistant not activated, or some other error, will include all villages");
+    makeLATable();
+    }
+    
+    let urls = $("#am_widget_Farm", doc).find("script")[0].innerHTML.match(/([^']+=toggle_[^']+)/g);
+    
+    setToggleFunction("all_village_checkbox","all_villages", urls[0], false);
+    setToggleFunction("full_losses_checkbox","full_losses", urls[1], true);
+    setToggleFunction("partial_losses_checkbox","partial_losses", urls[2], true);
+    setToggleFunction("attacked_checkbox","show_attacked", urls[3], true);
+    setToggleFunction("full_hauls_checkbox", "only_full_hauls", urls[4], false);
+    
+    console.log(postGetQueue);
+    executeQueue(postGetQueue, 280, {loadText:"toggling LA options", callback:()=>getBarbsInLA(0)});
+    }).fail(()=>{UI.ErrorMessage("Couldn't load first LA page, will include all villages"); makeLATable();});
+    }
+    
+    async function getBarbsInLA(page, depth=0, npages=undefined) {
+    console.log("getBarbsInLA", page, depth, npages);
+    let url = `/game.php?${sitter?sitter+"&":""}village=${game_data.village.id}&screen=am_farm&Farm_page=${page}`;
+    $.get(url, async (data)=> {
+    console.log("success");
+    const parser = new DOMParser();
+    const doc= await parser.parseFromString(data, "text/html");
+    const pageSelector = $(".paged-nav-item:last", doc);
+    const npagesLA = parseInt(pageSelector.length? pageSelector[0].innerText.match(/\d+/g)[0]:0);
+    let rows = $("#plunder_list", doc).find("tr[id^=village_]");
+    if(rows.length){
+    LA_ids = LA_ids.concat($.map(rows, function(obj){
+    return obj.id.match(/\d+/g)[0];
+    }));
+    }
+    if(!npages){
+    let pageQueue=[];
+    for(var i = 1; i < npagesLA; i++){
+    const j =i;
+    pageQueue.push(()=>getBarbsInLA(j,0,npagesLA));// jshint ignore:line
+    }
+    executeQueue(pageQueue, 250, {loadText:"loading LA pages",callback:()=>{
+    makeLATable();
+    executeQueue(toToggleBack, 250, {loadText:"toggling LA options back", callback: ()=>{toToggleBack = [];loadingLAstuff=false;}});
+    }});
+    
+    }
+    }).fail(()=>{
+    if(depth < depthMax){
+    UI.ErrorMessage(`Failed getting page ${page} of LA for the ${depth} time, will try again`);
+    console.log(`Failed getting page ${page} of LA for the ${depth} time, will try again`);
+    getBarbsInLA(page, depth +1, npages);
+    }
+    else{
+    UI.ErrorMessage(`Failed getting page ${page} of LA for the ${depth} time, will not try again, getting next page`);
+    console.log(`Failed getting page ${page} of LA for the ${depth} time, will try again`);
+    getBarbsInLA(page +1, depth +1, npages);
+    
+    }
+    });
+    }
+    
+    
+    /***********FARM STUFF************/
+    
+    function farmVillage (xy, type) {
+    console.log(xy,type);
+    let village = TWMap.villages[xy];
+    console.log("Farming Village: ");
+    console.log(village);
+    let villageid = village.id;
+    let s=TWMap.popup._cache[villageid];
+    if(void 0===s)
+    TWMap.popup.loadVillage(villageid);
+    
+    let mpFarm = type=="a"?"mp_farm_a":"mp_farm_b";
+    
+    let url = TWMap.urls.ctx[mpFarm].replace(/__village__/, village.id).replace(/__source__/, game_data.village.id);
+    
+    setTimeout(function(){TribalWars.get(url);},200);
+    }
+    
+    /**************CACHE**************/
+    
+    function getCache(){
+    console.log("getting cache");
+    let cachedSettings = window.localStorage.getItem(`${scriptTag}_Settings`);
+    fmMapLASettings = cachedSettings ? JSON.parse(cachedSettings) : {ignoreLA:false, replaceFilters:true};
+    }
+    
+    function setCache(){
+    console.log("setting cache");
+    window.localStorage.setItem(`${scriptTag}_Settings`, JSON.stringify(fmMapLASettings));
+    }
+    
+    function setHTMLOptions(){
+    console.log("setting HTML options");
+    $(`#${scriptTag}_ignoreLA`).prop("checked", fmMapLASettings.ignoreLA);
+    $(`#${scriptTag}_changeLAFilters`).prop("checked", fmMapLASettings.replaceFilters);
+    }
+    
+    function getHTMLOptions(){
+    console.log("getting HTML options");
+    fmMapLASettings.ignoreLA = $(`#${scriptTag}_ignoreLA`).prop("checked");
+    fmMapLASettings.replaceFilters = $(`#${scriptTag}_changeLAFilters`).prop("checked");
+    $(`#${scriptTag}_ignoreLA`).each(function(){
+    let isChecked = this.checked;
+    let display = isChecked?"none":"block";
+    $(`#${scriptTag}_changeLAFilters_p`).css("display", display);
+    });
+    }
+    
+    
+    /************RUN MAIN*************/
+    
+    main();
   }
 
   var FERRAMENTAS = [
@@ -1748,6 +2181,15 @@
       rodar: rodarOcultar,
       destino: null,
       buscaPorNick: true
+    },
+    {
+      id: 'coletorfarm',
+      nome: 'Coletor para Farmar',
+      icone: '🧺',
+      dica: 'Ao clicar, leva para o Mapa; ao chegar, clique em "Ativar agora" pra abrir a lista de bárbaros próximos com os ícones de farm.',
+      checar: checaColetorFarm,
+      rodar: rodarColetorFarm,
+      destino: 'barbaras'
     }
   ];
 
