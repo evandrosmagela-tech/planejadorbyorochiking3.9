@@ -7,32 +7,6 @@
 // @match        https://*.tribalwars.net/game.php*
 // @match        https://*.die-staemme.de/game.php*
 // @match        https://*.tribalwars.co.uk/game.php*
-// @match        https://*.tribalwars.com.pt/game.php*
-// @match        https://*.tribalwars.nl/game.php*
-// @match        https://*.tribalwars.ro/game.php*
-// @match        https://*.tribalwars.se/game.php*
-// @match        https://*.tribalwars.no/game.php*
-// @match        https://*.tribalwars.dk/game.php*
-// @match        https://*.tribalwars.fi/game.php*
-// @match        https://*.tribalwars.it/game.php*
-// @match        https://*.tribalwars.com.es/game.php*
-// @match        https://*.tribalwars.us/game.php*
-// @match        https://*.tribalwars.cz/game.php*
-// @match        https://*.tribalwars.sk/game.php*
-// @match        https://*.tribalwars.gr/game.php*
-// @match        https://*.tribalwars.hu/game.php*
-// @match        https://*.tribalwars.lt/game.php*
-// @match        https://*.tribalwars.lv/game.php*
-// @match        https://*.tribalwars.ee/game.php*
-// @match        https://*.tribalwars.bg/game.php*
-// @match        https://*.tribalwars.hr/game.php*
-// @match        https://*.tribalwars.rs/game.php*
-// @match        https://*.tribalwars.si/game.php*
-// @match        https://*.tribalwars.com.tr/game.php*
-// @match        https://*.tribalwars.ch/game.php*
-// @match        https://*.tribalwars.ae/game.php*
-// @match        https://*.plemiona.pl/game.php*
-// @include      *tribalwars*/game.php*
 // @run-at       document-idle
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/evandrosmagela-tech/planejadorbyorochiking3.9/refs/heads/main/planejadororochiking.js
@@ -44,22 +18,12 @@
   if (typeof $ === 'undefined' || typeof game_data === 'undefined') { return; }
 
   /* ============================================================
-     LIBERAÇÃO POR NICK
+     LIBERAÇÃO POR LICENÇA
+     Este arquivo só roda se o LOADER já validou a licença do nick
+     contra o licenses.json e marcou a flag global abaixo antes de
+     injetar/executar este script. Sem a flag, o painel não faz nada.
   ============================================================ */
-  var NICKS_LIBERADOS = ['- Orochi.2009', 'Juniro1717', 'Jordy Alba', 'Bleda', 'EliteTeam5', 'Mr-magg'];
-
-  function nickAtual() {
-    try {
-      return (game_data.player && game_data.player.name) ? String(game_data.player.name).trim() : '';
-    } catch (e) { return ''; }
-  }
-
-  function acessoLiberado() {
-    var nick = nickAtual().toLowerCase();
-    return NICKS_LIBERADOS.some(function (n) { return n.toLowerCase() === nick; });
-  }
-
-  if (!acessoLiberado()) { return; }
+  if (!window.__ORK_LICENCA_OK__) { return; }
 
   /* ============================================================
      MONITOR DE CAPTCHA (roda em toda tela, sempre, independente do painel)
@@ -183,6 +147,34 @@
       }
     }, 1200);
   })();
+
+  /* ============================================================
+     REVALIDAÇÃO PERIÓDICA DA LICENÇA
+     O loader expõe window.__ORK_REVALIDAR_LICENCA__(callback).
+     Se a licença cair (bloqueada/expirada) durante o uso, o painel
+     e os scripts em execução são encerrados na hora.
+  ============================================================ */
+  if (typeof window.__ORK_REVALIDAR_LICENCA__ === 'function') {
+    setInterval(function () {
+      window.__ORK_REVALIDAR_LICENCA__(function (aindaValida) {
+        if (aindaValida) return;
+        window.__ORK_LICENCA_OK__ = false;
+        try {
+          var p = document.getElementById('ork-painel');
+          if (p) p.remove();
+          var s = document.getElementById('ork-style');
+          if (s) s.remove();
+        } catch (e) {}
+        try {
+          if (window.__ORK_ColetorFarmInterval) {
+            clearInterval(window.__ORK_ColetorFarmInterval);
+            window.__ORK_ColetorFarmInterval = null;
+          }
+        } catch (e) {}
+        alert('🔒 OROCHIKING: sua licença foi bloqueada ou expirou. O painel foi encerrado.');
+      });
+    }, 5 * 60 * 1000); // a cada 5 minutos
+  }
 
   /* ============================================================
      CONFIGURAÇÃO DE DESTINOS
@@ -2489,7 +2481,9 @@
       '<button id="ork-ativar" class="ork-btn-grande">Ativar</button>' +
       '<div id="ork-status"></div>' +
     '</div>' +
-    '<div id="ork-footer">Escolha a aba e clique em Ativar — o script já abre no lugar certo.</div>';
+    '<div id="ork-footer">Escolha a aba e clique em Ativar — o script já abre no lugar certo.' +
+      (window.__ORK_LICENCA_INFO__ ? '<br>🔑 ' + window.__ORK_LICENCA_INFO__ : '') +
+    '</div>';
   document.body.appendChild(painel);
 
   var ferramentaSelecionada = FERRAMENTAS[0];
