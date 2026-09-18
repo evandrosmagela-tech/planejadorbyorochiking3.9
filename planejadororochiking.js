@@ -103,8 +103,8 @@
 // @include      *://tribalwars2.com/*
 // @run-at       document-idle
 // @grant        none
-// @updateURL    https://raw.githubusercontent.com/evandrosmagela-tech/planejadorbyorochiking3.9/refs/heads/main/painelorochiking.js
-// @downloadURL  https://raw.githubusercontent.com/evandrosmagela-tech/planejadorbyorochiking3.9/refs/heads/main/painelorochiking.js
+// @updateURL    https://raw.githubusercontent.com/evandrosmagela-tech/planejadorbyorochiking3.9/refs/heads/main/planejadororochiking.js
+// @downloadURL  https://raw.githubusercontent.com/evandrosmagela-tech/planejadorbyorochiking3.9/refs/heads/main/planejadororochiking.js
 // ==/UserScript==
 
 (function () {
