@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      28.0
+// @version      29.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -108,6 +108,15 @@
 // ==/UserScript==
 
 (function () {
+
+  /* ============================================================
+     MARCADOR DE VERSÃO
+     Serve pra você conferir, em 2 segundos, qual versão está realmente
+     rodando — sem depender de adivinhar se o GitHub já propagou.
+     No Console (F12) digite:  __ORK_VERSAO__
+  ============================================================ */
+  window.__ORK_VERSAO__ = 29;
+  console.log('%c[OROCHIKING] Painel v29 carregado', 'background:#e8ac0a;color:#1a1400;font-weight:bold;padding:2px 6px;border-radius:3px');
 
   /* ============================================================
      FORA DO JOGO (a sessão caiu e fomos parar na tela de
@@ -2126,6 +2135,11 @@
       // (coordenada sumiu do mapa, Demolidor concluído, etc.) viram só um aviso no
       // Console — senão, sem ninguém pra clicar OK, a rodada inteira ficava travada.
       window.__ORK_LOOP_SILENCIOSO__ = true;
+      console.log('[OROCHIKING] Loop: acionando rodada. Aldeias no cache: ' +
+        ((window.__ORK_AldeiasBase && window.__ORK_AldeiasBase.length) || 0) +
+        ' | alvos salvos: ' + (function () {
+          try { var t = document.querySelector('textarea[name=coords]'); return t ? (t.value.match(/d+|d+/g) || []).length : 0; } catch (e) { return '?'; }
+        })());
       if (window.lastRoundType === 'demolidor' && window.lastDemolidorList && window.lastDemolidorList.length) {
         window.demolidorQueue = window.lastDemolidorList.slice();
         window.demolidorActive = true;
@@ -3658,7 +3672,7 @@
     '<div id="ork-footer">' +
       (window.__ORK_DUPLICADO__ ? '<span style="color:#ff9d5c">⚠ Há outra cópia do painel instalada no Tampermonkey — desative a antiga.</span><br>' : '') +
       (textoLicenca() ? '🔑 ' + textoLicenca() + '<br>' : '') +
-      'Escolha a aba e clique em Ativar — o script já abre no lugar certo.' +
+      'v29 · Escolha a aba e clique em Ativar — o script já abre no lugar certo.' +
     '</div>';
   document.body.appendChild(painel);
 
