@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      22.0
+// @version      27.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -379,6 +379,9 @@
     estilo.textContent =
       '@keyframes ork-pulsar{0%{background:#7a0000}50%{background:#c40000}100%{background:#7a0000}}' +
       '#ork-captcha-overlay{position:fixed;top:0;left:0;right:0;padding:16px;text-align:center;' +
+      /* pointer-events:none e essencial: sem isso a faixa fica por cima da pagina
+         e engole os cliques — inclusive os do proprio captcha que voce precisa resolver */
+      'pointer-events:none;' +
       'z-index:9999999;color:#fff;font-family:Verdana,Arial,sans-serif;font-weight:800;font-size:16px;' +
       'letter-spacing:.5px;box-shadow:0 4px 24px rgba(0,0,0,.6);animation:ork-pulsar 1s infinite}';
     document.head.appendChild(estilo);
@@ -413,6 +416,35 @@
     })();
   }
 
+  /* Durante o captcha, bloqueamos APENAS as chamadas de automação dos nossos
+     próprios scripts (farm, envio de ataque, cunhagem). Tudo o mais passa.
+
+     Antes eu bloqueava TODAS as requisições da página — inclusive as do próprio
+     desafio. Era exatamente por isso que o captcha às vezes nem aparecia, e quando
+     aparecia não dava pra resolver: o hCaptcha precisa de rede pra carregar e pra
+     validar a resposta. Desligar o Tampermonkey "resolvia" porque tirava esse
+     bloqueio do caminho. */
+  function ehRequisicaoDeAutomacao(alvo) {
+    try {
+      var u = '';
+      if (typeof alvo === 'string') { u = alvo; }
+      else if (alvo && alvo.url) { u = alvo.url; }
+      else if (alvo) { u = String(alvo); }
+      u = u.toLowerCase();
+      if (!u || u.indexOf('game.php') === -1) { return false; }
+
+      // nunca bloqueia nada relacionado ao desafio
+      if (/captcha|bot_check|botcheck|bot-protect/.test(u)) { return false; }
+
+      return (
+        /ajaxaction=farm_from_report/.test(u) ||   // Farm Hard / Coletor para Farmar
+        /screen=place/.test(u) ||                   // Ataque Mass (confirmar e enviar)
+        /screen=snob/.test(u) ||                    // Cunhagem automática
+        /action=command/.test(u)
+      );
+    } catch (e) { return false; }
+  }
+
   function ativarModoCaptcha() {
     window.__ORK_CAPTCHA_BLOQUEADO__ = true;
     if (alarmeAtivo) return;
@@ -420,7 +452,7 @@
     pararFarmHard();
     mostrarOverlay();
     pararSomAtual = tocarAlarme();
-    console.warn('[OROCHIKING] Captcha detectado — todas as requisições pausadas.');
+    console.warn('[OROCHIKING] Captcha detectado — envios automáticos pausados. O captcha e a navegação normal seguem liberados; resolva o desafio.');
   }
 
   function desativarModoCaptcha() {
@@ -449,8 +481,8 @@
       var fetchOriginal = window.fetch;
       if (fetchOriginal) {
         window.fetch = function (input, init) {
-          if (window.__ORK_CAPTCHA_BLOQUEADO__) {
-            return Promise.reject(new Error('OROCHIKING: requisição bloqueada (captcha ativo)'));
+          if (window.__ORK_CAPTCHA_BLOQUEADO__ && ehRequisicaoDeAutomacao(input)) {
+            return Promise.reject(new Error('OROCHIKING: envio automático bloqueado (captcha ativo)'));
           }
           return fetchOriginal.call(window, input, init).then(function (resposta) {
             try {
@@ -468,12 +500,13 @@
       var xhrOpenOriginal = XMLHttpRequest.prototype.open;
       var xhrSendOriginal = XMLHttpRequest.prototype.send;
 
-      XMLHttpRequest.prototype.open = function () {
+      XMLHttpRequest.prototype.open = function (metodo, url) {
+        try { this.__orkUrl = url; } catch (e) {}
         return xhrOpenOriginal.apply(this, arguments);
       };
 
       XMLHttpRequest.prototype.send = function () {
-        if (window.__ORK_CAPTCHA_BLOQUEADO__) { return; }
+        if (window.__ORK_CAPTCHA_BLOQUEADO__ && ehRequisicaoDeAutomacao(this.__orkUrl)) { return; }
         var xhr = this;
         try {
           xhr.addEventListener('load', function () {
@@ -511,26 +544,45 @@
     return !!(window.game_data && window.game_data.village);
   }
   function rodarFarmar() {
-    (function(){ if (window.__FarmHardAtivo) { if (typeof window.__FarmHardMostrar === "function") { window.__FarmHardMostrar(); } return; } window.__FarmHardAtivo = true; function _FarmarAS() { /* Script Escrito por ThiioM :) - Ajustado - Farm Hard 1.0 */ /* Lockr Script */ !function(t,e){t.Lockr=function(t,e){"use strict";return e.prefix="",e._getPrefixedKey=function(t,e){return e=e||{},e.noPrefix?t:this.prefix+t},e.set=function(t,e,r){var a=this._getPrefixedKey(t,r);try{localStorage.setItem(a,JSON.stringify({data:e}))}catch(t){}},e.get=function(t,e,r){var a,i=this._getPrefixedKey(t,r);try{a=JSON.parse(localStorage.getItem(i))}catch(t){a=localStorage[i]?{data:localStorage.getItem(i)}:null}return null===a?e:"object"==typeof a&&void 0!==a.data?a.data:e},e}(t,{})}(this); let CLMinimo = 0; let UltimaCLLida = null; let AldeiasPuladasCL = 0;
+    (function(){ var FH_VERSAO = 40; /* Trava de instancia unica COM versao. Antes era so um true/false: se uma copia    ANTIGA do painel ja tivesse rodado na pagina, a nova desistia e reabria o popup    velho, dando a impressao de que a atualizacao nao pegou. Agora, se a copia que    ja esta na pagina for mais antiga, ela e descartada e esta assume. */ if (window.__FarmHardAtivo) { var versaoAtual = window.__FarmHardVersao || 0; if (versaoAtual >= FH_VERSAO) { if (typeof window.__FarmHardMostrar === "function") { window.__FarmHardMostrar(); } return; } console.warn("[OROCHIKING] Farm Hard v" + versaoAtual + " antigo detectado na pagina — substituindo pela v" + FH_VERSAO + "."); try { var velho = document.getElementById("farmhard-popup"); if (velho) { velho.remove(); } } catch (e) {} try { if (typeof window.__FarmHardParar === "function") { window.__FarmHardParar(); } } catch (e) {} } window.__FarmHardAtivo = true; window.__FarmHardVersao = FH_VERSAO; function _FarmarAS() { /* Script Escrito por ThiioM :) - Ajustado - Farm Hard 1.0 */ /* Lockr Script */ !function(t,e){t.Lockr=function(t,e){"use strict";return e.prefix="",e._getPrefixedKey=function(t,e){return e=e||{},e.noPrefix?t:this.prefix+t},e.set=function(t,e,r){var a=this._getPrefixedKey(t,r);try{localStorage.setItem(a,JSON.stringify({data:e}))}catch(t){}},e.get=function(t,e,r){var a,i=this._getPrefixedKey(t,r);try{a=JSON.parse(localStorage.getItem(i))}catch(t){a=localStorage[i]?{data:localStorage.getItem(i)}:null}return null===a?e:"object"==typeof a&&void 0!==a.data?a.data:e},e}(t,{})}(this); let CLMinimo = 0; let UltimaCLLida = null; let AldeiasPuladasCL = 0;
     const LerCLMinimo = () => { const el = document.getElementById('fh-clmin'); CLMinimo = el ? (parseInt(el.value, 10) || 0) : 0; return CLMinimo; };
     const AtualizarStatusCL = () => { const el = document.getElementById('fh-clmin-status'); if (!el) { return; } if (CLMinimo <= 0) { el.style.color = '#8a8a8a'; el.innerText = 'desligado'; return; } if (UltimaCLLida === null) { el.style.color = '#ffb347'; el.innerText = 'lendo...'; return; } if (UltimaCLLida === -1) { el.style.color = '#ff8a6b'; el.innerText = 'CL nao lida'; return; } el.style.color = '#7ed17e'; el.innerText = 'CL: ' + UltimaCLLida + ' | puladas: ' + AldeiasPuladasCL; };
-    /* Le a cavalaria leve disponivel na aldeia a partir do HTML da propria pagina am_farm
-       que o script ja busca. Tenta varios formatos porque o markup muda entre mundos. */
+    /* Le a cavalaria leve disponivel NA ALDEIA a partir da tabela
+       "Disponibilidade / Desta aldeia" da pagina am_farm (que o script ja busca).
+    
+       A versao anterior errava a coluna: procurava classes que nao existem nessa
+       tabela e acabava caindo num indice fixo, lendo o machado em vez da cavalaria.
+       Agora o indice da coluna e descoberto pelo cabecalho: acha a celula cuja
+       imagem e unit_light (independente de idioma) e le a MESMA posicao na linha
+       de numeros. */
     const LerCavalariaDisponivel = (data) => {
       try {
-        const doc = $(data);
-        const tentativas = [
-          () => doc.find('#units_home .unit-item-light').first().text(),
-          () => doc.find('.unit-item-light').first().text(),
-          () => doc.find('#units_home td.unit-item[data-unit="light"]').first().text(),
-          () => doc.find('[data-unit="light"]').first().text(),
-          () => doc.find('#units_home tr').eq(1).find('td').eq(3).text()
-        ];
-        for (let i = 0; i < tentativas.length; i++) {
-          let bruto = '';
-          try { bruto = tentativas[i]() || ''; } catch (e) { bruto = ''; }
-          bruto = String(bruto).replace(/[^0-9]/g, '');
-          if (bruto !== '') { return parseInt(bruto, 10); }
+        const doc = new DOMParser().parseFromString(String(data), "text/html");
+        const tabela = doc.querySelector("#units_home") || doc.querySelector("table.vis");
+        if (!tabela) { return -1; }
+        const linhas = Array.prototype.slice.call(tabela.querySelectorAll("tr"));
+    
+        let coluna = -1;
+        for (let l = 0; l < linhas.length && coluna === -1; l++) {
+          const cels = Array.prototype.slice.call(linhas[l].children);
+          for (let c = 0; c < cels.length; c++) {
+            const img = cels[c].querySelector("img");
+            const src = img ? (img.getAttribute("src") || "") : "";
+            const titulo = cels[c].getAttribute("title") || "";
+            if (/unit_light\./i.test(src) || /cavalaria leve|light cavalry|leichte kavallerie/i.test(titulo)) {
+              coluna = c;
+              break;
+            }
+          }
+        }
+        if (coluna === -1) { return -1; }
+    
+        for (let l = 0; l < linhas.length; l++) {
+          const cels = Array.prototype.slice.call(linhas[l].children);
+          const cel = cels[coluna];
+          if (!cel || cel.tagName === "TH") { continue; }
+          const bruto = String(cel.textContent).replace(/[^0-9]/g, "");
+          if (bruto !== "") { return parseInt(bruto, 10); }
         }
       } catch (e) {}
       return -1;
@@ -1255,15 +1307,41 @@
           checkPassComplete();
         };
     
+        var MAX_TENTATIVAS_ALDEIA = 8;
+    
         checkPassComplete = function () {
           if (!allConfirmsDone) return; // ainda tem confirmação em andamento, espera
           if (sendSettledCount < confirmedForSend) return; // ainda faltam envios terminarem
           startCycleCountdown();
+    
+          // BUG CORRIGIDO: antes a condição era só "!aldeias.length". Quando TODAS as
+          // aldeias já tinham saído de `aldeias` (as enviadas com sucesso saem, e as que
+          // caíram no limite de "5 no mesmo segundo" também saem — mas vão pra fila
+          // aldeiasAux), a rodada era encerrada e a fila de retentativa ia junto pro lixo.
+          // Resultado: de 100 comandos, os ~10 que bateram no limite nunca eram reenviados.
+          // Agora a rodada só fecha quando as DUAS filas estão vazias.
+          if (aldeiasAux.length) {
+            // Conta a tentativa de cada uma e desiste das que já insistiram demais,
+            // pra não criar um ciclo infinito martelando o servidor (risco de captcha).
+            var paraTentarDeNovo = [];
+            for (var t = 0; t < aldeiasAux.length; t++) {
+              var alv = aldeiasAux[t];
+              alv.tentativas = (alv.tentativas || 0) + 1;
+              if (alv.tentativas <= MAX_TENTATIVAS_ALDEIA) {
+                paraTentarDeNovo.push(alv);
+              } else {
+                console.warn("[AtaqueMass] desistindo de " + alv.coord + " -> " + alv.alvoC +
+                  " após " + (alv.tentativas - 1) + " tentativas.");
+              }
+            }
+            aldeiasAux = [];
+            aldeias = $.merge(aldeias, paraTentarDeNovo);
+          }
+    
           if (!aldeias.length) {
             finishRound();
           } else {
-            aldeias = $.merge(aldeias, aldeiasAux);
-            aldeiasAux = [];
+            console.log("[AtaqueMass] reenviando " + aldeias.length + " comando(s) que não passaram na passada anterior.");
             deuError = 1; // limpa a tabela antes de mostrar a nova tentativa (retry)
             firstRequest();
           }
@@ -2095,19 +2173,41 @@
 
       setInterval(function () {
         try {
+          // A caixa do loop vive dentro da área que o Ataque Mass redesenha a cada
+          // rodada — quando isso acontece ela some da tela. Aqui a gente recoloca
+          // sozinho assim que o botão de repetir reaparece.
+          if (document.getElementById('amxRepeatBtn') && !document.getElementById('ork-loop-ataque')) {
+            try { adicionarLoopAtaque(); } catch (e) {}
+          }
+
           var cfgV = lerConfigLoop();
           if (!cfgV.ativo) { return; }
 
           var confirmados = typeof window.confirmedForSend === 'number' ? window.confirmedForSend : 0;
           var liquidados = typeof window.sendSettledCount === 'number' ? window.sendSettledCount : 0;
           var confirmacoesFim = window.allConfirmsDone === true;
-          var restantes = (window.aldeias && window.aldeias.length) ? window.aldeias.length : 0;
+          // conta as duas filas: a principal e a de retentativa — uma rodada só
+          // acabou de verdade quando nenhuma das duas tem comando pendente
+          var restantes = ((window.aldeias && window.aldeias.length) ? window.aldeias.length : 0) +
+                          ((window.aldeiasAux && window.aldeiasAux.length) ? window.aldeiasAux.length : 0);
 
-          // Marca que uma rodada começou assim que o script confirma o 1º comando
-          if (confirmados > 0 && !window.__ORK_RodadaEmAndamento) {
+          // BUG CORRIGIDO: antes bastava "confirmados > 0" pra considerar que havia
+          // uma rodada em andamento. Só que esses contadores NÃO zeram quando a rodada
+          // acaba — ficam parados em 85/85, por exemplo. Resultado: logo depois de
+          // disparar uma leva nova, o vigia ainda via os números da leva ANTERIOR,
+          // achava que já tinha acabado e reagendava por cima, sem nunca esperar a
+          // rodada de verdade. Agora só conta como "em andamento" quando dá pra ver
+          // o script realmente trabalhando (confirmações abertas ou envios pendentes).
+          var emAndamento =
+            (window.allConfirmsDone === false) ||
+            (confirmados > 0 && liquidados < confirmados) ||
+            restantes > 0;
+
+          if (emAndamento && !window.__ORK_RodadaEmAndamento) {
             window.__ORK_RodadaEmAndamento = true;
             var stIni = document.getElementById('ork-loop-ataque-status');
             if (stIni) { stIni.textContent = '⏳ Rodada em andamento...'; }
+            console.log('[OROCHIKING] Loop: rodada em andamento detectada.');
           }
 
           if (!window.__ORK_RodadaEmAndamento) { return; }
@@ -2116,7 +2216,7 @@
 
           // Rodada terminou de verdade: confirmações acabaram, todos os envios
           // foram liquidados e não sobrou aldeia pendente de retry.
-          if (confirmacoesFim && liquidados >= confirmados && restantes === 0) {
+          if (!emAndamento && confirmacoesFim && liquidados >= confirmados && restantes === 0) {
             window.__ORK_RodadaEmAndamento = false;
             console.log('[OROCHIKING] Loop: rodada concluída (' + liquidados + ' envio(s)) — agendando a próxima.');
             agendarProximoLoopAtaque();
@@ -3429,11 +3529,40 @@
     return;
   }
 
+  /* ============================================================
+     TRAVA DE INSTÂNCIA ÚNICA, AGORA COM VERSÃO
+
+     Antes era um true/false simples. O efeito colateral: se uma cópia
+     ANTIGA do painel já tivesse rodado na página (por exemplo, um
+     segundo script do OROCHIKING ainda ativo no Tampermonkey, ou o
+     loader antigo apontando pro outro repositório), a cópia NOVA
+     desistia em silêncio e você continuava vendo a interface velha —
+     parecendo que a atualização no GitHub não tinha pegado.
+
+     Agora, se a cópia que já está na página for mais antiga, ela é
+     removida e esta assume. E se houver duas cópias instaladas, o
+     aviso abaixo aparece pra você saber que precisa desativar uma.
+  ============================================================ */
+  var ORK_PAINEL_VERSAO = 23;
+
   if (window.__OROCHIKING_PAINEL_ATIVO__) {
-    var jaAberto = document.getElementById('ork-painel');
-    if (jaAberto) { jaAberto.style.display = 'block'; return; }
+    var versaoNaPagina = window.__ORK_PAINEL_VERSAO__ || 0;
+    if (versaoNaPagina >= ORK_PAINEL_VERSAO) {
+      var jaAberto = document.getElementById('ork-painel');
+      if (jaAberto) { jaAberto.style.display = 'block'; return; }
+    } else {
+      console.warn('[OROCHIKING] Painel v' + versaoNaPagina + ' (antigo) já estava na página — substituindo pela v' + ORK_PAINEL_VERSAO + '.');
+      try {
+        var painelVelho = document.getElementById('ork-painel');
+        if (painelVelho) { painelVelho.remove(); }
+        var estiloVelho = document.getElementById('ork-style');
+        if (estiloVelho) { estiloVelho.remove(); }
+      } catch (e) {}
+      window.__ORK_DUPLICADO__ = true;
+    }
   }
   window.__OROCHIKING_PAINEL_ATIVO__ = true;
+  window.__ORK_PAINEL_VERSAO__ = ORK_PAINEL_VERSAO;
 
   /* ============================================================
      ESTILO
@@ -3509,6 +3638,7 @@
       '<div id="ork-status"></div>' +
     '</div>' +
     '<div id="ork-footer">' +
+      (window.__ORK_DUPLICADO__ ? '<span style="color:#ff9d5c">⚠ Há outra cópia do painel instalada no Tampermonkey — desative a antiga.</span><br>' : '') +
       (textoLicenca() ? '🔑 ' + textoLicenca() + '<br>' : '') +
       'Escolha a aba e clique em Ativar — o script já abre no lugar certo.' +
     '</div>';
