@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      32.0
+// @version      33.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -2772,6 +2772,7 @@
                 "<button type='button' class='amx-chip' data-tpl='fullnt'><span>👑 Full + NT (4 nobres)</span></button>" +
                 "<button type='button' class='amx-chip' data-tpl='fullnobre'><span>👑 Full + 1 Nobre</span></button>" +
                 "<button type='button' class='amx-chip' data-tpl='noblarbarbara'><span>🎯 Noblar Bárbara</span></button>" +
+                "<button type='button' class='amx-chip' data-tpl='backtime'><span>⏱️ Back Time Player</span></button>" +
               "</div>" +
     
               "<span class='amx-label' style='margin-top:12px'>Tropas por envio</span>" +
@@ -2856,6 +2857,9 @@
             fullnobre: { axe: 100000, light: 100000, marcher: 100000, spy: 100000, ram: 100000, catapult: 100000, knight: 100000, snob: 1 },
             // Noblar Bárbara: 25 cavalaria leve + 1 nobre (número fixo, não "máximo")
             noblarbarbara: { light: 25, snob: 1 },
+            // Back Time Player: espadachim + bárbaro + cavalaria leve + cavalaria pesada no máximo,
+            // 25 exploradores fixos (não "máximo") — modelo definido pelo usuário
+            backtime: { sword: 100000, axe: 100000, spy: 25, light: 100000, heavy: 100000 },
           };
     
           $("#amxTroopTemplates").on("click", "button[data-tpl]", function (e) {
