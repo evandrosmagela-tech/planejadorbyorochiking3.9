@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      27.0
+// @version      28.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -1845,6 +1845,24 @@
               } else {
                 usefullVillages();
               }
+    
+              // A partir da 2a rodada a tabela de aldeias da pagina ja foi substituida
+              // pela tabela de RESULTADOS — nao existe mais .chkbox nem .quickedit-vn pra
+              // ler, entao a lista saia vazia e a rodada morria com "0/0 aldeias".
+              // Solucao: guardar a lista da 1a rodada e reusar quando a pagina nao tiver mais.
+              if (!aldeias.length && window.__ORK_AldeiasBase && window.__ORK_AldeiasBase.length) {
+                aldeias.splice(0, aldeias.length);
+                for (var _b = 0; _b < window.__ORK_AldeiasBase.length; _b++) {
+                  aldeias.push(new Aldeia(window.__ORK_AldeiasBase[_b].coord, window.__ORK_AldeiasBase[_b].id));
+                }
+                console.log("[AtaqueMass] lista de aldeias restaurada da rodada anterior (" + aldeias.length + ").");
+              } else if (aldeias.length) {
+                window.__ORK_AldeiasBase = [];
+                for (var _g = 0; _g < aldeias.length; _g++) {
+                  window.__ORK_AldeiasBase.push({ coord: aldeias[_g].coord, id: aldeias[_g].id });
+                }
+              }
+    
               console.log("[AtaqueMass] aldeias próprias carregadas:", aldeias.length);
               sortCoords();
               $("#combined_table tbody tr").remove();
