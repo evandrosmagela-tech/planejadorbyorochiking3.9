@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      31.0
+// @version      32.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -209,6 +209,1085 @@
     console.warn('[OROCHIKING] Painel bloqueado: ' +
       (temLoaderDeLicenca() ? 'licença não liberada para este nick.' : 'nick fora da lista local.'));
     return;
+  }
+
+  /* ============================================================
+     COLETOR HARD FARMING — ícone flutuante sempre disponível
+
+     Diferente dos outros coletores (que precisam de uma tela específica,
+     tipo o Mapa), esse script busca tudo sozinho por trás dos panos (via
+     fetch), então não depende de estar em nenhuma tela em particular.
+     Por isso ele não vira uma aba com "Ativar" — o próprio ícone
+     dourado fica flutuando no canto da tela o tempo todo, em qualquer
+     lugar do jogo, exatamente como no popup original que você mandou.
+  ============================================================ */
+  try {
+    (function () {
+    
+      if (typeof window.game_data === 'undefined' || !window.game_data || !window.game_data.village) return;
+      if (window.__OROCHIKING_COLETOR__) return;
+      window.__OROCHIKING_COLETOR__ = true;
+    
+      const game_data = window.game_data;
+    
+      const CONFIG_PADRAO = {
+        ativo: false,
+        grupo: '0',
+        raio: 20,
+        maxPorOrigem: 10,
+        pontosMin: 0,
+        pontosMax: 12500,
+        modelo: 'a',
+        pausa: 250,
+        detalhado: false,
+        repetirAlvo: false,
+        pularAssistente: true,
+        pularEmVoo: true,
+        repetir: false,
+        intervalo: 30,
+        aberto: true,
+        pos: null,
+      };
+    
+      const CHAVE_CONFIG = 'orochiking_cfg_' + location.host;
+      const UNIDADES = ['spear', 'sword', 'axe', 'archer', 'spy', 'light', 'marcher', 'heavy', 'ram', 'catapult', 'knight'];
+    
+      let cfg = carregarConfig();
+      let parar = false;
+      let rodando = false;
+      let timerAuto = null;
+      let motivoFim = '';
+    
+      const dorme = (ms) => new Promise((r) => setTimeout(r, ms));
+      const dist = (a, b) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+    
+      function carregarConfig() {
+        try {
+          const salvo = JSON.parse(localStorage.getItem(CHAVE_CONFIG) || '{}');
+          return Object.assign({}, CONFIG_PADRAO, salvo && typeof salvo === 'object' ? salvo : {});
+        } catch (e) { return Object.assign({}, CONFIG_PADRAO); }
+      }
+    
+      function salvarConfig() {
+        try { localStorage.setItem(CHAVE_CONFIG, JSON.stringify(cfg)); } catch (e) { /* quota */ }
+      }
+    
+      // ============================================================
+      // INTERFACE COM DESIGN OROCHIKING
+      // ============================================================
+      const LOGO_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        + '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>';
+      const FECHAR_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18 M6 6 18 18"/></svg>';
+      const ENGRENAGEM_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m2.12 2.12l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m2.12-2.12l4.24-4.24M19.78 19.78l-4.24-4.24m-2.12-2.12l-4.24-4.24"/></svg>';
+    
+      const host = document.createElement('div');
+      host.id = 'orochiking_host';
+      host.style.cssText = 'position:fixed;z-index:2147483000;top:0;left:0;width:0;height:0;';
+      document.body.appendChild(host);
+      const raiz = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
+    
+      raiz.innerHTML = `
+    <style>
+      :host, * { box-sizing: border-box; }
+    
+      .btn-flutuante {
+        position: fixed; right: 20px; bottom: 20px; width: 54px; height: 54px; border-radius: 50%;
+        background: linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);
+        color: #1a1400; border: 1px solid rgba(255,196,0,.35); cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 10px 26px rgba(0,0,0,.5), 0 0 0 1px rgba(0,0,0,.35);
+        font-family: 'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;
+        font-weight: 800; transition: all .2s ease;
+      }
+      .btn-flutuante:hover { transform: scale(1.07); box-shadow: 0 12px 30px rgba(0,0,0,.6); }
+      .btn-flutuante svg { width: 26px; height: 26px; }
+      .btn-flutuante.on { animation: pulse 1.8s infinite; }
+    
+      @keyframes pulse {
+        0%, 100% { box-shadow: 0 10px 26px rgba(0,0,0,.5), 0 0 0 1px rgba(0,0,0,.35); }
+        50% { box-shadow: 0 10px 26px rgba(0,0,0,.5), 0 0 0 6px rgba(232,172,10,.35); }
+      }
+    
+      .painel {
+        position: fixed; right: 20px; bottom: 84px; width: 340px;
+        background: linear-gradient(165deg, rgba(26,26,26,.97), rgba(8,8,8,.98));
+        backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        color: #ececec; border: 1px solid rgba(255,196,0,.16); border-radius: 16px;
+        box-shadow: 0 24px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.4);
+        font: 12px/1.5 'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;
+        overflow: hidden;
+      }
+    
+      .cabecalho {
+        background: linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);
+        color: #1a1400; padding: 12px 14px; cursor: move; user-select: none;
+        display: flex; align-items: center; gap: 10px;
+        box-shadow: 0 1px 0 rgba(255,255,255,.35) inset;
+        font-weight: 800; font-size: 12.5px; text-transform: uppercase; letter-spacing: 1px;
+      }
+    
+      .cabecalho svg { width: 17px; height: 17px; flex-shrink: 0; }
+    
+      .titulo { flex: 1; }
+    
+      .fechar { width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(0,0,0,.08); color: #1a1400;
+        cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center;
+        transition: background .15s ease; }
+      .fechar:hover { background: rgba(0,0,0,.22); }
+    
+      .fechar svg { width: 15px; height: 15px; }
+    
+      .corpo { padding: 14px; max-height: 65vh; overflow-y: auto; }
+    
+      .secao-titulo { margin: 16px 0 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px;
+        color: #ffd84d; font-weight: 800; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    
+      .linha { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+    
+      .linha label { color: #bbb; font-size: 11px; }
+    
+      input[type=text], input[type=number], select {
+        width: 110px; background: #111; color: #ececec; border: 1px solid rgba(255,255,255,.12); border-radius: 7px;
+        padding: 6px 8px; font: inherit; text-align: right; font-weight: 600;
+      }
+    
+      select { text-align: left; }
+    
+      input[type=text]:focus, input[type=number]:focus, select:focus {
+        outline: none; border-color: #e8ac0a;
+      }
+    
+      .chave { display: flex; align-items: center; gap: 8px; margin: 8px 0; cursor: pointer; color: #bbb; font-size: 11px; }
+    
+      .chave input { accent-color: #e8ac0a; cursor: pointer; }
+    
+      .mestre {
+        background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.075); border-radius: 12px;
+        padding: 11px 13px; margin-bottom: 12px;
+      }
+    
+      .mestre strong { color: #ffd84d; font-size: 12px; }
+    
+      .selo { font-size: 9.5px; padding: 3px 10px; border-radius: 20px; background: rgba(255,255,255,.06);
+        color: #8a8a8a; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; }
+    
+      .selo.on { background: #1a1400; color: #ffcf3d; }
+    
+      .acoes { display: flex; gap: 8px; margin-top: 14px; }
+    
+      .acoes button {
+        flex: 1; padding: 9px 12px; border-radius: 9px; border: 1px solid rgba(255,255,255,.14); cursor: pointer;
+        background: #1c1c1c; color: #ffd84d; font: inherit; font-weight: 800; text-transform: uppercase;
+        font-size: 10.5px; letter-spacing: .4px; transition: all .15s ease;
+      }
+    
+      .acoes button.primario {
+        background: linear-gradient(100deg,#e8ac0a,#ffdc63); color: #1a1400; border-color: transparent;
+        box-shadow: 0 6px 16px rgba(232,172,10,.25);
+      }
+    
+      .acoes button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+    
+      .acoes button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    
+      .status { margin-top: 12px; font-weight: 700; color: #ffd84d; font-size: 11.5px; padding: 9px 10px;
+        background: rgba(232,172,10,.08); border-left: 3px solid #e8ac0a; border-radius: 8px; }
+    
+      .registro {
+        margin-top: 10px; max-height: 180px; overflow-y: auto; background: #111; border: 1px solid rgba(255,255,255,.1);
+        border-radius: 9px; padding: 9px; font-size: 10px; white-space: pre-wrap; color: #cbd5e1;
+        font-family: 'Consolas', 'Courier New', monospace;
+      }
+    
+      .oculto { display: none !important; }
+    
+      /* Scrollbar personalizado */
+      .corpo::-webkit-scrollbar, .registro::-webkit-scrollbar {
+        width: 6px;
+      }
+      .corpo::-webkit-scrollbar-track, .registro::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .corpo::-webkit-scrollbar-thumb, .registro::-webkit-scrollbar-thumb {
+        background: rgba(232,172,10,.5);
+        border-radius: 3px;
+      }
+      .corpo::-webkit-scrollbar-thumb:hover, .registro::-webkit-scrollbar-thumb:hover {
+        background: #ffd84d;
+      }
+    </style>
+    
+    <button class="btn-flutuante" id="bolha" title="Coletor Hard Farming">${LOGO_SVG}</button>
+    
+    <div class="painel oculto" id="painel">
+      <div class="cabecalho" id="alca">
+        ${ENGRENAGEM_SVG}
+        <span class="titulo">COLETOR HARD</span>
+        <span class="selo" id="selo">parado</span>
+        <button class="fechar" id="fechar">${FECHAR_SVG}</button>
+      </div>
+      
+      <div class="corpo">
+        <div class="mestre">
+          <strong>🔌 ATIVO</strong>
+          <label class="chave" style="margin:4px 0 0;"><input type="checkbox" id="ativo"> Ligar o coletor</label>
+        </div>
+        
+        <div class="secao-titulo">⚔️ Configuração de Farm</div>
+        <div class="linha"><label>Grupo de origens</label><input type="text" id="grupo" placeholder="0"></div>
+        <div class="linha"><label>Raio de ação (campos)</label><input type="number" id="raio" min="5" max="50"></div>
+        <div class="linha"><label>Máx. comandos/origem</label><input type="number" id="maxPorOrigem" min="1" max="100"></div>
+        <div class="linha"><label>Template do assistente</label>
+          <select id="modelo"><option value="a">Modelo A</option><option value="b">Modelo B</option></select></div>
+    
+        <div class="secao-titulo">🎯 Filtros de Alvo</div>
+        <div class="linha"><label>Pontos mín. da bárbara</label><input type="number" id="pontosMin"></div>
+        <div class="linha"><label>Pontos máx. da bárbara</label><input type="number" id="pontosMax"></div>
+        <label class="chave"><input type="checkbox" id="repetirAlvo"> Permite múltiplos ataques no mesmo alvo</label>
+        <label class="chave"><input type="checkbox" id="pularAssistente"> Pular alvos já no assistente</label>
+        <label class="chave"><input type="checkbox" id="pularEmVoo"> Pular alvos com ataque a caminho</label>
+    
+        <div class="secao-titulo">⏱️ Cronograma</div>
+        <div class="linha"><label>Pausa entre comandos (ms)</label><input type="number" id="pausa" min="100" max="5000"></div>
+        <label class="chave"><input type="checkbox" id="repetir"> Repetir ciclos automaticamente</label>
+        <div class="linha"><label>Intervalo entre ciclos (min)</label><input type="number" id="intervalo" min="5" max="1440"></div>
+        <label class="chave"><input type="checkbox" id="detalhado"> Log detalhado de cada comando</label>
+    
+        <div class="acoes">
+          <button class="primario" id="iniciar">▶ INICIAR</button>
+          <button id="parar">⏹ PARAR</button>
+        </div>
+        
+        <div class="status" id="status">Pronto para farming. Ative e clique em INICIAR.</div>
+        <div class="registro" id="registro"></div>
+      </div>
+    </div>`;
+    
+      const $ = (id) => raiz.getElementById(id);
+      const painel = $('painel');
+      const bolha = $('bolha');
+    
+      // ============================================================
+      // POPULACAO E EVENTOS DA INTERFACE
+      // ============================================================
+      ['grupo', 'raio', 'maxPorOrigem', 'pontosMin', 'pontosMax', 'pausa', 'intervalo'].forEach((k) => {
+        $(k).value = cfg[k];
+        $(k).addEventListener('change', () => {
+          const v = k === 'grupo' ? String($(k).value).trim() || '0' : parseInt($(k).value, 10);
+          cfg[k] = (k === 'grupo') ? v : (Number.isFinite(v) ? v : CONFIG_PADRAO[k]);
+          $(k).value = cfg[k];
+          salvarConfig();
+        });
+      });
+    
+      $('modelo').value = cfg.modelo === 'b' ? 'b' : 'a';
+      $('modelo').addEventListener('change', () => { cfg.modelo = $('modelo').value; salvarConfig(); });
+    
+      ['repetirAlvo', 'pularAssistente', 'pularEmVoo', 'repetir', 'detalhado'].forEach((k) => {
+        $(k).checked = !!cfg[k];
+        $(k).addEventListener('change', () => {
+          cfg[k] = $(k).checked;
+          salvarConfig();
+          if (k === 'repetir') agendarAuto();
+        });
+      });
+    
+      $('ativo').checked = !!cfg.ativo;
+      $('ativo').addEventListener('change', () => {
+        cfg.ativo = $('ativo').checked;
+        salvarConfig();
+        if (!cfg.ativo) {
+          parar = true;
+          cancelarAuto();
+          status('❌ Desativado.');
+        } else {
+          status('✓ Ativo. Clique em INICIAR.');
+          agendarAuto();
+        }
+        refletirEstado();
+      });
+    
+      bolha.addEventListener('click', () => {
+        cfg.aberto = painel.classList.contains('oculto');
+        aplicarAbertura();
+        salvarConfig();
+      });
+    
+      $('fechar').addEventListener('click', () => {
+        cfg.aberto = false;
+        aplicarAbertura();
+        salvarConfig();
+      });
+    
+      $('iniciar').addEventListener('click', () => { if (!rodando) executar(); });
+      $('parar').addEventListener('click', () => { parar = true; cancelarAuto(); status('⏹ Parando...'); });
+    
+      function aplicarAbertura() {
+        painel.classList.toggle('oculto', !cfg.aberto);
+      }
+    
+      function refletirEstado() {
+        const selo = $('selo');
+        if (rodando) {
+          selo.textContent = '⚡ RODANDO';
+          selo.classList.add('on');
+        } else if (cfg.ativo) {
+          selo.textContent = '✓ ATIVO';
+          selo.classList.add('on');
+        } else {
+          selo.textContent = 'parado';
+          selo.classList.remove('on');
+        }
+        bolha.classList.toggle('on', cfg.ativo);
+        $('iniciar').disabled = !cfg.ativo || rodando;
+      }
+    
+      // Arrasto do painel
+      (function arrastar() {
+        const alca = $('alca');
+        let ox = 0, oy = 0, ativoArrasto = false;
+        alca.addEventListener('mousedown', (e) => {
+          if (e.target.closest('.fechar')) return;
+          const r = painel.getBoundingClientRect();
+          ox = e.clientX - r.left;
+          oy = e.clientY - r.top;
+          ativoArrasto = true;
+          e.preventDefault();
+        });
+        document.addEventListener('mousemove', (e) => {
+          if (!ativoArrasto) return;
+          cfg.pos = { x: Math.max(0, e.clientX - ox), y: Math.max(0, e.clientY - oy) };
+          posicionar();
+        });
+        document.addEventListener('mouseup', () => {
+          if (ativoArrasto) { ativoArrasto = false; salvarConfig(); }
+        });
+      })();
+    
+      function posicionar() {
+        if (!cfg.pos) return;
+        painel.style.left = cfg.pos.x + 'px';
+        painel.style.top = cfg.pos.y + 'px';
+        painel.style.right = 'auto';
+        painel.style.bottom = 'auto';
+      }
+    
+      function status(txt) { $('status').textContent = txt; }
+    
+      function log(txt) {
+        const el = $('registro');
+        el.textContent += txt + '\n';
+        el.scrollTop = el.scrollHeight;
+        console.log('[OROCHIKING COLETOR]', txt);
+      }
+    
+      function det(txt) {
+        if (cfg.detalhado) log(txt);
+        else console.log('[OROCHIKING COLETOR]', txt);
+      }
+    
+      aplicarAbertura();
+      posicionar();
+      refletirEstado();
+    
+      // ============================================================
+      // CICLO AUTOMATICO
+      // ============================================================
+      function cancelarAuto() {
+        if (timerAuto) { clearTimeout(timerAuto); timerAuto = null; }
+      }
+    
+      function agendarAuto() {
+        cancelarAuto();
+        if (!cfg.ativo || !cfg.repetir) return;
+        const ms = Math.max(1, cfg.intervalo) * 60000;
+        timerAuto = setTimeout(() => {
+          if (cfg.ativo && cfg.repetir && !rodando) executar();
+        }, ms);
+        const hora = new Date(Date.now() + ms).toTimeString().slice(0, 5);
+        status($('status').textContent + ' ⏰ Próximo: ' + hora);
+      }
+    
+      // ============================================================
+      // CARREGAMENTO DE DADOS
+      // ============================================================
+      async function carregarOrigens(grupo) {
+        const base = '/game.php?village=' + game_data.village.id
+          + '&screen=overview_villages&mode=combined&group=' + encodeURIComponent(grupo);
+        const origens = [];
+    
+        const lerDoc = (doc) => {
+          doc.querySelectorAll('#combined_table tr.row_a, #combined_table tr.row_b').forEach((row) => {
+            try {
+              const vn = row.querySelector('.quickedit-vn');
+              if (!vn) return;
+              const id = parseInt(vn.getAttribute('data-id'), 10);
+              if (!Number.isFinite(id)) return;
+              const rotulo = (row.querySelector('.quickedit-label') || {}).textContent || '';
+              const c = rotulo.match(/(\d{1,3})\|(\d{1,3})/);
+              if (!c) return;
+              const tropas = {};
+              UNIDADES.forEach((u) => { tropas[u] = 0; });
+              const tipadas = row.querySelectorAll('[class*="unit-item-"]');
+              if (tipadas.length > 0) {
+                tipadas.forEach((cel) => {
+                  const m = (cel.className || '').match(/unit-item-([a-z]+)/);
+                  if (!m || !UNIDADES.includes(m[1])) return;
+                  tropas[m[1]] = parseInt((cel.textContent || '0').replace(/\D/g, ''), 10) || 0;
+                });
+              } else {
+                const cabecalhos = [];
+                doc.querySelectorAll('#combined_table th img').forEach((img) => {
+                  const m = (img.getAttribute('src') || '').match(/unit_([a-z]+)/);
+                  if (m) cabecalhos.push(m[1]);
+                });
+                row.querySelectorAll('.unit-item').forEach((cel, i) => {
+                  const chave = cabecalhos[i];
+                  if (!chave || !UNIDADES.includes(chave)) return;
+                  tropas[chave] = parseInt((cel.textContent || '0').replace(/\D/g, ''), 10) || 0;
+                });
+              }
+              origens.push({ id, x: +c[1], y: +c[2], coord: c[1] + '|' + c[2], tropas });
+            } catch (e) { console.warn('[OROCHIKING] linha de aldeia:', e); }
+          });
+        };
+    
+        const totalPaginas = (doc) => {
+          for (const sel of doc.querySelectorAll('select')) {
+            const opts = Array.from(sel.options || []).filter((o) => /[?&]page=/.test(o.value || ''));
+            const reais = opts.filter((o) => !/page=-1/.test(o.value));
+            if (reais.length > 0) return reais.length;
+          }
+          return 1;
+        };
+    
+        try {
+          const r1 = await fetch(base + '&page=-1&', { credentials: 'include' });
+          const doc1 = new DOMParser().parseFromString(await r1.text(), 'text/html');
+          const total = totalPaginas(doc1);
+          lerDoc(doc1);
+    
+          if (total > 100) {
+            for (let p = 101; p < total && !parar; p++) {
+              status('📚 Carregando aldeias - página ' + (p + 1) + '/' + total);
+              try {
+                const rp = await fetch(base + '&page=' + p + '&', { credentials: 'include' });
+                lerDoc(new DOMParser().parseFromString(await rp.text(), 'text/html'));
+              } catch (e) { console.warn('[OROCHIKING] página', p, e); }
+              await dorme(80);
+            }
+          }
+        } catch (e) {
+          console.warn('[OROCHIKING] carregarOrigens:', e);
+        }
+        return origens;
+      }
+    
+      async function carregarTemplates() {
+        const r = await fetch('/game.php?village=' + game_data.village.id + '&screen=am_farm', { credentials: 'include' });
+        const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+        const templates = {};
+        doc.querySelectorAll('form[action*="action=edit_all"] tr').forEach((tr) => {
+          try {
+            const idInput = tr.querySelector('input[type="hidden"][name*="template"][name*="[id]"]');
+            if (!idInput) return;
+            const icone = tr.previousElementSibling && tr.previousElementSibling.querySelector('a.farm_icon_a, a.farm_icon_b');
+            if (!icone) return;
+            const m = (icone.className || '').match(/farm_icon_([ab])\b/);
+            if (!m) return;
+            const tid = parseInt(idInput.value, 10);
+            if (!Number.isFinite(tid) || tid <= 0) return;
+            const unidades = {};
+            tr.querySelectorAll('input[type="text"], input[type="number"]').forEach((inp) => {
+              const chave = (inp.name || '').split('[')[0];
+              if (!UNIDADES.includes(chave)) return;
+              const q = parseInt(inp.value || '0', 10) || 0;
+              if (q > 0) unidades[chave] = q;
+            });
+            templates[m[1]] = { id: tid, unidades };
+          } catch (e) { console.warn('[OROCHIKING] template:', e); }
+        });
+        return templates;
+      }
+    
+      async function carregarConquistas() {
+        const donoAtual = new Map();
+        const maisRecente = new Map();
+        const aplicar = (texto) => {
+          for (const linha of texto.split('\n')) {
+            if (!linha) continue;
+            const p = linha.split(',');
+            if (p.length < 3) continue;
+            const id = +p[0];
+            const ts = +p[1] || 0;
+            if (!Number.isFinite(id)) continue;
+            if ((maisRecente.get(id) || 0) > ts) continue;
+            maisRecente.set(id, ts);
+            donoAtual.set(id, +p[2] || 0);
+          }
+        };
+        try {
+          const r = await fetch('/map/conquer.txt', { credentials: 'include' });
+          if (r.ok) {
+            const t = await r.text();
+            if (t && !/^\s*</.test(t)) { aplicar(t); return donoAtual; }
+          }
+        } catch (e) { console.warn('[OROCHIKING] conquer.txt:', e); }
+        return donoAtual;
+      }
+    
+      const SETOR = 20;
+      const SETORES_POR_PEDIDO = 8;
+    
+      async function carregarBarbarasAoVivo(origens, minhasIds, minhasCoords) {
+        const setores = new Map();
+        origens.forEach((o) => {
+          const x0 = Math.floor((o.x - cfg.raio) / SETOR) * SETOR;
+          const x1 = Math.floor((o.x + cfg.raio) / SETOR) * SETOR;
+          const y0 = Math.floor((o.y - cfg.raio) / SETOR) * SETOR;
+          const y1 = Math.floor((o.y + cfg.raio) / SETOR) * SETOR;
+          for (let sx = x0; sx <= x1; sx += SETOR) {
+            for (let sy = y0; sy <= y1; sy += SETOR) {
+              if (sx < 0 || sy < 0) continue;
+              setores.set(sx + '_' + sy, { sx, sy });
+            }
+          }
+        });
+    
+        const lista = [...setores.values()];
+        if (lista.length === 0) return null;
+    
+        const alvos = [];
+        const vistos = new Set();
+        let pedidos = 0;
+        let falhou = 0;
+    
+        for (let i = 0; i < lista.length && !parar; i += SETORES_POR_PEDIDO) {
+          const lote = lista.slice(i, i + SETORES_POR_PEDIDO);
+          const qs = lote.map((s) => s.sx + '_' + s.sy + '=1').join('&');
+          status('🗺️ Mapa ao vivo - ' + Math.min(i + lote.length, lista.length) + '/' + lista.length + ' setores');
+          try {
+            const r = await fetch('/map.php?v=2&' + qs, {
+              credentials: 'include',
+              headers: { 'x-requested-with': 'XMLHttpRequest' },
+            });
+            const j = await r.json();
+            const secs = Array.isArray(j) ? j : (j && Array.isArray(j.sectors) ? j.sectors : []);
+            pedidos++;
+            secs.forEach((sec) => {
+              const vilas = (sec && sec.data && sec.data.villages) || {};
+              Object.keys(vilas).forEach((dx) => {
+                Object.keys(vilas[dx]).forEach((dy) => {
+                  const c = vilas[dx][dy];
+                  if (!c) return;
+                  if (+c[4] !== 0) return;
+                  const id = +c[0];
+                  const x = (+sec.x) + (+dx);
+                  const y = (+sec.y) + (+dy);
+                  const coord = x + '|' + y;
+                  if (vistos.has(id)) return;
+                  if (minhasIds.has(id) || minhasCoords.has(coord)) return;
+                  const pts = parseInt(String(c[3] || '0').replace(/\D/g, ''), 10) || 0;
+                  if (pts < cfg.pontosMin || pts > cfg.pontosMax) return;
+                  vistos.add(id);
+                  alvos.push({ id, x, y, pontos: pts });
+                });
+              });
+            });
+          } catch (e) {
+            falhou++;
+            console.warn('[OROCHIKING] map.php lote', i, e);
+            if (falhou >= 3 && pedidos === 0) return null;
+          }
+          await dorme(120);
+        }
+        if (pedidos === 0) return null;
+        det('Mapa ao vivo: ' + lista.length + ' setores em ' + pedidos + ' pedido(s)');
+        return { alvos, fonte: 'mapa ao vivo', setores: lista.length };
+      }
+    
+      async function carregarBarbaras(minhasIds, minhasCoords) {
+        let texto = null;
+        try {
+          const r = await fetch('/map/village.txt', { credentials: 'include' });
+          if (r.ok) {
+            const t = await r.text();
+            if (t && t.length > 50 && !/^\s*</.test(t)) texto = t;
+          }
+        } catch (e) { console.warn('[OROCHIKING] village.txt:', e); }
+    
+        if (!texto) {
+          try {
+            const r = await fetch('/map/village.txt.gz', { credentials: 'include' });
+            if (r.ok && r.body && typeof DecompressionStream === 'function') {
+              texto = await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text();
+            }
+          } catch (e) { console.warn('[OROCHIKING] village.txt.gz:', e); }
+        }
+    
+        if (texto) {
+          const conquistas = await carregarConquistas();
+          const alvos = [];
+          let corrigidas = 0;
+          for (const linha of texto.split('\n')) {
+            if (!linha) continue;
+            const p = linha.split(',');
+            if (p.length < 6) continue;
+            const id = +p[0];
+            const dono = conquistas.has(id) ? conquistas.get(id) : (+p[4] || 0);
+            if (dono !== 0) { if (+p[4] === 0) corrigidas++; continue; }
+            const coord = (+p[2]) + '|' + (+p[3]);
+            if (minhasIds.has(id) || minhasCoords.has(coord)) continue;
+            const pts = +p[5] || 0;
+            if (pts < cfg.pontosMin || pts > cfg.pontosMax) continue;
+            alvos.push({ id, x: +p[2], y: +p[3], pontos: pts });
+          }
+          if (corrigidas > 0) det('Descartadas ' + corrigidas + ' aldeias já conquistadas.');
+          return { alvos, fonte: 'mapa' };
+        }
+    
+        log('⚠️ Dump do mapa indisponível - usando assistente de saque.');
+        const alvos = [];
+        const base = '/game.php?village=' + game_data.village.id + '&screen=am_farm&order=distance&dir=asc&Farm_page=';
+        let paginas = 1;
+        for (let p = 0; p < paginas && p < 50 && !parar; p++) {
+          const r = await fetch(base + p, { credentials: 'include' });
+          const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+          if (p === 0) {
+            for (const sel of doc.querySelectorAll('select')) {
+              const opts = Array.from(sel.options || []).filter((o) => /Farm_page=/.test(o.value || ''));
+              const reais = opts.filter((o) => !/Farm_page=-1/.test(o.value));
+              if (reais.length > 0) { paginas = reais.length; break; }
+            }
+          }
+          doc.querySelectorAll('#plunder_list tr[id^="village_"]').forEach((row) => {
+            const id = parseInt((row.id || '').split('_')[1], 10);
+            const link = row.querySelector('a[href*="screen=report&mode=all&view="]');
+            const c = link && (link.textContent || '').match(/(\d{1,3})\|(\d{1,3})/);
+            if (!Number.isFinite(id) || !c) return;
+            if (minhasIds.has(id) || minhasCoords.has(c[1] + '|' + c[2])) return;
+            alvos.push({ id, x: +c[1], y: +c[2], pontos: 0 });
+          });
+          await dorme(60);
+        }
+        return { alvos, fonte: 'assistente' };
+      }
+    
+      async function carregarAssistente() {
+        const ids = new Set();
+        const idsComAtaque = new Set();
+        let escondeAtacadas = false;
+        const base = '/game.php?village=' + game_data.village.id + '&screen=am_farm&order=distance&dir=asc&Farm_page=';
+        let paginas = 1;
+    
+        for (let p = 0; p < paginas && !parar; p++) {
+          status('📋 Assistente - página ' + (p + 1) + '/' + paginas);
+          let html = '';
+          try {
+            const r = await fetch(base + p, { credentials: 'include' });
+            html = await r.text();
+          } catch (e) { console.warn('[OROCHIKING] am_farm página', p, e); break; }
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          if (p === 0) {
+            escondeAtacadas = /farm\.hide_attacked\s*=\s*true/.test(html);
+            for (const sel of doc.querySelectorAll('select')) {
+              const opts = Array.from(sel.options || []).filter((o) => /Farm_page=/.test(o.value || ''));
+              const reais = opts.filter((o) => !/Farm_page=-1/.test(o.value));
+              if (reais.length > 0) { paginas = reais.length; break; }
+            }
+            if (paginas === 1) {
+              let max = 0;
+              doc.querySelectorAll('#plunder_list_nav a.paged-nav-item, a.paged-nav-item').forEach((a) => {
+                const m = (a.getAttribute('href') || '').match(/Farm_page=(\d+)/);
+                if (m && +m[1] + 1 > max) max = +m[1] + 1;
+              });
+              const atual = (doc.querySelector('#plunder_list_nav strong.paged-nav-item') || {}).textContent || '';
+              const ma = atual.match(/(\d+)/);
+              if (ma && +ma[1] > max) max = +ma[1];
+              if (max > paginas) paginas = max;
+            }
+          }
+          doc.querySelectorAll('#plunder_list tr[id^="village_"]').forEach((row) => {
+            const id = parseInt((row.id || '').split('_')[1], 10);
+            if (!Number.isFinite(id)) return;
+            ids.add(id);
+            const img = row.querySelector('img[src*="graphic/command/attack.webp"]');
+            const n = img ? parseInt(((img.getAttribute('data-title') || img.title || '').match(/\d+/) || ['0'])[0], 10) : 0;
+            if (n > 0) idsComAtaque.add(id);
+          });
+          await dorme(60);
+        }
+        return { ids, idsComAtaque, paginas, escondeAtacadas };
+      }
+    
+      async function carregarEmVoo() {
+        const coords = new Set();
+        const base = '/game.php?village=' + game_data.village.id
+          + '&screen=overview_villages&mode=commands&type=attack&group=0';
+    
+        const lerDoc = (doc) => {
+          doc.querySelectorAll('#commands_table tr.row_a, #commands_table tr.row_ax, #commands_table tr.row_b, #commands_table tr.row_bx')
+            .forEach((row) => {
+              const rotulo = row.querySelector('.quickedit-label');
+              const m = ((rotulo || {}).textContent || '').match(/(\d{1,3}\|\d{1,3})/);
+              if (m) coords.add(m[1]);
+            });
+        };
+    
+        try {
+          const r1 = await fetch(base + '&page=-1&&type=attack', { credentials: 'include' });
+          const doc1 = new DOMParser().parseFromString(await r1.text(), 'text/html');
+          lerDoc(doc1);
+          let total = 1;
+          for (const sel of doc1.querySelectorAll('select')) {
+            const opts = Array.from(sel.options || []).filter((o) => /[?&]page=/.test(o.value || ''));
+            const reais = opts.filter((o) => !/page=-1/.test(o.value));
+            if (reais.length > 0) { total = reais.length; break; }
+          }
+          if (total > 100) {
+            for (let p = 100; p < total && !parar; p++) {
+              status('✈️ Ataques em voo - página ' + (p + 1) + '/' + total);
+              try {
+                const rp = await fetch(base + '&page=' + p + '&&type=attack&', { credentials: 'include' });
+                lerDoc(new DOMParser().parseFromString(await rp.text(), 'text/html'));
+              } catch (e) { console.warn('[OROCHIKING] commands página', p, e); }
+              await dorme(50);
+            }
+          }
+        } catch (e) { console.warn('[OROCHIKING] ataques a caminho:', e); }
+        return coords;
+      }
+    
+      // ============================================================
+      // ENVIO DE COMANDOS
+      // ============================================================
+      const TIMEOUT_MS = 10000;
+      const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    
+      function classificar(status, texto, excecao) {
+        const t = semAcento(texto);
+        if (excecao === 'timeout') return { tipo: 'timeout', rotulo: 'Sem resposta em ' + (TIMEOUT_MS / 1000) + 's', fatal: false };
+        if (excecao) return { tipo: 'rede', rotulo: 'Falha de rede (' + excecao + ')', fatal: false };
+        if (status === 429) return { tipo: 'limite', rotulo: 'Limite de requisições (429)', fatal: false, esperar: 5000 };
+        if (status === 401 || status === 403) return { tipo: 'sessao', rotulo: 'Sessão recusada (HTTP ' + status + ')', fatal: true };
+        if (/bot_protection|bot protection|captcha|botprotect/.test(t)) return { tipo: 'captcha', rotulo: 'Proteção anti-bot ativa (captcha)', fatal: true };
+        if (/nao esta logado|not logged|login/.test(t) && /<html/.test(t)) return { tipo: 'sessao', rotulo: 'Sessão expirada - recarregue', fatal: true };
+        if (/token|csrf|chave.*invalid|invalid.*key/.test(t)) return { tipo: 'sessao', rotulo: 'Token inválido - recarregue', fatal: true };
+        if (/aldeias de jogadores|aldeia de jogador|player village|jogadores/.test(t)) {
+          return { tipo: 'alvo_jogador', rotulo: 'Alvo é aldeia de jogador (desatualizado)', fatal: false, brando: true, marcarAlvo: true };
+        }
+        if (/unidades suficientes|not enough units|enough troops|tropas suficientes/.test(t)) return { tipo: 'sem_tropa', rotulo: 'Origem sem tropa', fatal: false, brando: true, esgotaOrigem: true };
+        if (/nao existe|not exist|village not found|aldeia.*nao.*encontrad|invalid target|alvo invalido/.test(t)) {
+          return { tipo: 'alvo', rotulo: 'Alvo não existe mais', fatal: false, brando: true, marcarAlvo: true };
+        }
+        if (/propria aldeia|own village|atacar a si/.test(t)) return { tipo: 'alvo', rotulo: 'Alvo é sua aldeia', fatal: false, brando: true, marcarAlvo: true };
+        if (/limite|maximo|too many|excedid/.test(t)) return { tipo: 'limite_jogo', rotulo: 'Limite do jogo atingido', fatal: false };
+        if (status && status >= 500) return { tipo: 'servidor', rotulo: 'Servidor respondeu ' + status, fatal: false };
+        return { tipo: 'desconhecido', rotulo: 'Resposta inesperada', fatal: false };
+      }
+    
+      const CHAVE_DESCARTE = 'orochiking_descartados_' + location.host;
+      const VALIDADE_DESCARTE = 14 * 24 * 3600 * 1000;
+    
+      function lerDescartados() {
+        try {
+          const bruto = JSON.parse(localStorage.getItem(CHAVE_DESCARTE) || '{}');
+          const agora = Date.now();
+          const limpo = {};
+          Object.keys(bruto).forEach((id) => { if (agora - (bruto[id] || 0) < VALIDADE_DESCARTE) limpo[id] = bruto[id]; });
+          return limpo;
+        } catch (e) { return {}; }
+      }
+    
+      function gravarDescartados(mapa) {
+        try { localStorage.setItem(CHAVE_DESCARTE, JSON.stringify(mapa)); } catch (e) { /* quota */ }
+      }
+    
+      async function enviar(origemId, alvoId, templateId) {
+        const csrf = window.csrf_token || '';
+        if (!csrf) return { ok: false, diag: { tipo: 'sessao', rotulo: 'CSRF vazio - recarregue', fatal: true } };
+        const url = '/game.php?village=' + origemId + '&screen=am_farm&mode=farm&ajaxaction=farm&json=1';
+        const corpo = 'source=' + origemId + '&target=' + alvoId + '&template_id=' + templateId + '&h=' + encodeURIComponent(csrf);
+        const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+        const relogio = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (e) { } }, TIMEOUT_MS) : null;
+        try {
+          const r = await fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'accept': 'application/json, text/javascript, */*; q=0.01',
+              'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'tribalwars-ajax': '1',
+              'x-requested-with': 'XMLHttpRequest',
+            },
+            body: corpo,
+            signal: ctrl ? ctrl.signal : undefined,
+          });
+          if (relogio) clearTimeout(relogio);
+          const texto = await r.text();
+          let j = null;
+          try { j = JSON.parse(texto); } catch (e) { }
+          if (j && ((j.response && j.response.success) || j.success)) return { ok: true };
+          const motivo = (j && j.response && j.response.error) ? String(j.response.error)
+            : (j && j.error) ? (typeof j.error === 'string' ? j.error : JSON.stringify(j.error))
+            : texto;
+          return { ok: false, diag: classificar(r.status, motivo, null) };
+        } catch (e) {
+          if (relogio) clearTimeout(relogio);
+          const abortado = e && (e.name === 'AbortError' || /abort/i.test(e.message || ''));
+          return { ok: false, diag: classificar(0, '', abortado ? 'timeout' : ((e && e.message) || 'excecao')) };
+        }
+      }
+    
+      // ============================================================
+      // EXECUCAO PRINCIPAL
+      // ============================================================
+      async function executar() {
+        if (!cfg.ativo) {
+          status('🔴 Ative o interruptor primeiro.');
+          return;
+        }
+        parar = false;
+        rodando = true;
+        motivoFim = '';
+        let resumido = false;
+        const descartados = lerDescartados();
+        cancelarAuto();
+        refletirEstado();
+        $('registro').textContent = '';
+    
+        try {
+          log('═══════════════════════════════════════');
+          log('🚀 INICIANDO CICLO DE FARMING');
+          log('═══════════════════════════════════════');
+          
+          status('⚙️ Lendo templates...');
+          const templates = await carregarTemplates();
+          const tpl = templates[cfg.modelo];
+          if (!tpl) {
+            motivoFim = 'Modelo ' + cfg.modelo.toUpperCase() + ' não existe';
+            status('❌ ' + motivoFim);
+            return;
+          }
+          const composicao = Object.entries(tpl.unidades);
+          if (composicao.length === 0) {
+            motivoFim = 'Modelo ' + cfg.modelo.toUpperCase() + ' está vazio';
+            status('❌ ' + motivoFim);
+            return;
+          }
+          log('✓ Modelo ' + cfg.modelo.toUpperCase() + ' (id ' + tpl.id + '): ' + composicao.map(([u, q]) => q + ' ' + u).join(', '));
+    
+          status('📚 Carregando aldeias...');
+          const origens = await carregarOrigens(cfg.grupo);
+          if (origens.length === 0) {
+            motivoFim = 'Nenhuma aldeia no grupo ' + cfg.grupo;
+            status('❌ ' + motivoFim);
+            return;
+          }
+    
+          let comSpy = 0;
+          let spyTotal = 0;
+          origens.forEach((o) => {
+            let cota = cfg.maxPorOrigem;
+            composicao.forEach(([u, q]) => { cota = Math.min(cota, Math.floor((o.tropas[u] || 0) / q)); });
+            o.cota = Math.max(0, cota);
+            if ((o.tropas.spy || 0) > 0) { comSpy++; spyTotal += o.tropas.spy; }
+          });
+          const aptas = origens.filter((o) => o.cota > 0);
+          log('✓ Aldeias: ' + origens.length + ' | Com explorador: ' + comSpy + ' | Aptas: ' + aptas.length + ' | Teto: ' + aptas.reduce((s, o) => s + o.cota, 0) + ' comandos');
+    
+          if (aptas.length === 0) {
+            motivoFim = 'Nenhuma aldeia com tropa para o modelo';
+            status('❌ ' + motivoFim);
+            return;
+          }
+    
+          const minhasIds = new Set(origens.map((o) => o.id));
+          const minhasCoords = new Set(origens.map((o) => o.coord));
+          if (String(cfg.grupo) !== '0') {
+            try {
+              (await carregarOrigens('0')).forEach((v) => { minhasIds.add(v.id); minhasCoords.add(v.coord); });
+            } catch (e) { console.warn('[OROCHIKING] lista completa:', e); }
+          }
+    
+          status('🗺️ Carregando barbaras...');
+          let resultado = await carregarBarbarasAoVivo(aptas, minhasIds, minhasCoords);
+          if (!resultado) {
+            det('Map.php indisponível - usando dump.');
+            resultado = await carregarBarbaras(minhasIds, minhasCoords);
+          }
+          const { alvos, fonte } = resultado;
+          if (alvos.length === 0) {
+            motivoFim = 'Nenhum alvo encontrado';
+            status('⚠️ ' + motivoFim);
+            return;
+          }
+          log('✓ Barbaras: ' + alvos.length + ' (' + fonte + ')');
+    
+          let livres = alvos;
+          const cortes = [];
+          if (Object.keys(descartados).length > 0) {
+            const antes = livres.length;
+            livres = livres.filter((a) => !descartados[a.id]);
+            if (antes !== livres.length) cortes.push('-' + (antes - livres.length) + ' recusados antes');
+          }
+          if (cfg.pularAssistente) {
+            if (fonte === 'assistente') {
+              log('⚠️ Alvos do assistente - filtro ignorado');
+            } else {
+              const assist = await carregarAssistente();
+              const antes = livres.length;
+              livres = livres.filter((a) => !assist.ids.has(a.id));
+              if (antes !== livres.length) cortes.push('-' + (antes - livres.length) + ' no assistente');
+            }
+          }
+          if (cfg.pularEmVoo && !parar) {
+            status('✈️ Lendo ataques em voo...');
+            const emVoo = await carregarEmVoo();
+            const antes = livres.length;
+            livres = livres.filter((a) => !emVoo.has(a.x + '|' + a.y));
+            if (antes !== livres.length) cortes.push('-' + (antes - livres.length) + ' em voo');
+          }
+          log('✓ Alvos livres: ' + livres.length + (cortes.length ? ' (' + cortes.join(' | ') + ')' : ''));
+    
+          if (livres.length === 0) {
+            motivoFim = 'Todos os alvos já cobertos';
+            status('⚠️ ' + motivoFim);
+            return;
+          }
+    
+          status('🎯 Pareando origens e alvos...');
+          const pares = [];
+          const alvosNoRaio = new Set();
+          const limiteCandidatos = cfg.maxPorOrigem * 5;
+          aptas.forEach((o) => {
+            const perto = [];
+            for (const a of livres) {
+              if (Math.abs(a.x - o.x) > cfg.raio || Math.abs(a.y - o.y) > cfg.raio) continue;
+              const d = dist(o, a);
+              if (d > cfg.raio || d === 0) continue;
+              perto.push({ a, d });
+            }
+            perto.sort((p, q) => p.d - q.d);
+            perto.slice(0, limiteCandidatos).forEach(({ a, d }) => {
+              alvosNoRaio.add(a.id);
+              pares.push({ origem: o, alvo: a, d });
+            });
+          });
+          pares.sort((p, q) => p.d - q.d);
+    
+          const usadosPorOrigem = new Map();
+          const alvosUsados = new Set();
+          const plano = [];
+          for (const p of pares) {
+            const usados = usadosPorOrigem.get(p.origem.id) || 0;
+            if (usados >= p.origem.cota) continue;
+            if (!cfg.repetirAlvo && alvosUsados.has(p.alvo.id)) continue;
+            usadosPorOrigem.set(p.origem.id, usados + 1);
+            alvosUsados.add(p.alvo.id);
+            plano.push(p);
+          }
+          log('✓ Plano: ' + plano.length + ' comandos de ' + usadosPorOrigem.size + ' origens');
+    
+          if (plano.length === 0) {
+            motivoFim = 'Nenhum alvo no raio';
+            status('⚠️ ' + motivoFim);
+            return;
+          }
+    
+          log('═══════════════════════════════════════');
+          log('🎯 DISPARANDO ' + plano.length + ' COMANDOS');
+          log('═══════════════════════════════════════');
+    
+          let ok = 0;
+          let falhas = 0;
+          let durasSeguidas = 0;
+          const motivos = new Map();
+          const esgotadas = new Set();
+          let puladosPorOrigem = 0;
+          let novosDescartes = 0;
+          motivoFim = '';
+    
+          for (let i = 0; i < plano.length; i++) {
+            if (parar) { motivoFim = 'parado por você'; break; }
+            if (!cfg.ativo) { motivoFim = 'interruptor desligado'; break; }
+            const p = plano[i];
+            if (esgotadas.has(p.origem.id)) { puladosPorOrigem++; continue; }
+    
+            const r = await enviar(p.origem.id, p.alvo.id, tpl.id);
+            if (r.ok) {
+              ok++;
+              durasSeguidas = 0;
+              if (cfg.detalhado) log('  ✓ ' + p.origem.coord + ' → ' + p.alvo.x + '|' + p.alvo.y);
+            } else {
+              falhas++;
+              const d = r.diag;
+              motivos.set(d.rotulo, (motivos.get(d.rotulo) || 0) + 1);
+              if (cfg.detalhado) log('  ✗ ' + p.origem.coord + ' → ' + p.alvo.x + '|' + p.alvo.y + ': ' + d.rotulo);
+              if (d.marcarAlvo) { descartados[p.alvo.id] = Date.now(); novosDescartes++; }
+              if (d.esgotaOrigem) esgotadas.add(p.origem.id);
+              if (d.fatal) { motivoFim = d.rotulo; break; }
+              if (d.esperar) { await dorme(d.esperar); }
+              if (!d.brando) {
+                durasSeguidas++;
+                if (durasSeguidas >= 10) { motivoFim = '10 falhas seguidas'; break; }
+              }
+            }
+    
+            status('📤 ' + (i + 1) + '/' + plano.length + ' | ✓ ' + ok + ' | ✗ ' + falhas);
+            if (cfg.pausa > 0 && i < plano.length - 1) await dorme(cfg.pausa);
+          }
+    
+          if (novosDescartes > 0) gravarDescartados(descartados);
+          if (!motivoFim) motivoFim = 'ciclo concluído';
+          resumido = true;
+          
+          log('═══════════════════════════════════════');
+          log('✅ RESULTADO FINAL');
+          log('═══════════════════════════════════════');
+          log('Enviados: ' + ok);
+          log('Falhas: ' + falhas);
+          log('Pulados: ' + (puladosPorOrigem > 0 ? puladosPorOrigem : '0'));
+          log('Marcados: ' + (novosDescartes > 0 ? novosDescartes : '0'));
+          log('Status: ' + motivoFim);
+          
+          if (motivos.size > 0) {
+            log('Top erros:');
+            [...motivos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+              .forEach(([m, n]) => log('  ' + n + 'x ' + m));
+          }
+          log('═══════════════════════════════════════');
+          
+          status('✅ ' + ok + ' comandos - ' + motivoFim);
+        } catch (e) {
+          console.error('[OROCHIKING]', e);
+          motivoFim = 'erro: ' + ((e && e.message) || e);
+          resumido = true;
+          log('❌ Interrompido - ' + motivoFim);
+          status('❌ ' + motivoFim);
+        } finally {
+          rodando = false;
+          if (!motivoFim) motivoFim = 'encerrado';
+          if (!resumido) log('Encerrado sem envios.');
+          refletirEstado();
+          agendarAuto();
+        }
+      }
+    
+      // API de console/teste
+      window.__OROCHIKING__ = {
+        iniciar: executar,
+        parar: () => { parar = true; cancelarAuto(); },
+        cfg: () => cfg,
+        motivo: () => motivoFim,
+        raiz,
+      };
+    
+      if (cfg.ativo && cfg.repetir) agendarAuto();
+    })();
+    
+  } catch (e) {
+    console.error('[OROCHIKING] erro ao iniciar Coletor Hard Farming:', e);
   }
 
   /* ============================================================
