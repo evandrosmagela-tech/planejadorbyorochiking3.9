@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      29.0
+// @version      30.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -920,7 +920,7 @@
         startCountdown = function (rowIndex, fireAtMs) {
           stopCountdown(rowIndex);
           var cell = function () {
-            return $("#combined_table tbody tr:eq(" + rowIndex + ") td:eq(3)");
+            return $("#amxResultsTable tbody tr:eq(" + rowIndex + ") td:eq(3)");
           };
           var tick = function () {
             var rem = fireAtMs - Date.now();
@@ -1257,7 +1257,7 @@
               success: function (data) {
                 stopCountdown(aldeia.rowIndex);
                 if (!data.error) {
-                  $("#combined_table tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
+                  $("#amxResultsTable tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
                     .text("ENVIADO!")
                     .css("text-align", "center")
                     .css("color", "#0d1117")
@@ -1265,7 +1265,7 @@
                     .css("background-color", "#4ade80");
                   removeVillage(aldeia.id);
                 } else if (data.error != _("9a07c3a91c3f2b7a6a8bc675d1bcb913")) {
-                  $("#combined_table tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
+                  $("#amxResultsTable tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
                     .text("Erorr!")
                     .css("text-align", "center")
                     .css("color", "#fff")
@@ -1279,7 +1279,7 @@
                   // igual já fazíamos com rate-limit (429). Se tiver sincronismo de chegada
                   // ligado, empurra 1s a mais no horário-alvo dela a cada tentativa, senão
                   // ela cairia sempre no mesmo segundo lotado de novo.
-                  $("#combined_table tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
+                  $("#amxResultsTable tbody tr:eq(" + aldeia.rowIndex + ") td:eq(3)")
                     .text("5 no mesmo segundo — tentando de novo...")
                     .css("text-align", "center")
                     .css("color", "#1a0e05")
@@ -1368,8 +1368,7 @@
           var totalSegundaPassada = aldeias.length; // fixo: não muda mesmo com erros removendo aldeias durante a passada
           var concluidosSegundaPassada = 0; // conta CADA resposta (sucesso ou erro) uma única vez
           if (deuError) {
-            $("#combined_table tbody tr").remove();
-            $("#combined_table tbody").append(resultHeaderRow());
+            garantirTabelaResultados().empty().append(resultHeaderRow());
             deuError = 0;
           }
     
@@ -1440,7 +1439,7 @@
                         // fallback pra posição antiga, caso o texto do rótulo mude
                         aldeia.time = jQuery("table.vis:eq(0) tr:eq(3) td:eq(1)", data.response.dialog).text();
                       }
-                      $("#combined_table tbody").append(
+                      garantirTabelaResultados().append(
                         '<tr><td style="text-align:center"><a href="/game.php?village=' +
                           aldeia.id +
                           '">' +
@@ -1458,7 +1457,7 @@
                       // Guarda a linha exata dessa aldeia na tabela — as respostas do
                       // servidor não chegam necessariamente na mesma ordem das aldeias,
                       // então não dá pra confiar num contador sequencial pra achar a linha certa depois.
-                      aldeia.rowIndex = $("#combined_table tbody tr").length - 1;
+                      aldeia.rowIndex = garantirTabelaResultados().find("tr").length - 1;
                       i++;
                       confirmedForSend++;
                       scheduleSend(aldeia, syncOn, targetTs);
@@ -1518,6 +1517,22 @@
         // ----------------------------------------------------------
     
         // Linha de cabeçalho da tabela de resultados nativa do jogo
+        // Tabela de resultados SEPARADA da tabela de aldeias de origem (#combined_table).
+        // Antes o script reaproveitava a mesma tabela pra mostrar os resultados —
+        // isso APAGAVA as linhas com os checkboxes de origem, e a partir da 2a rodada
+        // não sobrava nenhuma aldeia pra reler. Guardar em cache era um remendo; a
+        // causa de verdade era essa. Agora os resultados vão pra uma tabela própria,
+        // e a tabela de origem nunca é tocada — fica sempre disponível pra reler.
+        garantirTabelaResultados = function () {
+          if (!$("#amxResultsTable").length) {
+            $(
+              '<table id="amxResultsTable" class="vis" style="margin-top:10px;width:100%">' +
+              "<tbody></tbody></table>"
+            ).insertAfter("#combined_table");
+          }
+          return $("#amxResultsTable tbody");
+        };
+    
         resultHeaderRow = function () {
           return (
             '<tr id="listCommands">' +
@@ -1874,8 +1889,7 @@
     
               console.log("[AtaqueMass] aldeias próprias carregadas:", aldeias.length);
               sortCoords();
-              $("#combined_table tbody tr").remove();
-              $("#combined_table tbody").append(resultHeaderRow());
+              garantirTabelaResultados().empty().append(resultHeaderRow());
               progressStart(aldeias.length);
               roundReturnAtMs = 0; // zera a estimativa de retorno da rodada anterior
               clearInterval(cycleTimer);
