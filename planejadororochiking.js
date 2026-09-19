@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      30.0
+// @version      31.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -1889,6 +1889,14 @@
     
               console.log("[AtaqueMass] aldeias próprias carregadas:", aldeias.length);
               sortCoords();
+    
+              // Esconde a tabela de origem (a que lista aldeia por aldeia com os ícones
+              // de tropa) assim que ela já foi lida. Ela precisa CONTINUAR existindo no
+              // DOM — é dela que a gente relê as origens em toda rodada nova — só não
+              // precisa mais aparecer na tela depois da primeira leitura. Sem isso, ela
+              // ficava visível o tempo todo, deixando a página gigante e cheia de scroll.
+              $("#combined_table").hide();
+    
               garantirTabelaResultados().empty().append(resultHeaderRow());
               progressStart(aldeias.length);
               roundReturnAtMs = 0; // zera a estimativa de retorno da rodada anterior
