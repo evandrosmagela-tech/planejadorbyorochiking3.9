@@ -4354,98 +4354,120 @@
 
   async function cunharUmaPaginaAjax(from) {
     // ==========================================================
-    // FORMATO REAL, capturado do próprio jogo (não é dedução):
+    // POR QUE IFRAME, E NÃO REQUISIÇÃO DIRETA:
     //
-    //   POST /game.php?village=X&screen=snob&ajaxaction=coin_multi&h=TOKEN
-    //   villages[125]=26&villages[188]=26&villages[269]=25&...
+    // A captura mostrou que o jogo envia villages[ID]=QTD pra cada aldeia.
+    // Só que esse mapeamento NÃO existe pronto no HTML — quem monta é o
+    // JavaScript do próprio jogo, no instante em que você clica em
+    // "Selecionar". Por isso tentar ler os campos da página baixada
+    // devolvia zero aldeias: eles simplesmente ainda não existem ali.
     //
-    // Ou seja: o corpo leva a quantidade INDIVIDUAL de cada aldeia
-    // (cada uma cunha o quanto consegue pagar). O botão "Selecionar"
-    // é só client-side — ele preenche os <select> de cada linha; quem
-    // envia de verdade é o botão "Cunhar moedas de ouro".
-    //
-    // Por isso aqui a gente lê o <select> de cada aldeia e pega a maior
-    // opção disponível nele, que é exatamente o que o "Selecionar" faria.
+    // A saída é reaproveitar o mecanismo que comprovadamente funciona
+    // (os dois cliques do script do ThiioM), só que numa aba invisível:
+    // carregamos a página de cunhagem num iframe escondido, deixamos o
+    // JS do jogo montar tudo, e damos os mesmos dois cliques. Uma página
+    // por vez (&from=0, &from=1000, ...), sem você precisar estar na tela
+    // e sem precisar de uma aba aberta por cada 1.000 aldeias.
     // ==========================================================
-    var baseUrl = '/game.php?village=' + game_data.village.id + '&screen=snob&mode=coin';
-    var urlPag  = baseUrl + '&from=' + from;
-
-    var resp = await fetch(urlPag, { credentials: 'include' });
-    var doc  = new DOMParser().parseFromString(await resp.text(), 'text/html');
-
-    // Cada aldeia tem seu próprio select, com o id dela no name: villages[ID]
-    var selects = doc.querySelectorAll('select[name^="villages["]');
-    if (!selects.length) {
-      console.log('[OROCHIKING] Cunhagem: nenhuma aldeia cunhável em from=' + from + '.');
+    if (window.__ORK_CAPTCHA_BLOQUEADO__) {
+      console.warn('[OROCHIKING] Cunhagem: captcha ativo — ciclo adiado.');
       return { cunhado: 0, temProxima: false };
     }
 
-    var partes = [];
-    selects.forEach(function (sel) {
-      var nome = sel.getAttribute('name') || '';
-      var ini = nome.indexOf('[');
-      var fim = nome.indexOf(']');
-      if (ini === -1 || fim === -1 || fim <= ini + 1) { return; }
-      var idAldeia = nome.substring(ini + 1, fim);
-      if (!idAldeia || isNaN(parseInt(idAldeia, 10))) { return; }
-      // maior quantidade que ESTA aldeia consegue cunhar (ignora "- nenhuma -")
-      var maior = 0;
-      for (var o = 0; o < sel.options.length; o++) {
-        var v = parseInt(sel.options[o].value, 10);
-        if (!isNaN(v) && v > maior) { maior = v; }
-      }
-      if (maior > 0) {
-        partes.push('villages[' + idAldeia + ']=' + maior);
-      }
-    });
+    var urlPag = '/game.php?village=' + game_data.village.id +
+                 '&screen=snob&mode=coin&from=' + from;
 
-    if (!partes.length) {
-      console.log('[OROCHIKING] Cunhagem: from=' + from + ' — nenhuma aldeia com recursos pra cunhar agora.');
-      var proxVazio = from + 1000;
-      return {
-        cunhado: 0,
-        temProxima: !!doc.querySelector('a[href*="from=' + proxVazio + '"]') || selects.length >= 1000
+    return await new Promise(function (resolve) {
+      var iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1200px;height:800px;opacity:0;border:0';
+      iframe.src = urlPag;
+
+      var jaResolveu = false;
+      function terminar(resultado) {
+        if (jaResolveu) { return; }
+        jaResolveu = true;
+        try { iframe.remove(); } catch (e) {}
+        resolve(resultado);
+      }
+
+      // trava de segurança: se a página não carregar, não trava o ciclo pra sempre
+      var limite = setTimeout(function () {
+        console.warn('[OROCHIKING] Cunhagem: tempo esgotado em from=' + from + '.');
+        terminar({ cunhado: 0, temProxima: false });
+      }, 30000);
+
+      // O iframe pode disparar "carregado" mais de uma vez (o próprio clique em
+      // Cunhar pode fazer a página recarregar dentro dele). Sem essa trava, o
+      // ciclo rodaria de novo e cunharia em duplicidade.
+      var jaProcessou = false;
+      iframe.onload = function () {
+        if (jaProcessou) { return; }
+        jaProcessou = true;
+        setTimeout(function () {
+          try {
+            var doc = iframe.contentDocument;
+            var win = iframe.contentWindow;
+            if (!doc) { clearTimeout(limite); return terminar({ cunhado: 0, temProxima: false }); }
+
+            // Mesma checagem do script que funciona
+            var selects = doc.querySelectorAll('select.select_coins, select[class*="select_coins"]');
+            var qtdAldeias = selects.length;
+
+            // Tem próxima página? (link &from=N+1000 na paginação)
+            var proxFrom = from + 1000;
+            var temProxima = !!doc.querySelector('a[href*="from=' + proxFrom + '"]');
+
+            if (!qtdAldeias) {
+              console.log('[OROCHIKING] Cunhagem: from=' + from + ' — nenhuma aldeia cunhável aqui.');
+              clearTimeout(limite);
+              return terminar({ cunhado: 0, temProxima: temProxima });
+            }
+
+            var moedasAntes = lerTotalMoedas(doc);
+
+            // 1) "Selecionar" — o JS do jogo monta villages[ID]=QTD aqui
+            var btnSel = doc.getElementById('select_anchor_top');
+            if (btnSel) { btnSel.click(); }
+
+            // 2) "Cunhar moedas de ouro" — envia o que foi montado acima
+            setTimeout(function () {
+              try {
+                var btnCunhar = doc.querySelector('#coin_overview_table .mint_multi_button') ||
+                                doc.querySelector('.mint_multi_button');
+                if (btnCunhar) { btnCunhar.click(); }
+
+                // dá tempo do envio do jogo completar, e confere pelo total de moedas
+                setTimeout(function () {
+                  var moedasDepois = null;
+                  try { moedasDepois = lerTotalMoedas(iframe.contentDocument || doc); } catch (e) {}
+
+                  if (moedasAntes !== null && moedasDepois !== null && moedasDepois > moedasAntes) {
+                    console.log('[OROCHIKING] Cunhagem: from=' + from + ' — ' + qtdAldeias +
+                      ' aldeia(s) | moedas ' + moedasAntes + ' -> ' + moedasDepois +
+                      ' (+' + (moedasDepois - moedasAntes) + ')');
+                  } else {
+                    console.log('[OROCHIKING] Cunhagem: from=' + from + ' — ' + qtdAldeias +
+                      ' aldeia(s) processada(s).');
+                  }
+                  clearTimeout(limite);
+                  terminar({ cunhado: qtdAldeias, temProxima: temProxima });
+                }, 2500);
+              } catch (e) {
+                console.error('[OROCHIKING] Cunhagem: erro ao cunhar em from=' + from + ':', e);
+                clearTimeout(limite);
+                terminar({ cunhado: 0, temProxima: temProxima });
+              }
+            }, 700);
+          } catch (e) {
+            console.error('[OROCHIKING] Cunhagem: erro no iframe from=' + from + ':', e);
+            clearTimeout(limite);
+            terminar({ cunhado: 0, temProxima: false });
+          }
+        }, 900); // deixa o JS do jogo terminar de montar a tela
       };
-    }
 
-    var moedasAntes = lerTotalMoedas(doc);
-
-    // O mesmo POST que o botão do jogo dispara
-    await fetch('/game.php?village=' + game_data.village.id +
-                '&screen=snob&ajaxaction=coin_multi&h=' + csrf_token, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'TribalWars-Ajax': '1',
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      body: partes.join('&')
+      document.body.appendChild(iframe);
     });
-
-    // Confere pelo total de moedas se cunhou mesmo
-    var moedasDepois = null;
-    try {
-      var respConf = await fetch(urlPag, { credentials: 'include' });
-      moedasDepois = lerTotalMoedas(new DOMParser().parseFromString(await respConf.text(), 'text/html'));
-    } catch (e) {}
-
-    if (moedasAntes !== null && moedasDepois !== null) {
-      if (moedasDepois > moedasAntes) {
-        console.log('[OROCHIKING] Cunhagem: from=' + from + ' — ' + partes.length +
-          ' aldeia(s) | moedas ' + moedasAntes + ' -> ' + moedasDepois +
-          ' (+' + (moedasDepois - moedasAntes) + ')');
-      } else {
-        console.warn('[OROCHIKING] Cunhagem: from=' + from + ' — enviei ' + partes.length +
-          ' aldeia(s) mas o total de moedas não subiu (' + moedasDepois + ').');
-      }
-    } else {
-      console.log('[OROCHIKING] Cunhagem: from=' + from + ' — ' + partes.length + ' aldeia(s) enviada(s).');
-    }
-
-    var proxFrom = from + 1000;
-    var temProxima = !!doc.querySelector('a[href*="from=' + proxFrom + '"]') || selects.length >= 1000;
-    return { cunhado: partes.length, temProxima: temProxima };
   }
 
   async function cunharTodasAsPaginasAjax() {
