@@ -4297,6 +4297,10 @@
       if (cunharTimeoutId) { clearTimeout(cunharTimeoutId); cunharTimeoutId = null; }
       var caixa = document.getElementById('ork-cunhar-status');
       if (caixa) caixa.remove();
+      var bolinha = document.getElementById('ork-cunhar-bolinha');
+      if (bolinha) bolinha.remove();
+      var estilo = document.getElementById('ork-cunhar-style');
+      if (estilo) estilo.remove();
     } catch (e) {}
   }
   // Clique manual direto na tela (usado só na primeira vez, se o usuário estiver
@@ -4328,61 +4332,82 @@
      mostram exatamente onde parou.
   ------------------------------------------------------------ */
   async function cunharUmaPaginaAjax(pagina) {
-    var url = '/game.php?village=' + game_data.village.id + '&screen=snob&mode=coin' +
-      (pagina > 0 ? '&page=' + pagina : '');
-    var resp = await fetch(url, { credentials: 'include' });
+    // A tela de cunhagem em massa usa input[type=button] (não <form>).
+    // Fluxo real confirmado pelo markup do seu mundo:
+    //   1. Carrega a página com page_size=1000 pra ver o máximo de aldeias de uma vez
+    //   2. Define a quantidade no select[name=coin_amount] (menor opção disponível = 1x)
+    //   3. Simula o clique em "Selecionar" (select_anchor_top) via POST
+    //   4. Simula o clique em "Cunhar moedas de ouro" (mint_multi_button) via POST
+    //   5. Detecta se tem próxima página pela paginação
+
+    var baseUrl = '/game.php?village=' + game_data.village.id + '&screen=snob&mode=coin';
+
+    // Primeiro: força page_size=1000 pra ver o máximo de aldeias por vez
+    var urlPag = baseUrl + (pagina > 0 ? '&page=' + pagina : '');
+    var resp = await fetch(urlPag + '&action=change_page_size&h=' + csrf_token, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'page_size=1000&Alterar=Alterar'
+    });
     var html = await resp.text();
     var doc = new DOMParser().parseFromString(html, 'text/html');
 
-    var botao = doc.querySelector('#coin_overview_table .mint_multi_button') ||
-                doc.querySelector('.mint_multi_button');
-    if (!botao) {
-      console.log('[OROCHIKING] Cunhagem: nenhum botão de cunhar em massa na página ' + pagina + ' — nada pra fazer aqui.');
-      return { cunhado: 0, temProxima: false };
-    }
-    var form = botao.closest('form');
-    if (!form) {
-      console.warn('[OROCHIKING] Cunhagem: achei o botão mas não achei o <form> dele na página ' + pagina + '. Avisa que eu ajusto.');
+    // Confere se a tela tem o botão de cunhar
+    var btnCunhar = doc.querySelector('.mint_multi_button');
+    if (!btnCunhar) {
+      console.log('[OROCHIKING] Cunhagem: nenhum botão de cunhar na página ' + pagina + '.');
       return { cunhado: 0, temProxima: false };
     }
 
-    // marca todas as aldeias da página (equivalente a clicar "selecionar tudo")
-    var checkboxes = form.querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach(function (cb) { cb.checked = true; });
+    // Pega a menor quantidade disponível no select (tipicamente "1x" = menor opção)
+    var select = doc.querySelector('select[name="coin_amount"]');
+    var menorQtd = select
+      ? [...select.querySelectorAll('option')].reduce(function (min, op) {
+          return parseInt(op.value) < parseInt(min) ? op.value : min;
+        }, select.options[0] ? select.options[select.options.length - 1].value : '1')
+      : '1';
+    // Na prática queremos cunhar o máximo — 1x é a opção mais baixa disponível,
+    // mas o "Selecionar" vai preencher todas as aldeias com o valor do select.
+    // Coloca o valor máximo disponível (primeiro da lista, que é o maior no markup):
+    var maxQtd = select && select.options[0] ? select.options[0].value : menorQtd;
+    console.log('[OROCHIKING] Cunhagem: quantidade por aldeia = ' + maxQtd + 'x');
 
-    // reproduz o MESMO envio que o formulário faria, lendo os campos dele agora
-    // (em vez de eu supor nomes fixos) — inclui o token csrf que já estiver ali
-    var dados = new URLSearchParams();
-    form.querySelectorAll('input, select, textarea').forEach(function (campo) {
-      if (!campo.name) { return; }
-      if (campo.type === 'checkbox' || campo.type === 'radio') {
-        if (campo.checked) { dados.append(campo.name, campo.value); }
-      } else {
-        dados.append(campo.name, campo.value);
-      }
-    });
+    // Conta as aldeias visíveis (linhas com select de quantidade)
+    var linhasAldeias = doc.querySelectorAll('select[name="coin_amount"]');
+    var qtdAldeias = linhasAldeias.length;
+    if (!qtdAldeias) { qtdAldeias = 1; } // fallback
 
-    var acaoUrl = form.getAttribute('action') || url;
-    var metodo = (form.getAttribute('method') || 'POST').toUpperCase();
-    await fetch(acaoUrl, {
-      method: metodo,
+    // Simula clique em "Selecionar" (select_anchor_top) — seleciona todas as aldeias
+    // com a quantidade definida no select global
+    await fetch(baseUrl + '&action=select_coins&h=' + csrf_token, {
+      method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: dados.toString()
+      body: 'coin_amount=' + encodeURIComponent(maxQtd)
     });
 
-    // detecta se existe próxima página (várias formas, porque não sei o markup exato
-    // do seu mundo): link de "próxima" ainda ativo, OU essa página veio cheia (sugere
-    // que pode ter mais uma)
-    var linkProxima = doc.querySelector('.paged-nav-item-next:not(.paged-nav-item-disabled)') ||
-                       doc.querySelector('a.paged-nav-item[href*="page=' + (pagina + 1) + '"]');
-    var paginaCheia = checkboxes.length >= 1000;
-    var temProxima = !!linkProxima || paginaCheia;
+    // Pequena pausa entre selecionar e cunhar
+    await new Promise(function (res) { setTimeout(res, 200 + Math.random() * 150); });
 
-    console.log('[OROCHIKING] Cunhagem: página ' + pagina + ' — ' + checkboxes.length +
+    // Simula clique em "Cunhar moedas de ouro" (mint_multi_button)
+    await fetch(baseUrl + '&action=mint_coins&h=' + csrf_token, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'h=' + csrf_token
+    });
+
+    // Detecta próxima página
+    var temProxima = !!(
+      doc.querySelector('.paged-nav-item-next:not(.paged-nav-item-disabled)') ||
+      (qtdAldeias >= 1000)
+    );
+
+    console.log('[OROCHIKING] Cunhagem: página ' + pagina + ' — ~' + qtdAldeias +
       ' aldeia(s) cunhada(s). Tem próxima página? ' + temProxima);
 
-    return { cunhado: checkboxes.length, temProxima: temProxima };
+    return { cunhado: qtdAldeias, temProxima: temProxima };
   }
 
   async function cunharTodasAsPaginasAjax() {
@@ -4404,11 +4429,7 @@
       await new Promise(function (res) { setTimeout(res, 400 + Math.random() * 400); });
     }
     console.log('[OROCHIKING] Cunhagem: ciclo concluído — ' + total + ' aldeia(s) no total, em ' + (pagina + 1) + ' página(s).');
-    var caixa = document.getElementById('ork-cunhar-status');
-    if (caixa) {
-      var linha = caixa.querySelector('.ork-cunhar-ultimo');
-      if (linha) { linha.textContent = 'Última vez: ' + total + ' aldeia(s), ' + new Date().toLocaleTimeString(); }
-    }
+    atualizarStatusCunhar('Cunhagem ativa — última: ' + total + ' aldeia(s) em ' + (pagina + 1) + ' pág. — ' + new Date().toLocaleTimeString() + ' — clique pra parar');
     return total;
   }
 
@@ -4426,21 +4447,50 @@
     }, intervaloMs + jitterMs);
   }
   function mostrarStatusCunhar(cfg) {
-    if (document.getElementById('ork-cunhar-status')) return;
-    var caixa = document.createElement('div');
-    caixa.id = 'ork-cunhar-status';
-    caixa.style.cssText = 'position:fixed;bottom:20px;left:20px;background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));' +
-      'border:1px solid #3a3a3a;border-radius:14px;padding:12px 16px;z-index:9999996;width:210px;' +
-      'font-family:Verdana,Arial,sans-serif;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75);font-size:11.5px';
-    caixa.innerHTML =
-      '<div style="font-weight:800;color:#ffd84d;margin-bottom:6px">🪙 Cunhagem automática ativa</div>' +
-      '<div style="color:#9a9a9a;margin-bottom:8px">Atualiza e cunha a cada ' + Math.round(cfg.intervaloMs / 1000) + 's</div>' +
-      '<button id="ork-cunhar-parar" style="width:100%;background:#7a1f1f;color:#fff;border:none;border-radius:7px;' +
-        'padding:6px 8px;cursor:pointer;font-weight:800;font-size:11px">Parar</button>';
-    document.body.appendChild(caixa);
-    document.getElementById('ork-cunhar-parar').addEventListener('click', function () {
-      pararCunharPorSeguranca();
+    if (document.getElementById('ork-cunhar-bolinha')) return;
+
+    // Estilo idêntico ao botão flutuante do Coletor Hard Farming —
+    // discreta, não atrapalha, clica pra parar ou ver o status.
+    var btn = document.createElement('div');
+    btn.id = 'ork-cunhar-bolinha';
+    btn.title = 'Cunhagem ativa — clique pra parar';
+    btn.style.cssText = (
+      'position:fixed;left:20px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+      'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);' +
+      'color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;' +
+      'display:flex;align-items:center;justify-content:center;flex-direction:column;' +
+      'box-shadow:0 10px 26px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.35);' +
+      'font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;' +
+      'z-index:9999996;transition:all .2s;animation:orkCunharPulse 2s infinite;' +
+      'font-size:22px;line-height:1;'
+    );
+
+    // injeta a keyframe de pulse se ainda não existir
+    if (!document.getElementById('ork-cunhar-style')) {
+      var st = document.createElement('style');
+      st.id = 'ork-cunhar-style';
+      st.textContent = '@keyframes orkCunharPulse{0%,100%{box-shadow:0 10px 26px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.35)}50%{box-shadow:0 10px 26px rgba(0,0,0,.5),0 0 0 6px rgba(232,172,10,.35)}}';
+      document.head.appendChild(st);
+    }
+
+    btn.innerHTML = '<span>🪙</span><span style="font-size:8px;font-weight:800;margin-top:2px;letter-spacing:.3px">ATIVO</span>';
+
+    // tooltip ao passar o mouse
+    btn.addEventListener('mouseenter', function () {
+      var segs = Math.round(cfg.intervaloMs / 1000);
+      btn.title = 'Cunhagem ativa — a cada ' + (segs >= 60 ? Math.round(segs/60) + 'min' : segs + 's') + ' — clique pra parar';
     });
+    btn.addEventListener('click', function () {
+      if (confirm('Parar a cunhagem automática?')) {
+        pararCunharPorSeguranca();
+      }
+    });
+    document.body.appendChild(btn);
+  }
+
+  function atualizarStatusCunhar(texto) {
+    var btn = document.getElementById('ork-cunhar-bolinha');
+    if (btn) { btn.title = texto; }
   }
   function abrirModalCunhar() {
     if (document.getElementById('ork-modal-cunhar')) return;
