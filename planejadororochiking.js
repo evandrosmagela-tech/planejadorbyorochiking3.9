@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      33.0
+// @version      34.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -210,6 +210,61 @@
       (temLoaderDeLicenca() ? 'licença não liberada para este nick.' : 'nick fora da lista local.'));
     return;
   }
+
+  /* ============================================================
+     MANTER A ABA ATIVA EM SEGUNDO PLANO
+
+     O Chrome e outros navegadores, de propósito, "atrasam" o setTimeout/
+     setInterval de uma aba em segundo plano (minimizada ou em outra aba
+     do navegador) pra economizar bateria/CPU — depois de alguns minutos
+     em segundo plano, o navegador pode deixar até 1 MINUTO entre uma
+     chamada e outra, mesmo configurado pra rodar a cada poucos segundos.
+     É exatamente por isso que a Cunhagem (e qualquer timer do painel)
+     ficava atrasada só quando a aba não estava em foco.
+
+     A técnica pra evitar isso é tocar um som praticamente inaudível sem
+     parar: navegadores tratam abas "tocando algo" como abas ativas de
+     verdade e NÃO aplicam esse limite, porque cortar o áudio no meio
+     seria perceptível pro usuário. Isso vale pra TODOS os timers do
+     painel (Farm Hard, loop do Ataque, Cunhar Moedas, Coletor Hard
+     Farming, monitor de sessão, monitor de captcha) — não precisa
+     mexer em cada um separadamente.
+  ============================================================ */
+  (function manterAbaAtivaEmSegundoPlano() {
+    try {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) { return; }
+      var ctx = new AudioCtx();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      gain.gain.value = 0.00001; // praticamente inaudível
+      osc.frequency.value = 20;  // abaixo do que o ouvido humano capta
+      osc.type = 'sine';
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(0);
+
+      // Navegadores exigem uma interação do usuário pra "destravar" áudio
+      // (política de autoplay) — o AudioContext nasce suspenso até isso
+      // acontecer. Qualquer clique/tecla no painel já serve pra destravar.
+      function tentarRetomar() {
+        if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+          ctx.resume().catch(function () {});
+        }
+      }
+      tentarRetomar();
+      ['click', 'keydown', 'touchstart'].forEach(function (evento) {
+        document.addEventListener(evento, tentarRetomar, { passive: true });
+      });
+      // se o navegador suspender nele de novo com o tempo, insiste sozinho
+      setInterval(tentarRetomar, 15000);
+
+      window.__ORK_ABA_ATIVA__ = true;
+      console.log('[OROCHIKING] Mantendo a aba ativa em segundo plano — timers não devem mais atrasar quando minimizada.');
+    } catch (e) {
+      console.warn('[OROCHIKING] não consegui ativar o "manter aba ativa":', e);
+    }
+  })();
 
   /* ============================================================
      COLETOR HARD FARMING — ícone flutuante sempre disponível
@@ -2849,17 +2904,17 @@
           var troopTemplates = {
             // Ataque Full: bárbaro, cavalaria leve, arqueiro a cavalo, explorador, aríete, catapulta e paladino — "tudo que tiver disponível" (número alto = manda o máximo)
             full: { axe: 100000, light: 100000, marcher: 100000, spy: 100000, ram: 100000, catapult: 100000, knight: 100000 },
-            // Farmar Player: só cavalaria leve
-            farm: { light: 100000 },
+            // Farmar Player: explorador fixo (5) + cavalaria leve, pesada e catapulta no máximo
+            farm: { spy: 5, light: 100000, heavy: 100000, catapult: 100000 },
             // Full + NT: mesmas tropas do ataque full + 4 nobres
             fullnt: { axe: 100000, light: 100000, marcher: 100000, spy: 100000, ram: 100000, catapult: 100000, knight: 100000, snob: 4 },
             // Full + Nobre: mesma coisa, só 1 nobre
             fullnobre: { axe: 100000, light: 100000, marcher: 100000, spy: 100000, ram: 100000, catapult: 100000, knight: 100000, snob: 1 },
             // Noblar Bárbara: 25 cavalaria leve + 1 nobre (número fixo, não "máximo")
             noblarbarbara: { light: 25, snob: 1 },
-            // Back Time Player: espadachim + bárbaro + cavalaria leve + cavalaria pesada no máximo,
+            // Back Time Player: bárbaro + cavalaria leve + pesada + catapulta no máximo,
             // 25 exploradores fixos (não "máximo") — modelo definido pelo usuário
-            backtime: { sword: 100000, axe: 100000, spy: 25, light: 100000, heavy: 100000 },
+            backtime: { axe: 100000, spy: 25, light: 100000, heavy: 100000, catapult: 100000 },
           };
     
           $("#amxTroopTemplates").on("click", "button[data-tpl]", function (e) {
