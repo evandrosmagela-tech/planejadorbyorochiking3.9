@@ -4331,105 +4331,125 @@
      mundo (nome de campo diferente, paginação diferente), esses logs
      mostram exatamente onde parou.
   ------------------------------------------------------------ */
-  async function cunharUmaPaginaAjax(pagina) {
-    // A tela de cunhagem em massa usa input[type=button] (não <form>).
-    // Fluxo real confirmado pelo markup do seu mundo:
-    //   1. Carrega a página com page_size=1000 pra ver o máximo de aldeias de uma vez
-    //   2. Define a quantidade no select[name=coin_amount] (menor opção disponível = 1x)
-    //   3. Simula o clique em "Selecionar" (select_anchor_top) via POST
-    //   4. Simula o clique em "Cunhar moedas de ouro" (mint_multi_button) via POST
-    //   5. Detecta se tem próxima página pela paginação
+  // Lê o total de moedas de ouro a partir do HTML da página de cunhagem.
+  // Serve pra CONFERIR se a cunhagem realmente funcionou, em vez de
+  // depender do POST "parecer" certo — se o total subiu, funcionou.
+  function lerTotalMoedas(doc) {
+    try {
+      var linhas = doc.querySelectorAll('tr');
+      for (var i = 0; i < linhas.length; i++) {
+        var txt = (linhas[i].textContent || '').toLowerCase();
+        // procura a linha "Total:" dentro do bloco de Moedas de ouro
+        if (txt.indexOf('total') !== -1) {
+          var cels = linhas[i].querySelectorAll('td');
+          for (var c = 0; c < cels.length; c++) {
+            var n = String(cels[c].textContent).replace(/[^0-9]/g, '');
+            if (n !== '' && n.length >= 2) { return parseInt(n, 10); }
+          }
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
 
+  async function cunharUmaPaginaAjax(from) {
+    // Markup e paginação confirmados:
+    //  - from=0 primeira página, from=1000 segunda, etc.
+    //  - POST via parâmetro na query: select_anchor_top=Selecionar e mint_multi_button=Cunhar+moedas+de+ouro
     var baseUrl = '/game.php?village=' + game_data.village.id + '&screen=snob&mode=coin';
+    var urlPag  = baseUrl + '&from=' + from;
 
-    // Primeiro: força page_size=1000 pra ver o máximo de aldeias por vez
-    var urlPag = baseUrl + (pagina > 0 ? '&page=' + pagina : '');
-    var resp = await fetch(urlPag + '&action=change_page_size&h=' + csrf_token, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'page_size=1000&Alterar=Alterar'
-    });
+    var resp = await fetch(urlPag, { credentials: 'include' });
     var html = await resp.text();
-    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var doc  = new DOMParser().parseFromString(html, 'text/html');
 
-    // Confere se a tela tem o botão de cunhar
-    var btnCunhar = doc.querySelector('.mint_multi_button');
-    if (!btnCunhar) {
-      console.log('[OROCHIKING] Cunhagem: nenhum botão de cunhar na página ' + pagina + '.');
+    if (!doc.querySelector('.mint_multi_button')) {
+      console.log('[OROCHIKING] Cunhagem: sem botão de cunhar em from=' + from + ' — fim das páginas.');
       return { cunhado: 0, temProxima: false };
     }
 
-    // Pega a menor quantidade disponível no select (tipicamente "1x" = menor opção)
-    var select = doc.querySelector('select[name="coin_amount"]');
-    var menorQtd = select
-      ? [...select.querySelectorAll('option')].reduce(function (min, op) {
-          return parseInt(op.value) < parseInt(min) ? op.value : min;
-        }, select.options[0] ? select.options[select.options.length - 1].value : '1')
-      : '1';
-    // Na prática queremos cunhar o máximo — 1x é a opção mais baixa disponível,
-    // mas o "Selecionar" vai preencher todas as aldeias com o valor do select.
-    // Coloca o valor máximo disponível (primeiro da lista, que é o maior no markup):
-    var maxQtd = select && select.options[0] ? select.options[0].value : menorQtd;
-    console.log('[OROCHIKING] Cunhagem: quantidade por aldeia = ' + maxQtd + 'x');
+    var sel = doc.querySelector('select[name="coin_amount"]');
+    var qty = sel && sel.options[0] ? sel.options[0].value : '1';
+    var qtdAldeias = doc.querySelectorAll('select[name="coin_amount"]').length || 0;
+    console.log('[OROCHIKING] Cunhagem: from=' + from + ' | ' + qtdAldeias + ' aldeia(s) | qty=' + qty + 'x');
 
-    // Conta as aldeias visíveis (linhas com select de quantidade)
-    var linhasAldeias = doc.querySelectorAll('select[name="coin_amount"]');
-    var qtdAldeias = linhasAldeias.length;
-    if (!qtdAldeias) { qtdAldeias = 1; } // fallback
+    if (!qtdAldeias) { return { cunhado: 0, temProxima: false }; }
 
-    // Simula clique em "Selecionar" (select_anchor_top) — seleciona todas as aldeias
-    // com a quantidade definida no select global
-    await fetch(baseUrl + '&action=select_coins&h=' + csrf_token, {
-      method: 'POST',
-      credentials: 'include',
+    // POST 1: Selecionar todas com a quantidade máxima
+    await fetch(urlPag + '&action=coin&h=' + csrf_token, {
+      method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'coin_amount=' + encodeURIComponent(maxQtd)
+      body: 'coin_amount=' + encodeURIComponent(qty) + '&select_anchor_top=Selecionar'
     });
+    await new Promise(function (r) { setTimeout(r, 300 + Math.random() * 200); });
 
-    // Pequena pausa entre selecionar e cunhar
-    await new Promise(function (res) { setTimeout(res, 200 + Math.random() * 150); });
+    var moedasAntes = lerTotalMoedas(doc);
 
-    // Simula clique em "Cunhar moedas de ouro" (mint_multi_button)
-    await fetch(baseUrl + '&action=mint_coins&h=' + csrf_token, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'h=' + csrf_token
-    });
+    // O formato exato que o servidor espera no POST varia entre mundos/versões.
+    // Em vez de apostar num só e falhar em silêncio, tentamos os formatos mais
+    // prováveis em ordem e PARAMOS no primeiro que realmente aumentar as moedas.
+    var tentativas = [
+      { nome: 'botao+qty',  corpo: 'coin_amount=' + encodeURIComponent(qty) + '&mint_multi_button=Cunhar+moedas+de+ouro' },
+      { nome: 'so botao',   corpo: 'mint_multi_button=Cunhar+moedas+de+ouro' },
+      { nome: 'mint_all',   corpo: 'coin_amount=' + encodeURIComponent(qty) + '&mint_all=1' },
+      { nome: 'action=mint', corpo: 'coin_amount=' + encodeURIComponent(qty) + '&action=mint_coins' }
+    ];
 
-    // Detecta próxima página
-    var temProxima = !!(
-      doc.querySelector('.paged-nav-item-next:not(.paged-nav-item-disabled)') ||
-      (qtdAldeias >= 1000)
-    );
+    var moedasDepois = null, funcionou = null, formatoQueFuncionou = null;
 
-    console.log('[OROCHIKING] Cunhagem: página ' + pagina + ' — ~' + qtdAldeias +
-      ' aldeia(s) cunhada(s). Tem próxima página? ' + temProxima);
-
-    return { cunhado: qtdAldeias, temProxima: temProxima };
-  }
-
-  async function cunharTodasAsPaginasAjax() {
-    var pagina = 0, total = 0, seguranca = 0;
-    while (seguranca < 50) { // trava de segurança: nunca mais que 50 páginas (50 mil aldeias) numa passada
-      seguranca++;
-      var r;
+    for (var t = 0; t < tentativas.length; t++) {
       try {
-        r = await cunharUmaPaginaAjax(pagina);
-      } catch (e) {
-        console.error('[OROCHIKING] Cunhagem: erro buscando a página ' + pagina + ':', e);
+        await fetch(urlPag + '&action=coin&h=' + csrf_token, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: tentativas[t].corpo
+        });
+      } catch (e) { continue; }
+
+      // relê a página e compara: se o total de moedas subiu, cunhou de verdade
+      try {
+        var respConf = await fetch(urlPag, { credentials: 'include' });
+        var docConf = new DOMParser().parseFromString(await respConf.text(), 'text/html');
+        moedasDepois = lerTotalMoedas(docConf);
+      } catch (e) { continue; }
+
+      if (moedasAntes !== null && moedasDepois !== null && moedasDepois > moedasAntes) {
+        funcionou = true;
+        formatoQueFuncionou = tentativas[t].nome;
+        console.log('[OROCHIKING] Cunhagem: CONFIRMADO (formato "' + formatoQueFuncionou +
+          '") — moedas ' + moedasAntes + ' -> ' + moedasDepois + ' (+' + (moedasDepois - moedasAntes) + ')');
         break;
       }
+      // se não subiu, tenta o próximo formato
+      await new Promise(function (r) { setTimeout(r, 250); });
+    }
+
+    if (funcionou !== true) {
+      funcionou = false;
+      console.warn('[OROCHIKING] Cunhagem: nenhum dos ' + tentativas.length +
+        ' formatos de envio funcionou (moedas seguem em ' + moedasDepois + '). Me manda esta linha.');
+    }
+
+    var proxFrom = from + 1000;
+    var temProxima = !!doc.querySelector('a[href*="from=' + proxFrom + '"]') || qtdAldeias >= 1000;
+    return { cunhado: funcionou === false ? 0 : qtdAldeias, temProxima: temProxima, funcionou: funcionou };
+  }
+
+    async function cunharTodasAsPaginasAjax() {
+    var from = 0, total = 0, seguranca = 0;
+    while (seguranca < 50) {
+      seguranca++;
+      var r;
+      try { r = await cunharUmaPaginaAjax(from); }
+      catch (e) { console.error('[OROCHIKING] Cunhagem: erro em from=' + from + ':', e); break; }
       total += r.cunhado;
       if (!r.temProxima) { break; }
-      pagina++;
-      // pausa curta entre páginas, com variação, pra não bater página atrás de
-      // página no mesmo instante exato
-      await new Promise(function (res) { setTimeout(res, 400 + Math.random() * 400); });
+      from += 1000;
+      await new Promise(function (res) { setTimeout(res, 500 + Math.random() * 300); });
     }
-    console.log('[OROCHIKING] Cunhagem: ciclo concluído — ' + total + ' aldeia(s) no total, em ' + (pagina + 1) + ' página(s).');
-    atualizarStatusCunhar('Cunhagem ativa — última: ' + total + ' aldeia(s) em ' + (pagina + 1) + ' pág. — ' + new Date().toLocaleTimeString() + ' — clique pra parar');
+    var paginas = Math.floor(from / 1000) + 1;
+    console.log('[OROCHIKING] Cunhagem: ciclo concluído — ' + total + ' aldeia(s) em ' + paginas + ' pág.');
+    atualizarStatusCunhar('Cunhagem ativa — última: ' + total + ' aldeia(s) em ' + paginas + ' pág. — ' + new Date().toLocaleTimeString() + ' — clique pra parar');
     return total;
   }
 
@@ -4539,14 +4559,10 @@
     return true;
   }
   function rodarCunhar() {
-    var cfg = lerConfigCunhar();
-    if (cfg.ativo) {
-      mostrarStatusCunhar(cfg);
-      cunharTodasAsPaginasAjax().catch(function (e) { console.error('[OROCHIKING] Cunhagem: erro no ciclo:', e); });
-      agendarProximoCicloCunhar(cfg.intervaloMs);
-    } else {
-      abrirModalCunhar();
-    }
+    // Sempre abre o modal pra configurar o intervalo — mesmo que já estivesse ativo
+    // antes. Isso garante que você sempre escolhe o tempo antes de ativar.
+    pararCunharPorSeguranca(); // para qualquer ciclo anterior antes de reconfigurar
+    abrirModalCunhar();
   }
 
   var FERRAMENTAS = [
