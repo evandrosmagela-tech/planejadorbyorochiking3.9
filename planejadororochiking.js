@@ -4353,89 +4353,102 @@
   }
 
   async function cunharUmaPaginaAjax(from) {
-    // Markup e paginação confirmados:
-    //  - from=0 primeira página, from=1000 segunda, etc.
-    //  - POST via parâmetro na query: select_anchor_top=Selecionar e mint_multi_button=Cunhar+moedas+de+ouro
+    // ==========================================================
+    // FORMATO REAL, capturado do próprio jogo (não é dedução):
+    //
+    //   POST /game.php?village=X&screen=snob&ajaxaction=coin_multi&h=TOKEN
+    //   villages[125]=26&villages[188]=26&villages[269]=25&...
+    //
+    // Ou seja: o corpo leva a quantidade INDIVIDUAL de cada aldeia
+    // (cada uma cunha o quanto consegue pagar). O botão "Selecionar"
+    // é só client-side — ele preenche os <select> de cada linha; quem
+    // envia de verdade é o botão "Cunhar moedas de ouro".
+    //
+    // Por isso aqui a gente lê o <select> de cada aldeia e pega a maior
+    // opção disponível nele, que é exatamente o que o "Selecionar" faria.
+    // ==========================================================
     var baseUrl = '/game.php?village=' + game_data.village.id + '&screen=snob&mode=coin';
     var urlPag  = baseUrl + '&from=' + from;
 
     var resp = await fetch(urlPag, { credentials: 'include' });
-    var html = await resp.text();
-    var doc  = new DOMParser().parseFromString(html, 'text/html');
+    var doc  = new DOMParser().parseFromString(await resp.text(), 'text/html');
 
-    if (!doc.querySelector('.mint_multi_button')) {
-      console.log('[OROCHIKING] Cunhagem: sem botão de cunhar em from=' + from + ' — fim das páginas.');
+    // Cada aldeia tem seu próprio select, com o id dela no name: villages[ID]
+    var selects = doc.querySelectorAll('select[name^="villages["]');
+    if (!selects.length) {
+      console.log('[OROCHIKING] Cunhagem: nenhuma aldeia cunhável em from=' + from + '.');
       return { cunhado: 0, temProxima: false };
     }
 
-    var sel = doc.querySelector('select[name="coin_amount"]');
-    var qty = sel && sel.options[0] ? sel.options[0].value : '1';
-    var qtdAldeias = doc.querySelectorAll('select[name="coin_amount"]').length || 0;
-    console.log('[OROCHIKING] Cunhagem: from=' + from + ' | ' + qtdAldeias + ' aldeia(s) | qty=' + qty + 'x');
-
-    if (!qtdAldeias) { return { cunhado: 0, temProxima: false }; }
-
-    // POST 1: Selecionar todas com a quantidade máxima
-    await fetch(urlPag + '&action=coin&h=' + csrf_token, {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'coin_amount=' + encodeURIComponent(qty) + '&select_anchor_top=Selecionar'
+    var partes = [];
+    selects.forEach(function (sel) {
+      var nome = sel.getAttribute('name') || '';
+      var ini = nome.indexOf('[');
+      var fim = nome.indexOf(']');
+      if (ini === -1 || fim === -1 || fim <= ini + 1) { return; }
+      var idAldeia = nome.substring(ini + 1, fim);
+      if (!idAldeia || isNaN(parseInt(idAldeia, 10))) { return; }
+      // maior quantidade que ESTA aldeia consegue cunhar (ignora "- nenhuma -")
+      var maior = 0;
+      for (var o = 0; o < sel.options.length; o++) {
+        var v = parseInt(sel.options[o].value, 10);
+        if (!isNaN(v) && v > maior) { maior = v; }
+      }
+      if (maior > 0) {
+        partes.push('villages[' + idAldeia + ']=' + maior);
+      }
     });
-    await new Promise(function (r) { setTimeout(r, 300 + Math.random() * 200); });
+
+    if (!partes.length) {
+      console.log('[OROCHIKING] Cunhagem: from=' + from + ' — nenhuma aldeia com recursos pra cunhar agora.');
+      var proxVazio = from + 1000;
+      return {
+        cunhado: 0,
+        temProxima: !!doc.querySelector('a[href*="from=' + proxVazio + '"]') || selects.length >= 1000
+      };
+    }
 
     var moedasAntes = lerTotalMoedas(doc);
 
-    // O formato exato que o servidor espera no POST varia entre mundos/versões.
-    // Em vez de apostar num só e falhar em silêncio, tentamos os formatos mais
-    // prováveis em ordem e PARAMOS no primeiro que realmente aumentar as moedas.
-    var tentativas = [
-      { nome: 'botao+qty',  corpo: 'coin_amount=' + encodeURIComponent(qty) + '&mint_multi_button=Cunhar+moedas+de+ouro' },
-      { nome: 'so botao',   corpo: 'mint_multi_button=Cunhar+moedas+de+ouro' },
-      { nome: 'mint_all',   corpo: 'coin_amount=' + encodeURIComponent(qty) + '&mint_all=1' },
-      { nome: 'action=mint', corpo: 'coin_amount=' + encodeURIComponent(qty) + '&action=mint_coins' }
-    ];
+    // O mesmo POST que o botão do jogo dispara
+    await fetch('/game.php?village=' + game_data.village.id +
+                '&screen=snob&ajaxaction=coin_multi&h=' + csrf_token, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'TribalWars-Ajax': '1',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: partes.join('&')
+    });
 
-    var moedasDepois = null, funcionou = null, formatoQueFuncionou = null;
+    // Confere pelo total de moedas se cunhou mesmo
+    var moedasDepois = null;
+    try {
+      var respConf = await fetch(urlPag, { credentials: 'include' });
+      moedasDepois = lerTotalMoedas(new DOMParser().parseFromString(await respConf.text(), 'text/html'));
+    } catch (e) {}
 
-    for (var t = 0; t < tentativas.length; t++) {
-      try {
-        await fetch(urlPag + '&action=coin&h=' + csrf_token, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: tentativas[t].corpo
-        });
-      } catch (e) { continue; }
-
-      // relê a página e compara: se o total de moedas subiu, cunhou de verdade
-      try {
-        var respConf = await fetch(urlPag, { credentials: 'include' });
-        var docConf = new DOMParser().parseFromString(await respConf.text(), 'text/html');
-        moedasDepois = lerTotalMoedas(docConf);
-      } catch (e) { continue; }
-
-      if (moedasAntes !== null && moedasDepois !== null && moedasDepois > moedasAntes) {
-        funcionou = true;
-        formatoQueFuncionou = tentativas[t].nome;
-        console.log('[OROCHIKING] Cunhagem: CONFIRMADO (formato "' + formatoQueFuncionou +
-          '") — moedas ' + moedasAntes + ' -> ' + moedasDepois + ' (+' + (moedasDepois - moedasAntes) + ')');
-        break;
+    if (moedasAntes !== null && moedasDepois !== null) {
+      if (moedasDepois > moedasAntes) {
+        console.log('[OROCHIKING] Cunhagem: from=' + from + ' — ' + partes.length +
+          ' aldeia(s) | moedas ' + moedasAntes + ' -> ' + moedasDepois +
+          ' (+' + (moedasDepois - moedasAntes) + ')');
+      } else {
+        console.warn('[OROCHIKING] Cunhagem: from=' + from + ' — enviei ' + partes.length +
+          ' aldeia(s) mas o total de moedas não subiu (' + moedasDepois + ').');
       }
-      // se não subiu, tenta o próximo formato
-      await new Promise(function (r) { setTimeout(r, 250); });
-    }
-
-    if (funcionou !== true) {
-      funcionou = false;
-      console.warn('[OROCHIKING] Cunhagem: nenhum dos ' + tentativas.length +
-        ' formatos de envio funcionou (moedas seguem em ' + moedasDepois + '). Me manda esta linha.');
+    } else {
+      console.log('[OROCHIKING] Cunhagem: from=' + from + ' — ' + partes.length + ' aldeia(s) enviada(s).');
     }
 
     var proxFrom = from + 1000;
-    var temProxima = !!doc.querySelector('a[href*="from=' + proxFrom + '"]') || qtdAldeias >= 1000;
-    return { cunhado: funcionou === false ? 0 : qtdAldeias, temProxima: temProxima, funcionou: funcionou };
+    var temProxima = !!doc.querySelector('a[href*="from=' + proxFrom + '"]') || selects.length >= 1000;
+    return { cunhado: partes.length, temProxima: temProxima };
   }
 
-    async function cunharTodasAsPaginasAjax() {
+  async function cunharTodasAsPaginasAjax() {
     var from = 0, total = 0, seguranca = 0;
     while (seguranca < 50) {
       seguranca++;
