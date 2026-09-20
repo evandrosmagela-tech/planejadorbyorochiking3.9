@@ -4299,6 +4299,8 @@
       if (caixa) caixa.remove();
     } catch (e) {}
   }
+  // Clique manual direto na tela (usado só na primeira vez, se o usuário estiver
+  // mesmo na página) — mantido como estava.
   function clicarCunhar() {
     try {
       var selectCoins = document.querySelector('select.select_coins');
@@ -4310,14 +4312,117 @@
       }
     } catch (e) { console.error('[OROCHIKING] erro ao cunhar', e); }
   }
+
+  /* ------------------------------------------------------------
+     CUNHAGEM VIA AJAX — não depende mais de recarregar a página nem
+     de estar na tela da Cunhagem. Faz exatamente o que o clique manual
+     fazia (selecionar todas as aldeias listadas + apertar o botão de
+     cunhar em massa), só que buscando a página por trás dos panos com
+     fetch() e reenviando o MESMO formulário que o botão enviaria —
+     e repete pra cada página, cobrindo o limite de 1000 aldeias por
+     página sozinho, sem precisar de uma aba por página.
+
+     Não tenho como testar isso contra o jogo ao vivo, então deixei
+     logs em cada etapa (Console, F12) — se algo não bater no seu
+     mundo (nome de campo diferente, paginação diferente), esses logs
+     mostram exatamente onde parou.
+  ------------------------------------------------------------ */
+  async function cunharUmaPaginaAjax(pagina) {
+    var url = '/game.php?village=' + game_data.village.id + '&screen=snob&mode=coin' +
+      (pagina > 0 ? '&page=' + pagina : '');
+    var resp = await fetch(url, { credentials: 'include' });
+    var html = await resp.text();
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+
+    var botao = doc.querySelector('#coin_overview_table .mint_multi_button') ||
+                doc.querySelector('.mint_multi_button');
+    if (!botao) {
+      console.log('[OROCHIKING] Cunhagem: nenhum botão de cunhar em massa na página ' + pagina + ' — nada pra fazer aqui.');
+      return { cunhado: 0, temProxima: false };
+    }
+    var form = botao.closest('form');
+    if (!form) {
+      console.warn('[OROCHIKING] Cunhagem: achei o botão mas não achei o <form> dele na página ' + pagina + '. Avisa que eu ajusto.');
+      return { cunhado: 0, temProxima: false };
+    }
+
+    // marca todas as aldeias da página (equivalente a clicar "selecionar tudo")
+    var checkboxes = form.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(function (cb) { cb.checked = true; });
+
+    // reproduz o MESMO envio que o formulário faria, lendo os campos dele agora
+    // (em vez de eu supor nomes fixos) — inclui o token csrf que já estiver ali
+    var dados = new URLSearchParams();
+    form.querySelectorAll('input, select, textarea').forEach(function (campo) {
+      if (!campo.name) { return; }
+      if (campo.type === 'checkbox' || campo.type === 'radio') {
+        if (campo.checked) { dados.append(campo.name, campo.value); }
+      } else {
+        dados.append(campo.name, campo.value);
+      }
+    });
+
+    var acaoUrl = form.getAttribute('action') || url;
+    var metodo = (form.getAttribute('method') || 'POST').toUpperCase();
+    await fetch(acaoUrl, {
+      method: metodo,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: dados.toString()
+    });
+
+    // detecta se existe próxima página (várias formas, porque não sei o markup exato
+    // do seu mundo): link de "próxima" ainda ativo, OU essa página veio cheia (sugere
+    // que pode ter mais uma)
+    var linkProxima = doc.querySelector('.paged-nav-item-next:not(.paged-nav-item-disabled)') ||
+                       doc.querySelector('a.paged-nav-item[href*="page=' + (pagina + 1) + '"]');
+    var paginaCheia = checkboxes.length >= 1000;
+    var temProxima = !!linkProxima || paginaCheia;
+
+    console.log('[OROCHIKING] Cunhagem: página ' + pagina + ' — ' + checkboxes.length +
+      ' aldeia(s) cunhada(s). Tem próxima página? ' + temProxima);
+
+    return { cunhado: checkboxes.length, temProxima: temProxima };
+  }
+
+  async function cunharTodasAsPaginasAjax() {
+    var pagina = 0, total = 0, seguranca = 0;
+    while (seguranca < 50) { // trava de segurança: nunca mais que 50 páginas (50 mil aldeias) numa passada
+      seguranca++;
+      var r;
+      try {
+        r = await cunharUmaPaginaAjax(pagina);
+      } catch (e) {
+        console.error('[OROCHIKING] Cunhagem: erro buscando a página ' + pagina + ':', e);
+        break;
+      }
+      total += r.cunhado;
+      if (!r.temProxima) { break; }
+      pagina++;
+      // pausa curta entre páginas, com variação, pra não bater página atrás de
+      // página no mesmo instante exato
+      await new Promise(function (res) { setTimeout(res, 400 + Math.random() * 400); });
+    }
+    console.log('[OROCHIKING] Cunhagem: ciclo concluído — ' + total + ' aldeia(s) no total, em ' + (pagina + 1) + ' página(s).');
+    var caixa = document.getElementById('ork-cunhar-status');
+    if (caixa) {
+      var linha = caixa.querySelector('.ork-cunhar-ultimo');
+      if (linha) { linha.textContent = 'Última vez: ' + total + ' aldeia(s), ' + new Date().toLocaleTimeString(); }
+    }
+    return total;
+  }
+
   function agendarProximoCicloCunhar(intervaloMs) {
     if (cunharTimeoutId) clearTimeout(cunharTimeoutId);
     // Atraso extra aleatório (10 a 15s) em cima do intervalo configurado, pra não
-    // recarregar sempre no mesmo timing exato — evita um padrão robótico reconhecível.
+    // repetir sempre no mesmo timing exato — evita um padrão robótico reconhecível.
     var jitterMs = 10000 + Math.random() * 5000;
     cunharTimeoutId = setTimeout(function () {
       var cfgAtual = lerConfigCunhar();
-      if (cfgAtual.ativo) { window.location.reload(); }
+      if (!cfgAtual.ativo) { return; }
+      cunharTodasAsPaginasAjax()
+        .catch(function (e) { console.error('[OROCHIKING] Cunhagem: erro no ciclo automático:', e); })
+        .then(function () { agendarProximoCicloCunhar(intervaloMs); });
     }, intervaloMs + jitterMs);
   }
   function mostrarStatusCunhar(cfg) {
@@ -4373,19 +4478,21 @@
       var intervaloMs = Math.max(5000, unidade === 'seg' ? valor * 1000 : valor * 60000);
       gravarConfigCunhar({ ativo: true, intervaloMs: intervaloMs });
       fechar();
-      clicarCunhar();
       mostrarStatusCunhar({ intervaloMs: intervaloMs });
+      cunharTodasAsPaginasAjax().catch(function (e) { console.error('[OROCHIKING] Cunhagem: erro no primeiro ciclo:', e); });
       agendarProximoCicloCunhar(intervaloMs);
     });
   }
+  // Não depende mais de tela nenhuma — a cunhagem inteira roda via AJAX. checaCunhar()
+  // só existe pra registro (ferramentas com destino nulo não usam essa checagem).
   function checaCunhar() {
-    return !!(window.game_data && game_data.screen === 'snob' && game_data.mode === 'coin');
+    return true;
   }
   function rodarCunhar() {
     var cfg = lerConfigCunhar();
     if (cfg.ativo) {
-      clicarCunhar();
       mostrarStatusCunhar(cfg);
+      cunharTodasAsPaginasAjax().catch(function (e) { console.error('[OROCHIKING] Cunhagem: erro no ciclo:', e); });
       agendarProximoCicloCunhar(cfg.intervaloMs);
     } else {
       abrirModalCunhar();
@@ -4492,10 +4599,10 @@
       id: 'cunhar',
       nome: 'Cunhar Moedas',
       icone: '🪙',
-      dica: 'Ao clicar, leva pra tela de Cunhagem; ao chegar, clique em "Ativar agora" pra escolher o intervalo e cunhar sozinho, recarregando a página automaticamente.',
+      dica: 'Ativa na hora, de qualquer tela — cunha em todas as aldeias (passando pelas páginas sozinho) via AJAX, sem reload e sem precisar estar na tela de Cunhagem.',
       checar: checaCunhar,
       rodar: rodarCunhar,
-      destino: 'cunhar'
+      destino: null
     }
   ];
 
@@ -4582,12 +4689,15 @@
      próprios reloads que ela mesma agenda)
   ============================================================ */
   (function retomarCunhagemAutomatica() {
-    if (!(window.game_data && game_data.screen === 'snob' && game_data.mode === 'coin')) return;
+    // Como a cunhagem agora roda 100% via AJAX, não precisa mais estar na tela
+    // de Cunhagem pra retomar — funciona a partir de QUALQUER tela do jogo.
+    if (!window.game_data) return;
     var cfg = lerConfigCunhar();
     if (!cfg.ativo) return;
+    if (document.getElementById('ork-cunhar-status')) return; // já está rodando (outra ativação já cuidou disso)
     setTimeout(function () {
-      clicarCunhar();
       mostrarStatusCunhar(cfg);
+      cunharTodasAsPaginasAjax().catch(function (e) { console.error('[OROCHIKING] Cunhagem: erro ao retomar:', e); });
       agendarProximoCicloCunhar(cfg.intervaloMs);
     }, 800);
   })();
