@@ -4918,7 +4918,7 @@
       nome: 'Cunhar Moedas',
       abrev: 'Cunhar',
       icone: '🪙',
-      dica: 'Leva pra tela de Cunhagem; ao chegar, clique em "Ativar agora", escolha o intervalo e ele cunha sozinho, recarregando a página. Se tiver mais de 1.000 aldeias, abra uma aba por página (&from=0, &from=1000...).',
+      dica: 'Leva pra tela de Cunhagem; ao chegar, clique em "Ativar agora" e escolha o intervalo. Ele cunha sozinho e, se você tiver mais de 1.000 aldeias, passa pelas páginas todas automaticamente — numa aba só. Deixe a aba de Cunhagem aberta.',
       checar: checaCunhar,
       rodar: rodarCunhar,
       destino: 'cunhar'
