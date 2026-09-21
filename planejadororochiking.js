@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      34.0
+// @version      35.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -110,13 +110,103 @@
 (function () {
 
   /* ============================================================
+     DISFARCE DE FUNÇÕES NATIVAS
+
+     O painel precisa trocar o fetch e o XMLHttpRequest do navegador
+     (é assim que o monitor de captcha enxerga as respostas). O
+     problema: uma função trocada se entrega numa linha de código —
+     normalmente fetch.toString() devolve "function fetch() { [native
+     code] }", e a nossa devolvia o nosso código-fonte inteiro.
+
+     Aqui a gente faz as funções trocadas responderem exatamente como
+     as nativas responderiam, inclusive na verificação mais robusta
+     (Function.prototype.toString.call(fn)), que ignora o toString
+     próprio da função. E a própria troca do toString também se
+     disfarça, pra não virar um rastro novo.
+  ============================================================ */
+  var disfarcarComoNativa = (function () {
+    var textoNativo = new WeakMap();
+    var toStringOriginal = Function.prototype.toString;
+
+    function toStringDisfarcado() {
+      if (textoNativo.has(this)) { return textoNativo.get(this); }
+      return toStringOriginal.call(this);
+    }
+    textoNativo.set(toStringDisfarcado, 'function toString() { [native code] }');
+
+    try {
+      Object.defineProperty(Function.prototype, 'toString', {
+        value: toStringDisfarcado, writable: true, configurable: true, enumerable: false
+      });
+    } catch (e) {}
+
+    return function (fn, nome) {
+      try {
+        textoNativo.set(fn, 'function ' + nome + '() { [native code] }');
+        Object.defineProperty(fn, 'name', { value: nome, configurable: true });
+      } catch (e) {}
+      return fn;
+    };
+  })();
+
+  /* ============================================================
+     LIMPEZA DO RASTRO DA INJEÇÃO
+
+     O loader do Tampermonkey injeta o painel numa tag <script
+     id="ork-painel-script"> e ela ficava no HTML pra sempre —
+     qualquer script do jogo acharia com uma busca simples. Como o
+     código já está rodando nessa altura, a tag não serve pra mais
+     nada: removemos. (O loader não muda; é o painel que limpa.)
+  ============================================================ */
+  try {
+    var tagInjecao = document.getElementById('ork-painel-script');
+    if (tagInjecao && tagInjecao.parentNode) { tagInjecao.parentNode.removeChild(tagInjecao); }
+  } catch (e) {}
+
+  /* ============================================================
+     ESCONDER AS VARIÁVEIS GLOBAIS DO PAINEL
+
+     O painel usa ~23 variáveis globais com prefixo __ORK_ e
+     __OROCHIKING_ (estado do freio, do captcha, do loop, etc.).
+     Qualquer script que listasse as propriedades da janela
+     (Object.keys(window)) veria todas elas, com um nome que
+     identifica o painel na hora.
+
+     Aqui elas viram "não enumeráveis": continuam funcionando
+     exatamente igual pra leitura e escrita, só param de aparecer
+     nessas listagens. A varredura se repete de tempos em tempos
+     porque algumas variáveis só nascem depois (quando você ativa
+     uma ferramenta). É tudo local — não gera nenhuma requisição.
+  ============================================================ */
+  (function esconderGlobais() {
+    var padrao = /^__(ORK|OROCHIKING|FarmHard)/;
+    function varrer() {
+      try {
+        var nomes = Object.getOwnPropertyNames(window);
+        for (var i = 0; i < nomes.length; i++) {
+          if (!padrao.test(nomes[i])) { continue; }
+          var d = Object.getOwnPropertyDescriptor(window, nomes[i]);
+          if (!d || !d.enumerable || !d.configurable) { continue; }
+          if (!('value' in d)) { continue; } // só propriedades comuns, não getters
+          Object.defineProperty(window, nomes[i], {
+            value: d.value, writable: true, configurable: true, enumerable: false
+          });
+        }
+      } catch (e) {}
+    }
+    varrer();
+    setTimeout(varrer, 2000);
+    setInterval(varrer, 8000);
+  })();
+
+  /* ============================================================
      MARCADOR DE VERSÃO
      Serve pra você conferir, em 2 segundos, qual versão está realmente
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 29;
-  console.log('%c[OROCHIKING] Painel v29 carregado', 'background:#e8ac0a;color:#1a1400;font-weight:bold;padding:2px 6px;border-radius:3px');
+  window.__ORK_VERSAO__ = 30;
+  console.log('%c[OROCHIKING] Painel v30 carregado', 'background:#e8ac0a;color:#1a1400;font-weight:bold;padding:2px 6px;border-radius:3px');
 
   /* ============================================================
      FORA DO JOGO (a sessão caiu e fomos parar na tela de
@@ -1350,8 +1440,30 @@
      recarrega a página sozinho pra cair na tela de relogar.
   ============================================================ */
   (function monitorSessao() {
-    setInterval(function () {
+    // ANTES: baixava a página inteira a cada EXATOS 90s, em toda aba, pra sempre.
+    // Com várias abas abertas isso virava vários carregamentos de página cravados
+    // no relógio, 24h por dia — padrão que nenhum humano faz e que sistemas anti-bot
+    // procuram, além de somar carga no servidor.
+    //
+    // AGORA:
+    //  - intervalo aleatório entre 4 e 7 min (nunca o mesmo tempo duas vezes)
+    //  - não checa se a aba teve atividade de rede recente (se as ferramentas
+    //    estão conseguindo fazer requisições, a sessão obviamente está viva —
+    //    não precisa gastar mais uma só pra confirmar)
+    //  - com o FREIO ligado, espaça ainda mais (8 a 12 min)
+    function proximaChecagem() {
+      var min = window.__ORK_FREIO__ ? 8 : 4;
+      var max = window.__ORK_FREIO__ ? 12 : 7;
+      var espera = (min + Math.random() * (max - min)) * 60000;
+      setTimeout(checar, espera);
+    }
+
+    function checar() {
       try {
+        // se alguma ferramenta fez requisição com sucesso há pouco, a sessão está viva
+        var ultimaAtividade = window.__ORK_ULTIMA_REDE_OK__ || 0;
+        if (Date.now() - ultimaAtividade < 3 * 60000) { return proximaChecagem(); }
+
         fetch(window.location.href, { credentials: 'include' })
           .then(function (r) { return r.text(); })
           .then(function (html) {
@@ -1361,11 +1473,18 @@
             if (pareceDeslogado) {
               console.warn('[OROCHIKING] Sessão parece ter caído — recarregando.');
               window.location.reload();
+              return;
             }
+            proximaChecagem();
           })
-          .catch(function (e) { console.warn('[OROCHIKING] monitor de sessão: falha ao checar', e && e.message); });
-      } catch (e) {}
-    }, 90000);
+          .catch(function (e) {
+            console.warn('[OROCHIKING] monitor de sessão: falha ao checar', e && e.message);
+            proximaChecagem();
+          });
+      } catch (e) { proximaChecagem(); }
+    }
+
+    proximaChecagem();
   })();
 
   /* ============================================================
@@ -1623,11 +1742,12 @@
     try {
       var fetchOriginal = window.fetch;
       if (fetchOriginal) {
-        window.fetch = function (input, init) {
+        var novoFetch = function fetch(input, init) {
           if (window.__ORK_CAPTCHA_BLOQUEADO__ && ehRequisicaoDeAutomacao(input)) {
-            return Promise.reject(new Error('OROCHIKING: envio automático bloqueado (captcha ativo)'));
+            return Promise.reject(new TypeError('Failed to fetch'));
           }
           return fetchOriginal.call(window, input, init).then(function (resposta) {
+            try { if (resposta && resposta.ok) { window.__ORK_ULTIMA_REDE_OK__ = Date.now(); } } catch (e) {}
             try {
               resposta.clone().text().then(function (texto) {
                 if (textoIndicaCaptcha(texto)) { conferirCaptchaNoDom(); }
@@ -1636,6 +1756,8 @@
             return resposta;
           });
         };
+        disfarcarComoNativa(novoFetch, 'fetch');
+        window.fetch = novoFetch;
       }
     } catch (e) {}
 
@@ -1643,21 +1765,33 @@
       var xhrOpenOriginal = XMLHttpRequest.prototype.open;
       var xhrSendOriginal = XMLHttpRequest.prototype.send;
 
-      XMLHttpRequest.prototype.open = function (metodo, url) {
-        try { this.__orkUrl = url; } catch (e) {}
+      // Guarda a URL de cada requisição num WeakMap, em vez de pendurar uma
+      // propriedade nossa (__orkUrl) no próprio objeto — que ficava visível pra
+      // qualquer script que inspecionasse a requisição.
+      var urlDaRequisicao = new WeakMap();
+
+      var novoOpen = function open(metodo, url) {
+        try { urlDaRequisicao.set(this, url); } catch (e) {}
         return xhrOpenOriginal.apply(this, arguments);
       };
 
-      XMLHttpRequest.prototype.send = function () {
-        if (window.__ORK_CAPTCHA_BLOQUEADO__ && ehRequisicaoDeAutomacao(this.__orkUrl)) { return; }
+      var novoSend = function send() {
+        var urlReq = urlDaRequisicao.get(this);
+        if (window.__ORK_CAPTCHA_BLOQUEADO__ && ehRequisicaoDeAutomacao(urlReq)) { return; }
         var xhr = this;
         try {
           xhr.addEventListener('load', function () {
+            try { if (xhr.status >= 200 && xhr.status < 300) { window.__ORK_ULTIMA_REDE_OK__ = Date.now(); } } catch (e) {}
             try { if (textoIndicaCaptcha(xhr.responseText)) { conferirCaptchaNoDom(); } } catch (e) {}
           });
         } catch (e) {}
         return xhrSendOriginal.apply(xhr, arguments);
       };
+
+      disfarcarComoNativa(novoOpen, 'open');
+      disfarcarComoNativa(novoSend, 'send');
+      XMLHttpRequest.prototype.open = novoOpen;
+      XMLHttpRequest.prototype.send = novoSend;
     } catch (e) {}
   })();
 
@@ -4982,7 +5116,7 @@
     '<div id="ork-footer">' +
       (window.__ORK_DUPLICADO__ ? '<span style="color:#ff9d5c">⚠ Há outra cópia do painel instalada no Tampermonkey — desative a antiga.</span><br>' : '') +
       (textoLicenca() ? '🔑 ' + textoLicenca() + '<br>' : '') +
-      'v29 · Escolha a aba e clique em Ativar — o script já abre no lugar certo.' +
+      'v30 · Escolha a aba e clique em Ativar — o script já abre no lugar certo.' +
     '</div>';
   document.body.appendChild(painel);
 
