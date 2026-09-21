@@ -4303,8 +4303,9 @@
       if (estilo) estilo.remove();
     } catch (e) {}
   }
-  // Clique manual direto na tela (usado só na primeira vez, se o usuário estiver
-  // mesmo na página) — mantido como estava.
+  // Exatamente os mesmos cliques do script que você confirmou funcionando:
+  // "Selecionar" e depois "Cunhar moedas de ouro". Só funciona estando na
+  // tela de Cunhagem — é lá que esses botões existem.
   function clicarCunhar() {
     try {
       var selectCoins = document.querySelector('select.select_coins');
@@ -4317,20 +4318,6 @@
     } catch (e) { console.error('[OROCHIKING] erro ao cunhar', e); }
   }
 
-  /* ------------------------------------------------------------
-     CUNHAGEM VIA AJAX — não depende mais de recarregar a página nem
-     de estar na tela da Cunhagem. Faz exatamente o que o clique manual
-     fazia (selecionar todas as aldeias listadas + apertar o botão de
-     cunhar em massa), só que buscando a página por trás dos panos com
-     fetch() e reenviando o MESMO formulário que o botão enviaria —
-     e repete pra cada página, cobrindo o limite de 1000 aldeias por
-     página sozinho, sem precisar de uma aba por página.
-
-     Não tenho como testar isso contra o jogo ao vivo, então deixei
-     logs em cada etapa (Console, F12) — se algo não bater no seu
-     mundo (nome de campo diferente, paginação diferente), esses logs
-     mostram exatamente onde parou.
-  ------------------------------------------------------------ */
   // Lê o total de moedas de ouro a partir do HTML da página de cunhagem.
   // Serve pra CONFERIR se a cunhagem realmente funcionou, em vez de
   // depender do POST "parecer" certo — se o total subiu, funcionou.
@@ -4352,141 +4339,18 @@
     return null;
   }
 
-  async function cunharUmaPaginaAjax(from) {
-    // ==========================================================
-    // POR QUE IFRAME, E NÃO REQUISIÇÃO DIRETA:
-    //
-    // A captura mostrou que o jogo envia villages[ID]=QTD pra cada aldeia.
-    // Só que esse mapeamento NÃO existe pronto no HTML — quem monta é o
-    // JavaScript do próprio jogo, no instante em que você clica em
-    // "Selecionar". Por isso tentar ler os campos da página baixada
-    // devolvia zero aldeias: eles simplesmente ainda não existem ali.
-    //
-    // A saída é reaproveitar o mecanismo que comprovadamente funciona
-    // (os dois cliques do script do ThiioM), só que numa aba invisível:
-    // carregamos a página de cunhagem num iframe escondido, deixamos o
-    // JS do jogo montar tudo, e damos os mesmos dois cliques. Uma página
-    // por vez (&from=0, &from=1000, ...), sem você precisar estar na tela
-    // e sem precisar de uma aba aberta por cada 1.000 aldeias.
-    // ==========================================================
-    if (window.__ORK_CAPTCHA_BLOQUEADO__) {
-      console.warn('[OROCHIKING] Cunhagem: captcha ativo — ciclo adiado.');
-      return { cunhado: 0, temProxima: false };
-    }
-
-    var urlPag = '/game.php?village=' + game_data.village.id +
-                 '&screen=snob&mode=coin&from=' + from;
-
-    return await new Promise(function (resolve) {
-      var iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1200px;height:800px;opacity:0;border:0';
-      iframe.src = urlPag;
-
-      var jaResolveu = false;
-      function terminar(resultado) {
-        if (jaResolveu) { return; }
-        jaResolveu = true;
-        try { iframe.remove(); } catch (e) {}
-        resolve(resultado);
-      }
-
-      // trava de segurança: se a página não carregar, não trava o ciclo pra sempre
-      var limite = setTimeout(function () {
-        console.warn('[OROCHIKING] Cunhagem: tempo esgotado em from=' + from + '.');
-        terminar({ cunhado: 0, temProxima: false });
-      }, 30000);
-
-      // O iframe pode disparar "carregado" mais de uma vez (o próprio clique em
-      // Cunhar pode fazer a página recarregar dentro dele). Sem essa trava, o
-      // ciclo rodaria de novo e cunharia em duplicidade.
-      var jaProcessou = false;
-      iframe.onload = function () {
-        if (jaProcessou) { return; }
-        jaProcessou = true;
-        setTimeout(function () {
-          try {
-            var doc = iframe.contentDocument;
-            var win = iframe.contentWindow;
-            if (!doc) { clearTimeout(limite); return terminar({ cunhado: 0, temProxima: false }); }
-
-            // Mesma checagem do script que funciona
-            var selects = doc.querySelectorAll('select.select_coins, select[class*="select_coins"]');
-            var qtdAldeias = selects.length;
-
-            // Tem próxima página? (link &from=N+1000 na paginação)
-            var proxFrom = from + 1000;
-            var temProxima = !!doc.querySelector('a[href*="from=' + proxFrom + '"]');
-
-            if (!qtdAldeias) {
-              console.log('[OROCHIKING] Cunhagem: from=' + from + ' — nenhuma aldeia cunhável aqui.');
-              clearTimeout(limite);
-              return terminar({ cunhado: 0, temProxima: temProxima });
-            }
-
-            var moedasAntes = lerTotalMoedas(doc);
-
-            // 1) "Selecionar" — o JS do jogo monta villages[ID]=QTD aqui
-            var btnSel = doc.getElementById('select_anchor_top');
-            if (btnSel) { btnSel.click(); }
-
-            // 2) "Cunhar moedas de ouro" — envia o que foi montado acima
-            setTimeout(function () {
-              try {
-                var btnCunhar = doc.querySelector('#coin_overview_table .mint_multi_button') ||
-                                doc.querySelector('.mint_multi_button');
-                if (btnCunhar) { btnCunhar.click(); }
-
-                // dá tempo do envio do jogo completar, e confere pelo total de moedas
-                setTimeout(function () {
-                  var moedasDepois = null;
-                  try { moedasDepois = lerTotalMoedas(iframe.contentDocument || doc); } catch (e) {}
-
-                  if (moedasAntes !== null && moedasDepois !== null && moedasDepois > moedasAntes) {
-                    console.log('[OROCHIKING] Cunhagem: from=' + from + ' — ' + qtdAldeias +
-                      ' aldeia(s) | moedas ' + moedasAntes + ' -> ' + moedasDepois +
-                      ' (+' + (moedasDepois - moedasAntes) + ')');
-                  } else {
-                    console.log('[OROCHIKING] Cunhagem: from=' + from + ' — ' + qtdAldeias +
-                      ' aldeia(s) processada(s).');
-                  }
-                  clearTimeout(limite);
-                  terminar({ cunhado: qtdAldeias, temProxima: temProxima });
-                }, 2500);
-              } catch (e) {
-                console.error('[OROCHIKING] Cunhagem: erro ao cunhar em from=' + from + ':', e);
-                clearTimeout(limite);
-                terminar({ cunhado: 0, temProxima: temProxima });
-              }
-            }, 700);
-          } catch (e) {
-            console.error('[OROCHIKING] Cunhagem: erro no iframe from=' + from + ':', e);
-            clearTimeout(limite);
-            terminar({ cunhado: 0, temProxima: false });
-          }
-        }, 900); // deixa o JS do jogo terminar de montar a tela
-      };
-
-      document.body.appendChild(iframe);
-    });
-  }
-
-  async function cunharTodasAsPaginasAjax() {
-    var from = 0, total = 0, seguranca = 0;
-    while (seguranca < 50) {
-      seguranca++;
-      var r;
-      try { r = await cunharUmaPaginaAjax(from); }
-      catch (e) { console.error('[OROCHIKING] Cunhagem: erro em from=' + from + ':', e); break; }
-      total += r.cunhado;
-      if (!r.temProxima) { break; }
-      from += 1000;
-      await new Promise(function (res) { setTimeout(res, 500 + Math.random() * 300); });
-    }
-    var paginas = Math.floor(from / 1000) + 1;
-    console.log('[OROCHIKING] Cunhagem: ciclo concluído — ' + total + ' aldeia(s) em ' + paginas + ' pág.');
-    atualizarStatusCunhar('Cunhagem ativa — última: ' + total + ' aldeia(s) em ' + paginas + ' pág. — ' + new Date().toLocaleTimeString() + ' — clique pra parar');
-    return total;
-  }
+  // ==========================================================
+  // CUNHAGEM — DE VOLTA AO MODELO QUE FUNCIONA
+  //
+  // Tentei duas abordagens "espertas" (reconstruir o POST e usar
+  // iframe invisível) e nenhuma funcionou no jogo real. Voltamos ao
+  // método comprovado, igual ao script do ThiioM: estar na tela de
+  // Cunhagem, clicar em "Selecionar" e em "Cunhar", e recarregar a
+  // página no intervalo configurado.
+  //
+  // Limitação assumida (a mesma do script original): precisa ficar
+  // na tela de Cunhagem, e uma aba por cada 1.000 aldeias.
+  // ==========================================================
 
   function agendarProximoCicloCunhar(intervaloMs) {
     if (cunharTimeoutId) clearTimeout(cunharTimeoutId);
@@ -4496,9 +4360,9 @@
     cunharTimeoutId = setTimeout(function () {
       var cfgAtual = lerConfigCunhar();
       if (!cfgAtual.ativo) { return; }
-      cunharTodasAsPaginasAjax()
-        .catch(function (e) { console.error('[OROCHIKING] Cunhagem: erro no ciclo automático:', e); })
-        .then(function () { agendarProximoCicloCunhar(intervaloMs); });
+      // recarrega a página: ao voltar, a retomada automática lá embaixo
+      // clica em Selecionar + Cunhar de novo
+      window.location.reload();
     }, intervaloMs + jitterMs);
   }
   function mostrarStatusCunhar(cfg) {
@@ -4584,14 +4448,12 @@
       gravarConfigCunhar({ ativo: true, intervaloMs: intervaloMs });
       fechar();
       mostrarStatusCunhar({ intervaloMs: intervaloMs });
-      cunharTodasAsPaginasAjax().catch(function (e) { console.error('[OROCHIKING] Cunhagem: erro no primeiro ciclo:', e); });
+      clicarCunhar();
       agendarProximoCicloCunhar(intervaloMs);
     });
   }
-  // Não depende mais de tela nenhuma — a cunhagem inteira roda via AJAX. checaCunhar()
-  // só existe pra registro (ferramentas com destino nulo não usam essa checagem).
   function checaCunhar() {
-    return true;
+    return !!(window.game_data && game_data.screen === 'snob' && game_data.mode === 'coin');
   }
   function rodarCunhar() {
     // Sempre abre o modal pra configurar o intervalo — mesmo que já estivesse ativo
@@ -4700,10 +4562,10 @@
       id: 'cunhar',
       nome: 'Cunhar Moedas',
       icone: '🪙',
-      dica: 'Ativa na hora, de qualquer tela — cunha em todas as aldeias (passando pelas páginas sozinho) via AJAX, sem reload e sem precisar estar na tela de Cunhagem.',
+      dica: 'Leva pra tela de Cunhagem; ao chegar, clique em "Ativar agora", escolha o intervalo e ele cunha sozinho, recarregando a página. Se tiver mais de 1.000 aldeias, abra uma aba por página (&from=0, &from=1000...).',
       checar: checaCunhar,
       rodar: rodarCunhar,
-      destino: null
+      destino: 'cunhar'
     }
   ];
 
@@ -4790,15 +4652,13 @@
      próprios reloads que ela mesma agenda)
   ============================================================ */
   (function retomarCunhagemAutomatica() {
-    // Como a cunhagem agora roda 100% via AJAX, não precisa mais estar na tela
-    // de Cunhagem pra retomar — funciona a partir de QUALQUER tela do jogo.
-    if (!window.game_data) return;
+    // Só retoma na tela de Cunhagem — é lá que os botões existem.
+    if (!(window.game_data && game_data.screen === 'snob' && game_data.mode === 'coin')) return;
     var cfg = lerConfigCunhar();
     if (!cfg.ativo) return;
-    if (document.getElementById('ork-cunhar-status')) return; // já está rodando (outra ativação já cuidou disso)
     setTimeout(function () {
       mostrarStatusCunhar(cfg);
-      cunharTodasAsPaginasAjax().catch(function (e) { console.error('[OROCHIKING] Cunhagem: erro ao retomar:', e); });
+      clicarCunhar();
       agendarProximoCicloCunhar(cfg.intervaloMs);
     }, 800);
   })();
