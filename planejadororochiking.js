@@ -206,6 +206,112 @@
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
   window.__ORK_VERSAO__ = 35;
+
+  /* ============================================================
+     NOVIDADES / CHANGELOG
+
+     Pra avisar cada pessoa uma única vez quando você sobe uma versão
+     nova no GitHub. Como funciona:
+       - Cada entrada tem um "id" único (use a data, fica fácil).
+       - Na primeira vez que a pessoa abre o painel depois da atualização,
+         aparece o popup com as novidades que ela ainda não viu.
+       - Ela fecha no X, fica marcado como visto, e nunca mais aparece
+         — até você adicionar uma entrada nova com um id novo.
+
+     PRA ANUNCIAR UMA ATUALIZAÇÃO NOVA: adicione um objeto no TOPO da
+     lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
+  ============================================================ */
+  var ORK_NOVIDADES = [
+    {
+      id: '2026-09-21',
+      data: '21/09/2026',
+      titulo: 'Farm Hard turbinado + Ritmo Humano',
+      itens: [
+        'Ritmo Humano: o Farm Hard agora pode rodar em blocos com pausas curtas e aleatórias, pra reduzir o risco de captcha.',
+        'Farm Hard escolhe a bárbara mais rica e não repete ataque na mesma (mais recurso por ataque).',
+        'Novos filtros no Farm Hard: CL mínima, CP mínima (mescláveis) e recurso mínimo da bárbara.',
+        'Botão FREIO no painel: modo de baixo risco pra deixar rodando de madrugada.'
+      ]
+    }
+  ];
+
+  function orkNovidadeNaoVista() {
+    // devolve a primeira novidade (mais recente) que a pessoa ainda não fechou
+    for (var i = 0; i < ORK_NOVIDADES.length; i++) {
+      var n = ORK_NOVIDADES[i];
+      var chave = 'ork_novidade_vista_' + n.id;
+      var vista = false;
+      try { vista = localStorage.getItem(chave) === '1'; } catch (e) {}
+      if (!vista) { return n; }
+    }
+    return null;
+  }
+
+  function orkMostrarNovidade(n) {
+    if (!n || document.getElementById('ork-novidade-overlay')) { return; }
+
+    var estilo = document.createElement('style');
+    estilo.id = 'ork-novidade-estilo';
+    estilo.textContent =
+      '#ork-novidade-overlay{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:2147483000;' +
+      'display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}' +
+      '#ork-novidade-card{width:340px;max-width:92vw;max-height:82vh;overflow:auto;' +
+      'background:linear-gradient(165deg,rgba(26,26,26,.98),rgba(8,8,8,.99));' +
+      'border:1px solid rgba(255,196,0,.18);border-radius:16px;' +
+      'box-shadow:0 24px 60px rgba(0,0,0,.7);color:#ececec;' +
+      "font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif}" +
+      '#ork-novidade-head{background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;' +
+      'padding:13px 15px;display:flex;align-items:center;justify-content:space-between;font-weight:800}' +
+      '#ork-novidade-head .ork-nv-tag{font-size:14px;letter-spacing:.5px;text-transform:uppercase}' +
+      '#ork-novidade-x{cursor:pointer;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.12);' +
+      'display:flex;align-items:center;justify-content:center;font-size:15px;transition:background .15s}' +
+      '#ork-novidade-x:hover{background:rgba(0,0,0,.28)}' +
+      '#ork-novidade-body{padding:15px 16px}' +
+      '#ork-novidade-data{font-size:10.5px;color:#8a8a8a;margin-bottom:3px}' +
+      '#ork-novidade-titulo{font-size:14px;font-weight:800;color:#ffd84d;margin-bottom:11px}' +
+      '#ork-novidade-lista{list-style:none;margin:0;padding:0}' +
+      '#ork-novidade-lista li{position:relative;padding:0 0 9px 18px;font-size:12px;line-height:1.5;color:#ddd}' +
+      '#ork-novidade-lista li:before{content:"›";position:absolute;left:3px;top:-1px;color:#e8ac0a;font-weight:800}' +
+      '#ork-novidade-btn{width:100%;margin-top:6px;padding:10px;border:none;border-radius:10px;' +
+      'background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#1a1400;font-weight:800;font-size:12px;' +
+      'cursor:pointer;letter-spacing:.4px;text-transform:uppercase}' +
+      '#ork-novidade-btn:hover{filter:brightness(1.07)}';
+    document.head.appendChild(estilo);
+
+    var itensHtml = '';
+    for (var i = 0; i < n.itens.length; i++) {
+      var li = document.createElement('li');
+      li.textContent = n.itens[i]; // textContent = seguro, nada de HTML injetado
+      itensHtml += li.outerHTML;
+    }
+
+    var overlay = document.createElement('div');
+    overlay.id = 'ork-novidade-overlay';
+    overlay.innerHTML =
+      '<div id="ork-novidade-card">' +
+        '<div id="ork-novidade-head"><span class="ork-nv-tag">✨ Nova atualização</span>' +
+        '<span id="ork-novidade-x">&times;</span></div>' +
+        '<div id="ork-novidade-body">' +
+          '<div id="ork-novidade-data">OROCHIKING • ' + n.data + '</div>' +
+          '<div id="ork-novidade-titulo"></div>' +
+          '<ul id="ork-novidade-lista">' + itensHtml + '</ul>' +
+          '<button id="ork-novidade-btn">Entendi, fechar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    // titulo via textContent (evita qualquer HTML no que você digita)
+    overlay.querySelector('#ork-novidade-titulo').textContent = n.titulo;
+
+    function fechar() {
+      try { localStorage.setItem('ork_novidade_vista_' + n.id, '1'); } catch (e) {}
+      try { overlay.remove(); estilo.remove(); } catch (e) {}
+    }
+    overlay.querySelector('#ork-novidade-x').addEventListener('click', fechar);
+    overlay.querySelector('#ork-novidade-btn').addEventListener('click', fechar);
+    // clicar fora do card também fecha (conta como visto)
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) { fechar(); } });
+  }
+
   console.log('%c[OROCHIKING] Painel v35 carregado', 'background:#e8ac0a;color:#1a1400;font-weight:bold;padding:2px 6px;border-radius:3px');
 
   /* ============================================================
@@ -5124,6 +5230,13 @@
       'v35 · Escolha a aba e clique em Ativar — o script já abre no lugar certo.' +
     '</div>';
   document.body.appendChild(painel);
+
+  /* mostra o aviso de nova atualização, se houver uma que a pessoa ainda não viu.
+     Pequeno atraso pra não competir com a montagem do painel. */
+  try {
+    var novidadePendente = orkNovidadeNaoVista();
+    if (novidadePendente) { setTimeout(function () { orkMostrarNovidade(novidadePendente); }, 600); }
+  } catch (e) { console.warn('[OROCHIKING] novidades:', e); }
 
   var ferramentaSelecionada = FERRAMENTAS[0];
 
