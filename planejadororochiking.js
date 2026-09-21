@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 35;
+  window.__ORK_VERSAO__ = 36;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -222,6 +222,16 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-22-cunhagem',
+      data: '22/09/2026',
+      titulo: 'Cunhagem numa aba só',
+      itens: [
+        'A cunhagem agora passa sozinha por todas as páginas de aldeias (de 1.000 em 1.000) numa aba só — não precisa mais abrir uma aba por página.',
+        'Cada página é cunhada com um intervalo aleatório entre elas, pra reduzir o risco de captcha.',
+        'Continua na bolinha discreta no canto: clica pra parar.'
+      ]
+    },
     {
       id: '2026-09-21',
       data: '21/09/2026',
@@ -312,7 +322,7 @@
     overlay.addEventListener('click', function (e) { if (e.target === overlay) { fechar(); } });
   }
 
-  console.log('%c[OROCHIKING] Painel v35 carregado', 'background:#e8ac0a;color:#1a1400;font-weight:bold;padding:2px 6px;border-radius:3px');
+  console.log('%c[OROCHIKING] Painel v36 carregado', 'background:#e8ac0a;color:#1a1400;font-weight:bold;padding:2px 6px;border-radius:3px');
 
   /* ============================================================
      FORA DO JOGO (a sessão caiu e fomos parar na tela de
@@ -4602,8 +4612,33 @@
         if (anchor) anchor.click();
         var botao = document.querySelector('#coin_overview_table .mint_multi_button');
         if (botao) botao.click();
+        return true;
       }
     } catch (e) { console.error('[OROCHIKING] erro ao cunhar', e); }
+    return false;
+  }
+
+  // Descobre o "from" atual pela URL (0, 1000, 2000...).
+  function fromAtualDaUrl() {
+    try {
+      var m = window.location.href.match(/[?&]from=(\d+)/);
+      return m ? parseInt(m[1], 10) : 0;
+    } catch (e) { return 0; }
+  }
+
+  // Existe uma próxima página de aldeias? (link &from=proximo na paginação)
+  function temProximaPaginaCunhar(proximoFrom) {
+    try {
+      return !!document.querySelector('a[href*="mode=coin"][href*="from=' + proximoFrom + '"]');
+    } catch (e) { return false; }
+  }
+
+  // Navega pra uma faixa específica de aldeias (from), guardando que estamos
+  // no meio de uma varredura de páginas — pra retomar do lugar certo após o reload.
+  function irParaPaginaCunhar(from) {
+    try { localStorage.setItem('ork_cunhar_from', String(from)); } catch (e) {}
+    var base = '/game.php?village=' + game_data.village.id + '&screen=snob&mode=coin&from=' + from;
+    window.location.href = base;
   }
 
   // Lê o total de moedas de ouro a partir do HTML da página de cunhagem.
@@ -4651,13 +4686,28 @@
     }
     // Atraso extra aleatório (10 a 15s) em cima do intervalo configurado, pra não
     // repetir sempre no mesmo timing exato — evita um padrão robótico reconhecível.
-    var jitterMs = 10000 + Math.random() * 5000;
+    // Delay aleatório entre páginas/ciclos, pra nunca cair no mesmo tempo exato.
+    var jitterMs = 8000 + Math.random() * 9000; // 8 a 17s
     cunharTimeoutId = setTimeout(function () {
       var cfgAtual = lerConfigCunhar();
       if (!cfgAtual.ativo) { return; }
-      // recarrega a página: ao voltar, a retomada automática lá embaixo
-      // clica em Selecionar + Cunhar de novo
-      window.location.reload();
+
+      // VARREDURA DE PÁGINAS numa aba só: se tem próxima faixa de 1.000 aldeias,
+      // vai pra ela; se não tem, volta pro começo (from=0) e recomeça a volta.
+      var from = fromAtualDaUrl();
+      var proximo = from + 1000;
+      if (temProximaPaginaCunhar(proximo)) {
+        console.log('[OROCHIKING] Cunhagem: indo para a próxima página (from=' + proximo + ').');
+        irParaPaginaCunhar(proximo);
+      } else {
+        if (from > 0) {
+          console.log('[OROCHIKING] Cunhagem: última página cunhada, recomeçando do início.');
+          irParaPaginaCunhar(0);
+        } else {
+          // uma página só (menos de 1.000 aldeias): recarrega a mesma
+          window.location.reload();
+        }
+      }
     }, intervaloMs + jitterMs);
   }
   function mostrarStatusCunhar(cfg) {
@@ -4962,11 +5012,19 @@
     if (!(window.game_data && game_data.screen === 'snob' && game_data.mode === 'coin')) return;
     var cfg = lerConfigCunhar();
     if (!cfg.ativo) return;
+    // Espera um pouco pro JS do jogo montar os dropdowns de quantidade
+    // (eles não vêm no HTML cru — só aparecem depois que a página roda).
     setTimeout(function () {
       mostrarStatusCunhar(cfg);
-      clicarCunhar();
+      var from = fromAtualDaUrl();
+      var cunhou = clicarCunhar();
+      var totalMoedas = null;
+      try { totalMoedas = lerTotalMoedas(document); } catch (e) {}
+      console.log('[OROCHIKING] Cunhagem: página from=' + from +
+        (cunhou ? ' — cunhado' : ' — nada pra cunhar aqui') +
+        (totalMoedas !== null ? ' | total de moedas: ' + totalMoedas : ''));
       agendarProximoCicloCunhar(cfg.intervaloMs);
-    }, 800);
+    }, 1200);
   })();
 
   /* ============================================================
@@ -5227,7 +5285,7 @@
     '<div id="ork-footer">' +
       (window.__ORK_DUPLICADO__ ? '<span style="color:#ff9d5c">⚠ Há outra cópia do painel instalada no Tampermonkey — desative a antiga.</span><br>' : '') +
       (textoLicenca() ? '🔑 ' + textoLicenca() + '<br>' : '') +
-      'v35 · Escolha a aba e clique em Ativar — o script já abre no lugar certo.' +
+      'v36 · Escolha a aba e clique em Ativar — o script já abre no lugar certo.' +
     '</div>';
   document.body.appendChild(painel);
 
