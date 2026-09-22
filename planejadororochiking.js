@@ -223,6 +223,16 @@
   ============================================================ */
   var ORK_NOVIDADES = [
     {
+      id: '2026-09-22-freio-coord',
+      data: '22/09/2026',
+      titulo: 'Modo Freio turbinado (farm + cunhagem)',
+      itens: [
+        'No Modo Freio, o farm e a cunhagem agora se coordenam: a cunhagem só roda nas pausas do farm, pra nunca dispararem requisição ao mesmo tempo (o que mais gera captcha).',
+        'No Freio, o Farm Hard roda em 1.25x com pausas automáticas (Ritmo Humano ligado junto).',
+        'Menos requisição simultânea = bem menos risco de captcha rodando os dois a noite toda.'
+      ]
+    },
+    {
       id: '2026-09-22-cunhagem',
       data: '22/09/2026',
       titulo: 'Cunhagem numa aba só',
@@ -246,15 +256,22 @@
   ];
 
   function orkNovidadeNaoVista() {
-    // devolve a primeira novidade (mais recente) que a pessoa ainda não fechou
+    // A entrada mais recente é sempre a PRIMEIRA da lista. Só mostramos ela —
+    // se a pessoa ainda não a viu. Assim nunca aparecem vários popups em sequência
+    // pra quem pulou algumas versões: mostra só a última novidade.
+    if (!ORK_NOVIDADES.length) { return null; }
+    var maisRecente = ORK_NOVIDADES[0];
+    var vista = false;
+    try { vista = localStorage.getItem('ork_novidade_vista_' + maisRecente.id) === '1'; } catch (e) {}
+    return vista ? null : maisRecente;
+  }
+
+  // Ao fechar, marca a atual E todas as anteriores como vistas, pra elas nunca
+  // aparecerem depois (a pessoa já está vendo a versão mais nova).
+  function orkMarcarTodasVistas() {
     for (var i = 0; i < ORK_NOVIDADES.length; i++) {
-      var n = ORK_NOVIDADES[i];
-      var chave = 'ork_novidade_vista_' + n.id;
-      var vista = false;
-      try { vista = localStorage.getItem(chave) === '1'; } catch (e) {}
-      if (!vista) { return n; }
+      try { localStorage.setItem('ork_novidade_vista_' + ORK_NOVIDADES[i].id, '1'); } catch (e) {}
     }
-    return null;
   }
 
   function orkMostrarNovidade(n) {
@@ -313,7 +330,7 @@
     overlay.querySelector('#ork-novidade-titulo').textContent = n.titulo;
 
     function fechar() {
-      try { localStorage.setItem('ork_novidade_vista_' + n.id, '1'); } catch (e) {}
+      orkMarcarTodasVistas();
       try { overlay.remove(); estilo.remove(); } catch (e) {}
     }
     overlay.querySelector('#ork-novidade-x').addEventListener('click', fechar);
