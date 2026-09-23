@@ -4,34 +4,19 @@
     "expira": "2026-09-27",
     "obs": "Semanal"
   },
-  "juniro1717": {
-    "status": "ativo",
-    "expira": "2026-09-25",
-    "obs": "Semanal"
-  },
   "reddevil": {
     "status": "ativo",
     "expira": "3000-01-01",
     "obs": "Vitalicio"
   },
-  "tmartins1999": {
-    "status": "ativo",
-    "expira": "2026-09-21",
-    "obs": "Teste"
-  },
-  "aldeia do mato": {
-    "status": "ativo",
-    "expira": "2026-09-21",
-    "obs": "Teste"
-  },
-  "jordy alba": {
-    "status": "ativo",
-    "expira": "2026-09-21",
-    "obs": "Teste"
-  },
   "saquear": {
     "status": "ativo",
     "expira": "3000-01-01",
+    "obs": "Vitalicio"
+  },
+  "eliteteam5": {
+    "status": "ativo",
+    "expira": "3000-10-09",
     "obs": "Vitalicio"
   }
 }
