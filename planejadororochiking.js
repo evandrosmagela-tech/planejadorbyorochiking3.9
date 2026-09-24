@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 45;
+  window.__ORK_VERSAO__ = 46;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -222,6 +222,17 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-24-balanceador',
+      data: '24/09/2026',
+      titulo: 'Nova ferramenta: Balanceador Hard',
+      itens: [
+        'Nova aba Balancear: equilibra os recursos entre suas aldeias pelo mercado, sozinho, sem clicar em enviar.',
+        'Mesma lógica do Resources Balancer: fator de média, clusters por região e recursos pra construção do Gerente de Conta.',
+        'Envia com 1 a 3s aleatórios entre cada aldeia e repete no intervalo que você escolher. Roda de qualquer tela.',
+        'Botão "Calcular (sem enviar)" mostra antes o total, a média, o excedente, o déficit e quem vai receber.'
+      ]
+    },
     {
       id: '2026-09-24-auto247',
       data: '24/09/2026',
@@ -390,7 +401,7 @@
     overlay.addEventListener('click', function (e) { if (e.target === overlay) { fechar(); } });
   }
 
-  console.log('%c[OROCHIKING] Painel v39 carregado', 'background:#e8ac0a;color:#1a1400;font-weight:bold;padding:2px 6px;border-radius:3px');
+  console.log('%c[OROCHIKING] Painel v' + (window.__ORK_VERSAO__ || '?') + ' carregado', 'background:#e8ac0a;color:#1a1400;font-weight:bold;padding:2px 6px;border-radius:3px');
 
   /* ============================================================
      FORA DO JOGO (a sessão caiu e fomos parar na tela de
@@ -5742,6 +5753,685 @@
   function checaAuto247() { return !!(window.game_data && game_data.village && game_data.village.id); }
   function rodarAuto247() { autoAbrirModal(); }
 
+  /* ============================================================
+     BALANCEADOR HARD
+     Mesma lógica do "Resources balancer" (Costache Madalin):
+       - média de recursos por aldeia (fator 0-1), com clusters (k-means)
+       - recursos extras pra construção do Gerente de Conta (horas)
+       - "max construction" automático
+       - resto de mercador (bug do xxx699) e mínimo por envio
+     Diferenças: interface do painel e ENVIO AUTOMÁTICO por AJAX
+     (mercado -> "chamar recursos"), 1 a 3s aleatórios (ms) entre envios,
+     repetindo no intervalo configurado. Roda de qualquer tela, uma aba
+     só executa (trava entre abas), captcha: espera e continua sozinho.
+  ============================================================ */
+  var BAL_CHAVE = 'ork_balanceador';
+  var BAL_TRAVA = 'ork_balanceador_trava';
+  var BAL_ABA = 'aba' + Math.random().toString(36).slice(2, 10);
+  var balTimer = null, balRelogio = null, balTravaId = null, balRodando = false;
+
+  function balLer() {
+    try { var c = JSON.parse(localStorage.getItem(BAL_CHAVE) || 'null'); if (c && typeof c === 'object') { return c; } } catch (e) {}
+    return { ativo: false, reserva: 0, horas: 0, fator: 1, clusters: 1, maxConstrucao: false, capacidade: 1000,
+      intervaloMin: 60, proximoEm: 0, ultimo: null, feitos: [] };
+  }
+  function balGravar(c) { try { localStorage.setItem(BAL_CHAVE, JSON.stringify(c)); } catch (e) {} }
+  function balEsperar(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function balEntre(a, b) { return Math.floor(a + Math.random() * (b - a + 1)); }
+  function balNum(t) { var n = parseInt(String(t == null ? '' : t).replace(/[^0-9]/g, ''), 10); return isNaN(n) ? 0 : n; }
+  function balLog(t) { try { console.log('[OROCHIKING] Balanceador: ' + t); } catch (e) {} }
+  function balStatus(t) { var b = document.getElementById('ork-bal-bolinha'); if (b && t) { b.title = 'Balanceador: ' + t + ' — clique pra parar'; } }
+
+  /* ---------- trava entre abas ---------- */
+  function balPegarTrava() {
+    try {
+      var t = JSON.parse(localStorage.getItem(BAL_TRAVA) || 'null');
+      if (t && t.aba !== BAL_ABA && Date.now() - (t.ts || 0) < 20000) { return false; }
+      localStorage.setItem(BAL_TRAVA, JSON.stringify({ aba: BAL_ABA, ts: Date.now() }));
+      var conf = JSON.parse(localStorage.getItem(BAL_TRAVA) || 'null');
+      if (!conf || conf.aba !== BAL_ABA) { return false; }
+      if (!balTravaId) {
+        balTravaId = setInterval(function () {
+          try { var a = JSON.parse(localStorage.getItem(BAL_TRAVA) || 'null');
+            if (a && a.aba === BAL_ABA) { localStorage.setItem(BAL_TRAVA, JSON.stringify({ aba: BAL_ABA, ts: Date.now() })); } } catch (e) {}
+        }, 5000);
+      }
+      return true;
+    } catch (e) { return true; }
+  }
+  function balSoltarTrava() {
+    try { if (balTravaId) { clearInterval(balTravaId); balTravaId = null; }
+      var t = JSON.parse(localStorage.getItem(BAL_TRAVA) || 'null');
+      if (t && t.aba === BAL_ABA) { localStorage.removeItem(BAL_TRAVA); } } catch (e) {}
+  }
+  window.addEventListener('pagehide', balSoltarTrava);
+
+  /* ---------- leitura de páginas (fetch, com pausa curta entre páginas) ---------- */
+  async function balGetDoc(url) {
+    var r = await fetch(url, { credentials: 'include' });
+    var html = await r.text();
+    return new DOMParser().parseFromString(html, 'text/html');
+  }
+  // mesma regra de paginação do script original
+  function balPaginas(doc, urlBase) {
+    var lista = [];
+    var sel = doc.querySelector('.paged-nav-item') ? doc.querySelector('.paged-nav-item').parentElement.querySelector('select') : null;
+    if (sel) {
+      Array.prototype.forEach.call(sel.options, function (o) { lista.push(o.value); });
+      lista.pop();
+    } else if (doc.getElementsByClassName('paged-nav-item').length > 0) {
+      var nr = 0;
+      Array.prototype.forEach.call(doc.getElementsByClassName('paged-nav-item'), function (item) {
+        var h = item.getAttribute('href') || '';
+        lista.push(h.split('page=')[0] + 'page=' + nr); nr++;
+      });
+    } else { lista.push(urlBase); }
+    return lista;
+  }
+  async function balCarregarTodas(urlBase, porPagina) {
+    var primeira = await balGetDoc(urlBase);
+    var paginas = balPaginas(primeira, urlBase);
+    for (var i = 0; i < paginas.length; i++) {
+      var doc = (paginas.length === 1 && paginas[0] === urlBase) ? primeira : await balGetDoc(paginas[i]);
+      porPagina(doc);
+      balStatus('lendo páginas (' + (i + 1) + '/' + paginas.length + ')');
+      await balEsperar(balEntre(250, 600));
+    }
+  }
+
+  async function balDadosProducao() {
+    var lista = [], farm = new Map();
+    var desktop = game_data.device === 'desktop';
+    await balCarregarTodas(game_data.link_base_pure + 'overview_villages&mode=prod', function (doc) {
+      if (desktop) {
+        doc.querySelectorAll('.row_a, .row_b').forEach(function (tr) {
+          try {
+            var vn = tr.getElementsByClassName('quickedit-vn')[0];
+            var nome = vn.innerText || vn.textContent;
+            var coord = nome.match(/[0-9]{3}\|[0-9]{3}/)[0];
+            var merc = (tr.querySelector("a[href*='market']").textContent || '').split('/');
+            var pop = (tr.children[6].textContent || '').split('/');
+            lista.push({ coord: coord, id: vn.getAttribute('data-id'), name: nome.trim(),
+              wood: balNum(tr.getElementsByClassName('wood')[0].textContent),
+              stone: balNum(tr.getElementsByClassName('stone')[0].textContent),
+              iron: balNum(tr.getElementsByClassName('iron')[0].textContent),
+              merchants: balNum(merc[0]), merchants_total: balNum(merc[1]),
+              capacity: balNum(tr.children[4].textContent), points: balNum(tr.children[2].textContent) });
+            farm.set(coord, balNum(pop[0]) / Math.max(1, balNum(pop[1])));
+          } catch (e) {}
+        });
+      } else {
+        doc.querySelectorAll('.overview-container .overview-container-item').forEach(function (it) {
+          try {
+            var nome = (it.querySelector('.quickedit-label').textContent || '').trim();
+            var coord = nome.match(/\d+\|\d+/)[0];
+            var pop = (it.getElementsByClassName('population')[0].parentElement.textContent || '').split('/');
+            lista.push({ coord: coord, id: it.querySelector('.quickedit-vn').getAttribute('data-id'), name: nome,
+              wood: balNum(it.getElementsByClassName('mwood')[0].textContent),
+              stone: balNum(it.getElementsByClassName('mstone')[0].textContent),
+              iron: balNum(it.getElementsByClassName('miron')[0].textContent),
+              merchants: balNum(it.querySelector('.vertical_center').textContent), merchants_total: 500,
+              capacity: balNum(it.getElementsByClassName('ressources')[0].parentElement.textContent),
+              points: balNum(it.querySelector('.grey').parentElement.textContent) });
+            farm.set(coord, balNum(pop[0]) / Math.max(1, balNum(pop[1])));
+          } catch (e) {}
+        });
+      }
+    });
+    return { list_production: lista, map_farm_usage: farm };
+  }
+
+  async function balDadosChegando() {
+    var mapa = new Map();
+    var desktop = game_data.device === 'desktop';
+    await balCarregarTodas(game_data.link_base_pure + 'overview_villages&mode=trader&type=inc', function (doc) {
+      doc.querySelectorAll('.row_a, .row_b').forEach(function (tr) {
+        try {
+          var coord = desktop ? tr.children[4].textContent.match(/[0-9]{3}\|[0-9]{3}/)[0]
+                              : tr.children[3].textContent.match(/[0-9]{3}\|[0-9]{3}/g)[1];
+          function rec(cl) { var el = tr.querySelector('.' + cl); return el ? balNum(el.parentElement.textContent) : 0; }
+          var o = mapa.get(coord) || { wood: 0, stone: 0, iron: 0 };
+          o.wood += rec('wood'); o.stone += rec('stone'); o.iron += rec('iron');
+          mapa.set(coord, o);
+        } catch (e) {}
+      });
+    });
+    return mapa;
+  }
+
+  /* ---------- Gerente de Conta (só quando horas > 0 ou max construção) ---------- */
+  async function balModelosAM() {
+    var vazio = { map_coord_templates: new Map(), map_construction_templates: new Map(), map_priortize_farm: new Map() };
+    try { if (!game_data.features || !game_data.features.AccountManager || !game_data.features.AccountManager.active) { return vazio; } } catch (e) { return vazio; }
+    var base = game_data.link_base_pure + 'am_village';
+    var docMain = await balGetDoc(base);
+    var paginas = [];
+    var tabela = docMain.querySelector('#village_table');
+    var antes = tabela ? tabela.previousElementSibling : null;
+    var sel = antes ? antes.querySelector('select') : null;
+    if (sel) { Array.prototype.forEach.call(sel.options, function (o) { paginas.push(o.value); }); }
+    else if (antes && antes.querySelectorAll('.paged-nav-item').length > 0) {
+      var n = antes.querySelectorAll('.paged-nav-item').length;
+      for (var i = 0; i <= n - 2; i++) { paginas.push(game_data.link_base_pure + 'am_village&page=' + i); }
+    } else { paginas.push(base); }
+    for (var p = 0; p < paginas.length; p++) {
+      var doc = await balGetDoc(paginas[p]);
+      doc.querySelectorAll('.row_a, .row_b').forEach(function (tr) {
+        try {
+          var coord = tr.children[0].textContent.match(/[0-9]{3}\|[0-9]{3}/)[0];
+          var nomeT = (tr.children[1].textContent || '').trim();
+          if (nomeT !== '') { vazio.map_coord_templates.set(coord, nomeT); vazio.map_construction_templates.set(nomeT, 0); vazio.map_priortize_farm.set(nomeT, 0); }
+        } catch (e) {}
+      });
+      await balEsperar(balEntre(250, 600));
+    }
+    var opts = docMain.querySelector('select[name=template]');
+    var lista = opts ? Array.prototype.slice.call(opts.options) : [];
+    for (var k = 0; k < lista.length; k++) {
+      var nome = lista[k].textContent.replace(/[\n\t]/g, '');
+      if (k < 3) { nome = nome.replace(/\(\w+\)/, ''); }
+      if (!vazio.map_construction_templates.has(nome)) { continue; }
+      var d = await balGetDoc(game_data.link_base_pure + 'am_village&mode=queue&template=' + lista[k].value);
+      var tpl = [];
+      d.querySelectorAll('.sortable_row').forEach(function (it) {
+        var abs = (it.querySelector('.level_absolute') || {}).textContent || '';
+        var m = abs.match(/\d+/);
+        tpl.push({ name: it.getAttribute('data-building'), level_absolute: m ? parseInt(m[0], 10) : 0 });
+      });
+      vazio.map_construction_templates.set(nome, tpl);
+      var cap = 99;
+      var tog = d.querySelector('input[name=farm_upgrade_toggle]');
+      if (tog && tog.checked) { var ps = d.querySelector('select[name=population_upgrades]'); cap = 100 - parseInt(ps ? ps.value : '1', 10); }
+      vazio.map_priortize_farm.set(nome, cap);
+      await balEsperar(balEntre(250, 600));
+    }
+    return vazio;
+  }
+
+  function balTempoTermino(txt) {
+    try {
+      var sd = document.getElementById('serverDate').innerText.split('/');
+      var fim = '';
+      var hoje = lang['aea2b0aa9ae1534226518faaefffdaad'].replace(' %s', '');
+      var amanha = lang['57d28d1b211fddbb7a499ead5bf23079'].replace(' %s', '');
+      var em = lang['0cb274c906d622fa8ce524bcfbb7552d'].split(' ')[0];
+      if (txt.indexOf(hoje) !== -1) { fim = sd[1] + '/' + sd[0] + '/' + sd[2] + ' ' + txt.match(/\d+:\d+/)[0]; }
+      else if (txt.indexOf(amanha) !== -1) {
+        var t = new Date(sd[1] + '/' + sd[0] + '/' + sd[2]); t.setDate(t.getDate() + 1);
+        fim = ('0' + (t.getMonth() + 1)).slice(-2) + '/' + ('0' + t.getDate()).slice(-2) + '/' + t.getFullYear() + ' ' + txt.match(/\d+:\d+/)[0];
+      } else if (txt.indexOf(em) !== -1) {
+        var on = txt.match(/\d+.\d+/)[0].split('.');
+        fim = on[1] + '/' + on[0] + '/' + sd[2] + ' ' + txt.match(/\d+:\d+/)[0];
+      }
+      var dFim = new Date(fim);
+      var agora = new Date(sd[1] + '/' + sd[0] + '/' + sd[2] + ' ' + document.getElementById('serverTime').innerText);
+      var s = parseInt((dFim.getTime() - agora.getTime()) / 1000, 10);
+      if (s < 0) { dFim.setDate(dFim.getDate() + 1); s = parseInt((dFim.getTime() - agora.getTime()) / 1000, 10); }
+      return isNaN(s) ? 0 : s;
+    } catch (e) { return 0; }
+  }
+
+  async function balDadosEdificios() {
+    var mapa = new Map();
+    var desktop = game_data.device === 'desktop';
+    await balCarregarTodas(game_data.link_base_pure + 'overview_villages&mode=buildings', function (doc) {
+      doc.querySelectorAll('.row_a, .row_b').forEach(function (tr) {
+        try {
+          var coord = (tr.querySelector('.nowrap').textContent || '').match(/[0-9]{3}\|[0-9]{3}/)[0];
+          var filaEl = desktop ? tr : (tr.nextElementSibling ? tr.nextElementSibling.nextElementSibling : null);
+          var imgs = filaEl ? Array.prototype.slice.call(filaEl.querySelectorAll(desktop ? '.queue_icon img' : 'img')) : [];
+          var ult = imgs.length ? imgs[imgs.length - 1].getAttribute('title') : null;
+          mapa.set(coord + '_time_queued', ult ? balTempoTermino(ult.split('-')[1] || '') : 0);
+          if (desktop) {
+            tr.querySelectorAll('.upgrade_building').forEach(function (b) {
+              mapa.set(coord + '_' + b.classList[1].replace('b_', ''), parseInt(b.textContent, 10) || 0);
+            });
+          } else {
+            var tds = tr.nextElementSibling.querySelectorAll('table td'), ths = tr.nextElementSibling.querySelectorAll('table th');
+            for (var j = 0; j < tds.length; j++) {
+              var nm = ths[j].getElementsByTagName('img')[0].src.split('buildings/')[1].replace('.png', '');
+              mapa.set(coord + '_' + nm, parseInt(tds[j].textContent, 10) || 0);
+            }
+          }
+          imgs.forEach(function (im) {
+            var m = (im.getAttribute('src') || '').match(/(\w+)\.(webp|png)/);
+            if (!m) { return; }
+            var k = coord + '_' + m[1];
+            mapa.set(k, (mapa.get(k) || 0) + 1);
+          });
+        } catch (e) {}
+      });
+    });
+    return mapa;
+  }
+
+  async function balConstantesEdificios() {
+    var chave = game_data.world + 'constantBuildings';
+    try { var s = localStorage.getItem(chave); if (s) { return new Map(JSON.parse(s)); } } catch (e) {}
+    var r = await fetch('/interface.php?func=get_building_info', { credentials: 'include' });
+    var xml = new DOMParser().parseFromString(await r.text(), 'text/xml');
+    var mapa = new Map();
+    var cfg = xml.getElementsByTagName('config')[0];
+    Array.prototype.forEach.call(cfg ? cfg.children : [], function (b) {
+      function v(t) { var el = b.getElementsByTagName(t)[0]; return el ? Number(el.textContent) : 0; }
+      mapa.set(b.tagName.toLowerCase(), { wood: v('wood'), stone: v('stone'), iron: v('iron'), wood_factor: v('wood_factor'),
+        stone_factor: v('stone_factor'), iron_factor: v('iron_factor'), build_time: v('build_time'), build_time_factor: v('build_time_factor') });
+    });
+    try { localStorage.setItem(chave, JSON.stringify(Array.from(mapa.entries()))); } catch (e) {}
+    return mapa;
+  }
+
+  function balCustoNivel(hq, level, o) {
+    var k = { 1: 1, 2: 1, 3: 0.112292, 4: 0.289555, 5: 0.46113, 6: 0.606372, 7: 0.723059, 8: 0.815935, 9: 0.889947, 10: 0.948408,
+      11: 0.994718, 12: 1.031, 13: 1.059231, 14: 1.080939, 15: 1.09729, 16: 1.109156, 17: 1.117308, 18: 1.122392, 19: 1.124817,
+      20: 1.124917, 21: 1.123181, 22: 1.119778, 23: 1.114984, 24: 1.109038, 25: 1.102077, 26: 1.0942, 27: 1.085601, 28: 1.076369,
+      29: 1.066566, 30: 1.056291 };
+    var t = o.build_time * Math.pow(1.2, level - 1) * Math.pow(1.05, -hq) * (k[level] || 1);
+    return [Math.round(t), Math.round(o.wood * Math.pow(o.wood_factor, level - 1)),
+      Math.round(o.stone * Math.pow(o.stone_factor, level - 1)), Math.round(o.iron * Math.pow(o.iron_factor, level - 1))];
+  }
+
+  // lista[h-1] = recursos necessários pra h horas de construção (igual ao original)
+  async function balRecursosAM(mapFarm, horasMax) {
+    var t = await balModelosAM();
+    if (!t.map_coord_templates.size) { var vaz = []; for (var z = 0; z < horasMax; z++) { vaz.push(new Map()); } return vaz; }
+    var edificios = await balDadosEdificios();
+    var consts = await balConstantesEdificios();
+    var lista = [];
+    for (var h = 1; h <= horasMax; h++) {
+      var mapaAM = new Map();
+      var ed = new Map(JSON.parse(JSON.stringify(Array.from(edificios.entries()))));
+      Array.from(ed.keys()).forEach(function (key) {
+        if (key.indexOf('_time_queued') !== -1) {
+          mapaAM.set(key.replace('_time_queued', ''), { total_wood: 0, total_stone: 0, total_iron: 0, time_finished: Math.round(ed.get(key) / 3600) });
+        }
+      });
+      Array.from(t.map_coord_templates.keys()).forEach(function (coord) {
+        var tempo = ed.get(coord + '_time_queued') || 0;
+        var nomeT = t.map_coord_templates.get(coord);
+        var tpl = t.map_construction_templates.get(nomeT) || [];
+        var capFarm = (t.map_priortize_farm.get(nomeT) || 99) / 100;
+        function somar(res) {
+          var o = mapaAM.get(coord) || { total_wood: 0, total_stone: 0, total_iron: 0, time_finished: 0 };
+          o.total_wood += res[1]; o.total_stone += res[2]; o.total_iron += res[3]; o.time_finished = tempo / 3600;
+          mapaAM.set(coord, o);
+        }
+        if ((ed.get(coord + '_farm') || 0) < 30 && mapFarm.get(coord) >= capFarm && consts.get('farm')) {
+          var r0 = balCustoNivel(ed.get(coord + '_main') || 1, (ed.get(coord + '_farm') || 0) + 1, consts.get('farm'));
+          tempo += r0[0]; somar(r0);
+        }
+        for (var i = 0; i < tpl.length; i++) {
+          var chave = coord + '_' + tpl[i].name;
+          var atual = ed.get(chave) || 0;
+          var alvo = tpl[i].level_absolute;
+          var c = consts.get(tpl[i].name);
+          if (alvo > atual && c) {
+            for (var j = 0; j < alvo - atual; j++) {
+              var nv = (ed.get(chave) || 0) + 1;
+              var r = balCustoNivel(ed.get(coord + '_main') || 1, nv, c);
+              tempo += r[0]; somar(r); ed.set(chave, nv);
+              if (tempo > h * 3600) { break; }
+            }
+          }
+          if (tempo > h * 3600) { break; }
+        }
+      });
+      lista.push(mapaAM);
+    }
+    return lista;
+  }
+
+  /* ---------- k-means (igual ao original, 50 tentativas) ---------- */
+  function balDist(a, b) { var s = 0; for (var i = 0; i < a.length; i++) { s += Math.pow(a[i] - b[i], 2); } return Math.sqrt(s); }
+  function balKmeansUma(dados, k) {
+    var clusters = [];
+    for (var i = 0; i < k; i++) { clusters.push({ mean: dados[Math.floor(Math.random() * dados.length)], data: [] }); }
+    for (var it = 0; it < 100; it++) {
+      clusters.forEach(function (c) { c.data = []; });
+      dados.forEach(function (v) {
+        var melhor = clusters[0], md = Infinity;
+        clusters.forEach(function (c) { var d = balDist(c.mean, v); if (d < md) { md = d; melhor = c; } });
+        melhor.data.push(v);
+      });
+      clusters.forEach(function (c) {
+        if (!c.data.length) { c.mean = [0, 0]; return; }
+        c.mean = [0, 1].map(function (ix) { return c.data.reduce(function (s, v) { return s + v[ix]; }, 0) / c.data.length; });
+      });
+    }
+    var maxD = 0;
+    clusters.forEach(function (c) { for (var a = 0; a < c.data.length; a++) { for (var b = a + 1; b < c.data.length; b++) { maxD = Math.max(maxD, balDist(c.data[a], c.data[b])); } } });
+    clusters.maxDistance = maxD;
+    return clusters;
+  }
+  function balClusters(dados, k) {
+    var melhor = null;
+    for (var r = 0; r < 50; r++) { var res = balKmeansUma(dados, k); if (!melhor || res.maxDistance < melhor.maxDistance) { melhor = res; } }
+    return melhor;
+  }
+  function balDistCoord(c1, c2) { var a = c1.split('|'), b = c2.split('|'); return Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2)); }
+
+  /* ---------- cálculo dos envios (portado do calculateLaunches original) ---------- */
+  function balCalcularEnvios(prodCl, prodCasaCl, mapaAM, clusters, fator, reserva, capMerc) {
+    var envios = [], stats = [];
+    var tot = { ws: 0, ss: 0, is: 0, wg: 0, sg: 0, ig: 0 };
+    for (var i = 0; i < prodCl.length; i++) {
+      var lp = prodCl[i], lh = prodCasaCl[i];
+      var avg = { w: 0, s: 0, i: 0 }, cl = { w: 0, s: 0, i: 0 };
+      lp.forEach(function (v) { avg.w += v.wood / lp.length; avg.s += v.stone / lp.length; avg.i += v.iron / lp.length; cl.w += v.wood; cl.s += v.stone; cl.i += v.iron; });
+      var af = { w: avg.w * fator, s: avg.s * fator, i: avg.i * fator };
+      var ts = { w: 0, s: 0, i: 0 }, tg = { w: 0, s: 0, i: 0 }, lSend = [], lGet = [];
+      for (var j = 0; j < lp.length; j++) {
+        var v = lp[j], casa = lh[j];
+        var cap = v.capacity * 0.95, capViagem = (v.merchants - reserva) * capMerc;
+        var ar = { w: af.w, s: af.s, i: af.i };
+        if (mapaAM.has(v.coord)) { var am = mapaAM.get(v.coord); ar.w += am.total_wood; ar.s += am.total_stone; ar.i += am.total_iron; }
+        var d = { w: v.wood - Math.round(ar.w), s: v.stone - Math.round(ar.s), i: v.iron - Math.round(ar.i) };
+        d.w = d.w < 0 ? d.w : (casa.wood - d.w > 0 ? d.w : casa.wood);
+        d.s = d.s < 0 ? d.s : (casa.stone - d.s > 0 ? d.s : casa.stone);
+        d.i = d.i < 0 ? d.i : (casa.iron - d.i > 0 ? d.i : casa.iron);
+        var disp = (d.w > 0 ? d.w : 0) + (d.s > 0 ? d.s : 0) + (d.i > 0 ? d.i : 0);
+        var norm = (capViagem <= disp && disp > 0) ? Math.max(0, capViagem) / disp : 1;
+        var sd = { w: d.w > 0 ? parseInt(d.w * norm, 10) : 0, s: d.s > 0 ? parseInt(d.s * norm, 10) : 0, i: d.i > 0 ? parseInt(d.i * norm, 10) : 0 };
+        var gt = {
+          w: d.w > 0 ? 0 : (v.wood + Math.abs(d.w) < cap ? Math.abs(d.w) : cap - v.wood),
+          s: d.s > 0 ? 0 : (v.stone + Math.abs(d.s) < cap ? Math.abs(d.s) : cap - v.stone),
+          i: d.i > 0 ? 0 : (v.iron + Math.abs(d.i) < cap ? Math.abs(d.i) : cap - v.iron) };
+        ts.w += sd.w; ts.s += sd.s; ts.i += sd.i; tg.w += gt.w; tg.s += gt.s; tg.i += gt.i;
+        if (sd.w > 0 || sd.s > 0 || sd.i > 0) { lSend.push({ coord: v.coord, id: v.id, name: v.name, wood: Math.max(0, sd.w), stone: Math.max(0, sd.s), iron: Math.max(0, sd.i) }); }
+        var og = { coord: v.coord, id: v.id, name: v.name, wood: gt.w > 0 ? parseInt(gt.w, 10) : 0, stone: gt.s > 0 ? parseInt(gt.s, 10) : 0, iron: gt.i > 0 ? parseInt(gt.i, 10) : 0 };
+        if (og.wood > 0 || og.stone > 0 || og.iron > 0) { lGet.push(og); }
+      }
+      var nw = tg.w > ts.w ? ts.w / tg.w : 1, ns = tg.s > ts.s ? ts.s / tg.s : 1, ni = tg.i > ts.i ? ts.i / tg.i : 1;
+      lGet.forEach(function (g) { g.wood = parseInt(g.wood * nw, 10); g.stone = parseInt(g.stone * ns, 10); g.iron = parseInt(g.iron * ni, 10); });
+      var minimo = capMerc === 1000 ? 700 : 1200;
+      var maxDist = 0;
+      for (var g = 0; g < lGet.length; g++) {
+        var alvo = lGet[g];
+        lSend.forEach(function (s) { s.distance = balDistCoord(alvo.coord, s.coord); });
+        lSend.sort(function (a, b) { return a.distance - b.distance; });
+        for (var k = 0; k < lSend.length; k++) {
+          var s = lSend[k];
+          var ew = s.wood > 0 ? Math.min(alvo.wood, s.wood) : 0, es = s.stone > 0 ? Math.min(alvo.stone, s.stone) : 0, ei = s.iron > 0 ? Math.min(alvo.iron, s.iron) : 0;
+          alvo.wood -= ew; alvo.stone -= es; alvo.iron -= ei; s.wood -= ew; s.stone -= es; s.iron -= ei;
+          var total = ew + es + ei;
+          var resto = total % capMerc; // "bug do xxx699": tira a sobra que não enche um mercador
+          if (resto < minimo) {
+            if (ew > resto) { ew -= resto; total -= resto; } else if (es > resto) { es -= resto; total -= resto; } else if (ei > resto) { ei -= resto; total -= resto; }
+          }
+          maxDist = Math.max(maxDist, s.distance);
+          if (total >= minimo) {
+            envios.push({ total_send: total, wood: ew, stone: es, iron: ei, coord_origin: s.coord, id_origin: s.id,
+              id_destination: alvo.id, coord_destination: alvo.coord, name_destination: alvo.name, distance: s.distance });
+          }
+          if (alvo.wood + alvo.stone + alvo.iron < minimo) { break; }
+        }
+      }
+      tot.ws += ts.w; tot.ss += ts.s; tot.is += ts.i; tot.wg += tg.w; tot.sg += tg.s; tot.ig += tg.i;
+      stats.push({ total_wood_send: ts.w, total_stone_send: ts.s, total_iron_send: ts.i, total_wood_get: tg.w, total_stone_get: tg.s, total_iron_get: tg.i, max_distance: maxDist, nr_coords: clusters[i].data.length });
+    }
+    return { envios: envios, stats: stats, tot: tot };
+  }
+
+  async function balCalcular(cfg) {
+    balStatus('lendo produção');
+    var prod = await balDadosProducao();
+    var lp = prod.list_production;
+    if (!lp.length) { throw new Error('não consegui ler a visão de produção'); }
+    balStatus('lendo transportes a caminho');
+    var chegando = await balDadosChegando();
+    var horas = Math.min(50, Math.max(0, Number(cfg.horas) || 0));
+    var fator = Math.min(1, Math.max(0, Number(cfg.fator)));
+    if (isNaN(fator)) { fator = 1; }
+    var usarMax = !!cfg.maxConstrucao && fator <= 0.5;
+    var listaAM = [];
+    if (horas > 0 || usarMax) { balStatus('lendo Gerente de Conta'); listaAM = await balRecursosAM(prod.map_farm_usage, usarMax ? 100 : horas); }
+    var casa = JSON.parse(JSON.stringify(lp));
+    lp.forEach(function (v) {
+      var inc = chegando.get(v.coord);
+      if (inc) { v.wood = Math.min(v.wood + inc.wood, v.capacity); v.stone = Math.min(v.stone + inc.stone, v.capacity); v.iron = Math.min(v.iron + inc.iron, v.capacity); }
+    });
+    var k = Math.max(1, Math.min(parseInt(cfg.clusters, 10) || 1, lp.length));
+    var clusters = balClusters(lp.map(function (v) { return v.coord.split('|').map(Number); }), k);
+    var prodCl = [], casaCl = [];
+    clusters.forEach(function (c) {
+      var a = [], b = [];
+      c.data.forEach(function (xy) {
+        var coord = xy.join('|');
+        for (var i = 0; i < lp.length; i++) { if (lp[i].coord === coord) { a.push(lp[i]); b.push(casa[i]); break; } }
+      });
+      prodCl.push(a); casaCl.push(b);
+    });
+    var reserva = Math.max(0, parseInt(cfg.reserva, 10) || 0);
+    var capMerc = Math.min(1500, Math.max(1000, parseInt(cfg.capacidade, 10) || 1000));
+    var res, horasUsadas = horas;
+    if (!usarMax) {
+      res = balCalcularEnvios(prodCl, casaCl, horas > 0 ? (listaAM[horas - 1] || new Map()) : new Map(), clusters, fator, reserva, capMerc);
+    } else {
+      // "max construction": maior nº de horas em que o excedente ainda cobre o déficit
+      res = balCalcularEnvios(prodCl, casaCl, listaAM[0] || new Map(), clusters, fator, reserva, capMerc); horasUsadas = 1;
+      for (var h = 1; h < listaAM.length; h++) {
+        var tent = balCalcularEnvios(prodCl, casaCl, listaAM[h], clusters, fator, reserva, capMerc);
+        var falta = tent.stats.some(function (s) { return s.total_iron_get > s.total_iron_send || s.total_stone_get > s.total_stone_send || s.total_wood_get > s.total_wood_send; });
+        if (falta) { break; }
+        res = tent; horasUsadas = h + 1;
+      }
+    }
+    // agrupa por destino (1 chamada de mercado por aldeia que recebe, como o original)
+    var porDestino = new Map();
+    res.envios.forEach(function (e) {
+      var o = porDestino.get(e.id_destination) || { target_id: e.id_destination, coord: e.coord_destination, nome: e.name_destination,
+        data: {}, total: 0, wood: 0, stone: 0, iron: 0, distance: 0 };
+      o.data['resource[' + e.id_origin + '][wood]'] = (o.data['resource[' + e.id_origin + '][wood]'] || 0) + e.wood;
+      o.data['resource[' + e.id_origin + '][stone]'] = (o.data['resource[' + e.id_origin + '][stone]'] || 0) + e.stone;
+      o.data['resource[' + e.id_origin + '][iron]'] = (o.data['resource[' + e.id_origin + '][iron]'] || 0) + e.iron;
+      o.total += e.total_send; o.wood += e.wood; o.stone += e.stone; o.iron += e.iron; o.distance = Math.max(o.distance, e.distance);
+      porDestino.set(e.id_destination, o);
+    });
+    var lista = Array.from(porDestino.values()).sort(function (a, b) { return b.total - a.total; });
+    var tw = 0, ts = 0, ti = 0;
+    lp.forEach(function (v) { tw += v.wood; ts += v.stone; ti += v.iron; });
+    return { lista: lista, aldeias: lp.length, horasUsadas: horasUsadas,
+      resumo: { total: [tw, ts, ti], media: [tw / lp.length, ts / lp.length, ti / lp.length].map(Math.round),
+        excedente: [res.tot.ws, res.tot.ss, res.tot.is].map(Math.round), deficit: [res.tot.wg, res.tot.sg, res.tot.ig].map(Math.round) } };
+  }
+
+  /* ---------- envio (mercado -> chamar recursos, igual ao botão "send") ---------- */
+  function balEnviar(item) {
+    return new Promise(function (resolve) {
+      var feito = false;
+      function fim(ok, info) { if (!feito) { feito = true; resolve({ ok: ok, info: info }); } }
+      try {
+        TribalWars.post('market', { village: item.target_id, ajaxaction: 'call', h: window.csrf_token }, item.data,
+          function (r) { fim(true, r && r.success); }, function (e) { fim(false, e); });
+        setTimeout(function () { fim(false, 'sem resposta em 20s'); }, 20000);
+      } catch (e) { fim(false, e && e.message); }
+    });
+  }
+
+  /* ---------- ciclo automático ---------- */
+  async function balRodarCiclo() {
+    if (balRodando) { return; }
+    var cfg = balLer();
+    if (!cfg.ativo) { return; }
+    if (window.__ORK_CAPTCHA_BLOQUEADO__) { balStatus('captcha — esperando'); setTimeout(balRodarCiclo, balEntre(3000, 5000)); return; }
+    if (!balPegarTrava()) { balStatus('rodando em outra aba'); setTimeout(balRetomar, balEntre(15000, 25000)); return; }
+    balRodando = true;
+    balMostrarBolinha();
+    var enviados = 0, falhas = 0, volume = 0, calc = null;
+    try {
+      calc = await balCalcular(cfg);
+      balLog(calc.aldeias + ' aldeias, ' + calc.lista.length + ' aldeias pra receber' + (cfg.maxConstrucao ? ' (construção: ' + calc.horasUsadas + 'h)' : '') + '.');
+      var feitos = {};
+      (cfg.feitos || []).forEach(function (id) { feitos[id] = 1; });
+      for (var i = 0; i < calc.lista.length; i++) {
+        var c = balLer();
+        if (!c.ativo) { break; }
+        while (window.__ORK_CAPTCHA_BLOQUEADO__) { balStatus('captcha — esperando'); await balEsperar(balEntre(3000, 5000)); if (!balLer().ativo) { break; } }
+        var item = calc.lista[i];
+        if (feitos[item.target_id]) { continue; }
+        balStatus('enviando ' + (i + 1) + '/' + calc.lista.length);
+        var r = await balEnviar(item);
+        if (r.ok) { enviados++; volume += item.total; } else { falhas++; balLog('falhou pra ' + item.coord + ': ' + String(r.info && (r.info.message || r.info) || '').slice(0, 100)); }
+        feitos[item.target_id] = 1;
+        c = balLer(); c.feitos = Object.keys(feitos); balGravar(c);
+        await balEsperar(balEntre(1000, 3000)); // 1 a 3s, sorteado em ms
+      }
+    } catch (e) {
+      console.error('[OROCHIKING] Balanceador: erro no ciclo', e);
+    }
+    balRodando = false;
+    var cfg2 = balLer();
+    if (!cfg2.ativo) { return; }
+    var espera = Math.max(1, Number(cfg2.intervaloMin) || 60) * 60000;
+    if (window.__ORK_FREIO__) { espera = Math.max(120000, espera * 2); }
+    espera += balEntre(2000, 4000);
+    cfg2.proximoEm = Date.now() + espera;
+    cfg2.feitos = [];
+    cfg2.ultimo = { quando: Date.now(), enviados: enviados, falhas: falhas, volume: volume, resumo: calc ? calc.resumo : null };
+    balGravar(cfg2);
+    balLog('ciclo concluído — ' + enviados + ' envios (' + volume.toLocaleString('pt-BR') + ' recursos), ' + falhas + ' falhas. Próximo às ' + new Date(cfg2.proximoEm).toLocaleTimeString() + '.');
+    balAgendar();
+  }
+  function balAgendar() {
+    var c = balLer();
+    if (!c.ativo) { return; }
+    if (balTimer) { clearTimeout(balTimer); }
+    balTimer = setTimeout(function () {
+      var n = balLer();
+      if (!n.ativo) { return; }
+      if (n.proximoEm > Date.now() + 1000) { balAgendar(); return; }
+      balRodarCiclo();
+    }, Math.max(0, (c.proximoEm || 0) - Date.now()));
+  }
+  function balRetomar() {
+    var c = balLer();
+    if (!c.ativo) { return; }
+    balMostrarBolinha();
+    if (c.proximoEm && c.proximoEm > Date.now()) { balAgendar(); return; }
+    balRodarCiclo();
+  }
+  function balParar(motivo) {
+    var c = balLer(); c.ativo = false; c.proximoEm = 0; c.feitos = []; balGravar(c);
+    if (balTimer) { clearTimeout(balTimer); balTimer = null; }
+    if (balRelogio) { clearInterval(balRelogio); balRelogio = null; }
+    balSoltarTrava();
+    var b = document.getElementById('ork-bal-bolinha'); if (b) { b.remove(); }
+    if (motivo) { balLog('parado (' + motivo + ').'); }
+  }
+  window.addEventListener('storage', function (ev) { if (ev.key === BAL_CHAVE && !balLer().ativo) { balParar(); } });
+
+  function balMostrarBolinha() {
+    if (document.getElementById('ork-bal-bolinha')) { return; }
+    var b = document.createElement('div');
+    b.id = 'ork-bal-bolinha';
+    b.style.cssText = 'position:fixed;left:212px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+      'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);' +
+      'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
+      'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
+    b.innerHTML = '<span style="font-size:18px">⚖️</span><span id="ork-bal-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">BAL</span>';
+    b.addEventListener('click', function () { if (confirm('Parar o Balanceador Hard?')) { balParar('parado pelo usuário'); } });
+    document.body.appendChild(b);
+    if (balRelogio) { clearInterval(balRelogio); }
+    balRelogio = setInterval(function () {
+      var c = balLer(), el = document.getElementById('ork-bal-tempo');
+      if (!c.ativo || !el) { return; }
+      if (window.__ORK_CAPTCHA_BLOQUEADO__) { el.textContent = 'CAPTCHA'; return; }
+      if (balRodando || !c.proximoEm) { el.textContent = 'ENV'; return; }
+      var s = Math.max(0, Math.round((c.proximoEm - Date.now()) / 1000));
+      var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+      el.textContent = h > 0 ? h + 'h' + ('0' + m).slice(-2) : m + ':' + ('0' + ss).slice(-2);
+      balStatus('próximo balanceamento em ' + el.textContent);
+    }, 1000);
+  }
+
+  /* ---------- modal (visual do painel) ---------- */
+  function balFmt(n) { return Math.round(n || 0).toLocaleString('pt-BR'); }
+  function balAbrirModal() {
+    if (document.getElementById('ork-modal-bal')) { return; }
+    var c = balLer();
+    var mostraCap = ['pt_PT', 'de_DE'].indexOf(game_data.locale) !== -1;
+    var ov = document.createElement('div');
+    ov.id = 'ork-modal-bal';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    var inp = 'width:78px;background:#111;border:1px solid #444;color:#eee;padding:5px 7px;border-radius:6px;font-size:12px;box-sizing:border-box';
+    function linha(rot, dica, campo) {
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span title="' + dica + '" style="flex:1;font-size:11.5px;color:#ccc;cursor:help">' + rot + ' <span style="color:#665400">ⓘ</span></span>' + campo + '</div>';
+    }
+    var ult = c.ultimo;
+    ov.innerHTML =
+      '<div style="background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));border:1px solid #3a3a3a;border-radius:14px;padding:16px 18px;width:420px;max-width:calc(100vw - 20px);max-height:calc(100vh - 30px);overflow:auto;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75)">' +
+        '<div style="display:flex;align-items:center;margin-bottom:4px"><div style="flex:1;font-weight:800;color:#ffd84d">⚖️ Balanceador Hard</div><span id="ork-bal-x" style="cursor:pointer;color:#888;font-size:16px">&times;</span></div>' +
+        '<div style="font-size:11px;color:#9a9a9a;margin-bottom:10px">Equilibra os recursos entre suas aldeias pelo mercado, sozinho, e repete no intervalo. 1 a 3s aleatórios entre cada envio.</div>' +
+        '<div style="background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:9px 10px">' +
+          linha('Mercadores de reserva', 'Quantos mercadores ficam em casa em cada aldeia', '<input id="ork-bal-res" type="number" min="0" value="' + c.reserva + '" style="' + inp + '">') +
+          linha('Tempo de construção (h)', 'Garante recursos pra X horas de construção do Gerente de Conta (precisa de modelo de construção ativo). 0 = ignora. Máx 50.', '<input id="ork-bal-horas" type="number" min="0" max="50" value="' + c.horas + '" style="' + inp + '">') +
+          linha('Fator de média (0-1)', '1 = todas as aldeias ficam com a mesma quantidade. 0 = só recursos pra construção. 0.2 = 20% da média + construção.', '<input id="ork-bal-fator" type="number" min="0" max="1" step="0.1" value="' + c.fator + '" style="' + inp + '">') +
+          linha('Nº de clusters', '1 = balanceia a conta toda junta. 2+ = balanceia por região (viagens mais curtas, menos ideal).', '<input id="ork-bal-cl" type="number" min="1" value="' + c.clusters + '" style="' + inp + '">') +
+          (mostraCap ? linha('Capacidade do mercador', '1000 ou 1500 (alguns servidores, ex: PT)', '<input id="ork-bal-cap" type="number" min="1000" max="1500" step="500" value="' + c.capacidade + '" style="' + inp + '">') : '') +
+          linha('Max construção', 'Com fator ≤ 0.5: acha sozinho o maior tempo de construção em que o excedente ainda cobre o déficit.', '<input id="ork-bal-max" type="checkbox"' + (c.maxConstrucao ? ' checked' : '') + ' style="width:16px;height:16px;accent-color:#e8ac0a">') +
+          linha('Balancear a cada (min)', 'Intervalo entre um balanceamento e outro (+2 a 4s aleatórios). Com o FREIO: x2.', '<input id="ork-bal-int" type="number" min="1" value="' + c.intervaloMin + '" style="' + inp + '">') +
+        '</div>' +
+        (ult ? '<div style="font-size:10.5px;color:#8a8a8a;margin-top:8px">Último: ' + new Date(ult.quando).toLocaleTimeString() + ' — ' + ult.enviados + ' envios, ' + balFmt(ult.volume) + ' recursos' + (ult.falhas ? ', ' + ult.falhas + ' falhas' : '') + '</div>' : '') +
+        '<div id="ork-bal-prev" style="margin-top:8px"></div>' +
+        '<div style="display:flex;gap:6px;margin-top:12px">' +
+          '<button id="ork-bal-calc" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:7px;padding:8px 0;cursor:pointer;font-weight:700;font-size:11px">Calcular (sem enviar)</button>' +
+          (c.ativo ? '<button id="ork-bal-parar" style="flex:1;background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:7px;padding:8px 0;cursor:pointer;font-weight:700;font-size:11px">Parar</button>' : '') +
+          '<button id="ork-bal-ok" style="flex:1.2;background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#141200;border:none;border-radius:7px;padding:8px 0;cursor:pointer;font-weight:800;font-size:11px">' + (c.ativo ? 'Salvar e balancear agora' : 'Ativar') + '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    function fechar() { ov.remove(); }
+    function lerCampos() {
+      var n = balLer();
+      function v(id, def) { var el = document.getElementById(id); if (!el) { return def; } var x = parseFloat(el.value); return isNaN(x) ? def : x; }
+      n.reserva = Math.max(0, Math.floor(v('ork-bal-res', 0)));
+      n.horas = Math.min(50, Math.max(0, v('ork-bal-horas', 0)));
+      n.fator = Math.min(1, Math.max(0, v('ork-bal-fator', 1)));
+      n.clusters = Math.max(1, Math.floor(v('ork-bal-cl', 1)));
+      n.capacidade = mostraCap ? Math.min(1500, Math.max(1000, v('ork-bal-cap', 1000))) : 1000;
+      n.maxConstrucao = document.getElementById('ork-bal-max').checked;
+      n.intervaloMin = Math.max(1, v('ork-bal-int', 60));
+      return n;
+    }
+    document.getElementById('ork-bal-x').addEventListener('click', fechar);
+    if (document.getElementById('ork-bal-parar')) {
+      document.getElementById('ork-bal-parar').addEventListener('click', function () { balParar('parado pelo usuário'); fechar(); });
+    }
+    document.getElementById('ork-bal-calc').addEventListener('click', async function () {
+      var box = document.getElementById('ork-bal-prev');
+      var btn = this; btn.disabled = true; btn.textContent = 'Calculando...';
+      try {
+        var n = lerCampos(); balGravar(n);
+        var r = await balCalcular(n);
+        var rs = r.resumo;
+        function lin(t, a) { return '<tr><td style="padding:3px 6px;color:#999">' + t + '</td>' + a.map(function (x) { return '<td style="padding:3px 6px;text-align:right">' + balFmt(x) + '</td>'; }).join('') + '</tr>'; }
+        var h = '<div style="background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:8px;font-size:11px">' +
+          '<table style="width:100%;border-collapse:collapse"><tr style="color:#FFC400;font-weight:800"><td></td><td style="text-align:right">🪵 Madeira</td><td style="text-align:right">🧱 Argila</td><td style="text-align:right">⛓️ Ferro</td></tr>' +
+          lin('Total', rs.total) + lin('Média', rs.media) + lin('Excedente', rs.excedente) + lin('Déficit', rs.deficit) + '</table>' +
+          '<div style="margin:8px 0 4px;color:#FFC400;font-weight:800">' + r.lista.length + ' aldeias vão receber' + (n.maxConstrucao ? ' (construção calculada: ' + r.horasUsadas + 'h)' : '') + '</div>' +
+          '<div style="max-height:180px;overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+          r.lista.map(function (x, i) { return '<tr style="border-top:1px solid #222"><td style="padding:3px 4px;color:#666">' + (i + 1) + '</td><td style="padding:3px 4px">' + x.coord + '</td><td style="padding:3px 4px;color:#999">' + x.distance.toFixed(1) + ' campos</td><td style="padding:3px 4px;text-align:right;font-weight:700">' + balFmt(x.total) + '</td></tr>'; }).join('') +
+          '</table></div></div>';
+        box.innerHTML = h;
+      } catch (e) {
+        box.innerHTML = '<div style="color:#ff6b6b;font-size:11px">Erro ao calcular: ' + (e && e.message) + '</div>';
+      }
+      btn.disabled = false; btn.textContent = 'Calcular (sem enviar)';
+    });
+    document.getElementById('ork-bal-ok').addEventListener('click', function () {
+      var n = lerCampos();
+      n.ativo = true; n.proximoEm = 0; n.feitos = [];
+      balGravar(n);
+      fechar();
+      balLog('ativado — fator ' + n.fator + ', ' + n.clusters + ' cluster(s), construção ' + (n.maxConstrucao ? 'máx' : n.horas + 'h') + ', a cada ' + n.intervaloMin + ' min.');
+      balMostrarBolinha();
+      balRodarCiclo();
+    });
+  }
+
+  function checaBalanceador() { return !!(window.game_data && game_data.village && game_data.village.id); }
+  function rodarBalanceador() { balAbrirModal(); }
+
   var FERRAMENTAS = [
     {
       id: 'farmar',
@@ -5878,6 +6568,17 @@
       dica: 'Ciclo automático numa aba só: Farm Hard (preset da aba, padrão 1.5x + Normal) por 2-3 min → cunhagem em todas as páginas → pausa configurável → repete. Opcional: deslogar/relogar a cada N ciclos. Captcha: espera e continua sozinho. Bolinha ♾️ no canto — clique pra parar.',
       checar: checaAuto247,
       rodar: rodarAuto247,
+      destino: null
+    }
+,
+    {
+      id: 'balanceador',
+      nome: 'Balanceador Hard',
+      abrev: 'Balancear',
+      icone: '⚖️',
+      dica: 'Equilibra os recursos entre suas aldeias pelo mercado (mesma lógica do Resources Balancer: fator de média, clusters, construção do Gerente de Conta). Envia sozinho por AJAX, 1 a 3s aleatórios entre envios, e repete no intervalo. Use "Calcular" pra ver antes. Bolinha ⚖️ no canto — clique pra parar.',
+      checar: checaBalanceador,
+      rodar: rodarBalanceador,
       destino: null
     }
   ];
@@ -6023,6 +6724,15 @@
       autoMostrarBolinha();
       autoPasso2();
     }, autoEntre(1500, 3000));
+  })();
+
+  /* ============================================================
+     RETOMAR O BALANCEADOR HARD (qualquer tela do jogo)
+  ============================================================ */
+  (function retomarBalanceador() {
+    if (!(window.game_data && game_data.village)) return;
+    if (!balLer().ativo) return;
+    setTimeout(balRetomar, balEntre(2000, 3500));
   })();
 
   /* ============================================================
