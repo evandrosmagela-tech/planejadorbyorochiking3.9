@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 42;
+  window.__ORK_VERSAO__ = 43;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -5194,7 +5194,8 @@
     if (!cfg.ativo) { return; }
     var espera = cfg.intervaloMs;
     if (window.__ORK_FREIO__) { espera = Math.max(60000, espera * 2); }
-    espera += kpAleatorio(3000, 8000);
+    // atraso extra de 2 a 4s, sorteado em milissegundos (nunca repete o mesmo tempo)
+    espera += 2000 + Math.floor(Math.random() * 2001);
     cfg.proximoEm = Date.now() + espera;
     cfg.feitos = [];
     kpGravarConfig(cfg);
@@ -5323,7 +5324,7 @@
             '<option value="seg"' + (emMin ? '' : ' selected') + '>segundos</option>' +
           '</select>' +
         '</div>' +
-        '<div style="font-size:9.5px;color:#666;margin-bottom:12px">Sempre com atraso aleatório extra (nunca no tempo exato). Mínimo 30s.</div>' +
+        '<div style="font-size:9.5px;color:#666;margin-bottom:12px">Sempre com +2 a 4s aleatórios (em milissegundos), nunca no tempo exato.</div>' +
         '<div style="display:flex;gap:8px">' +
           '<button id="ork-kp-cancelar" style="flex:1;background:#232323;color:#ccc;border:1px solid #3a3a3a;' +
             'border-radius:7px;padding:8px 0;cursor:pointer;font-weight:700;font-size:11.5px">Cancelar</button>' +
@@ -5352,7 +5353,7 @@
     document.getElementById('ork-kp-iniciar').addEventListener('click', function () {
       var valor = parseFloat(document.getElementById('ork-kp-valor').value) || 5;
       var unidade = document.getElementById('ork-kp-unidade').value;
-      var intervaloMs = Math.max(30000, unidade === 'seg' ? valor * 1000 : valor * 60000);
+      var intervaloMs = Math.max(1000, unidade === 'seg' ? valor * 1000 : valor * 60000);
       kpGravarConfig({ ativo: true, modelo: modelo, intervaloMs: intervaloMs, proximoEm: 0, origem: game_data.village.id, feitos: [] });
       fechar();
       console.log('[OROCHIKING] KeyPress Hard iniciado — modelo ' + modelo.toUpperCase() + (modelo === 'a' ? '+B' : '') + ', a cada ' + Math.round(intervaloMs / 1000) + 's.');
