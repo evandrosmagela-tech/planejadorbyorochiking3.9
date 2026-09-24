@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 40;
+  window.__ORK_VERSAO__ = 41;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -222,6 +222,17 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-23-keypress',
+      data: '23/09/2026',
+      titulo: 'Nova ferramenta: KeyPress Hard',
+      itens: [
+        'Nova aba KeyPress no painel: clica nos botões A, B ou C do Assistente de Saque sozinho, com ritmo humano.',
+        'Modelo A + B: manda o A enquanto tiver tropa e o que sobrar vai no B, na mesma passada. Ou escolha só B ou só C.',
+        'Passa pelas páginas do Assistente enquanto tiver tropa e repete no intervalo que você escolher (sempre com atraso aleatório).',
+        'Bolinha ⌨️ no canto mostra a contagem pro próximo ciclo — clique nela pra parar. Para sozinho se aparecer captcha.'
+      ]
+    },
     {
       id: '2026-09-23-farmhard-layout',
       data: '23/09/2026',
@@ -1793,6 +1804,7 @@
       }
     } catch (e) {}
     try { if (typeof pararCunharPorSeguranca === 'function') pararCunharPorSeguranca(); } catch (e) {}
+    try { if (typeof kpPararPorSeguranca === 'function') kpPararPorSeguranca('captcha'); } catch (e) {}
     try { localStorage.removeItem('ork_retomar_dormindo'); } catch (e) {}
   }
 
@@ -4870,6 +4882,334 @@
     abrirModalCunhar();
   }
 
+  /* ============================================================
+     KEYPRESS HARD
+     Motor inspirado no "FA KeyPress" (Crimsoni/LilGhost), só a parte
+     que importa: clicar nos botões A / B / C das linhas do Assistente
+     de Saque, com intervalo curto e aleatório entre cliques (ritmo de
+     mão humana, e abaixo do limite de 5 ataques/s do servidor).
+
+       - Modelo "A + B": manda A em todas as linhas que der; quando as
+         tropas do A acabam (o jogo mostra erro), segue mandando B nas
+         linhas que sobraram, na mesma passada.
+       - Modelo "B" ou "C": manda só aquele modelo.
+       - Terminou a página e ainda tem tropa? Vai pra próxima página do
+         Assistente. Acabou a tropa ou as páginas? Espera o intervalo
+         configurado (+ atraso aleatório) e recomeça do início.
+       - Sobrevive a reload (retoma sozinho no Assistente de Saque).
+       - Para sozinho no captcha. Com o FREIO: intervalo x2, mínimo 60s.
+  ============================================================ */
+  var KP_CHAVE = 'ork_keypress_config';
+  var kpTimeoutId = null;
+  var kpContagemId = null;
+  var kpRodando = false;
+  var kpErroFlag = false;
+
+  function kpLerConfig() {
+    try {
+      var bruto = localStorage.getItem(KP_CHAVE);
+      var c = bruto ? JSON.parse(bruto) : null;
+      if (c && typeof c === 'object') { return c; }
+    } catch (e) {}
+    return { ativo: false, modelo: 'a', intervaloMs: 300000, proximoEm: 0 };
+  }
+  function kpGravarConfig(cfg) {
+    try { localStorage.setItem(KP_CHAVE, JSON.stringify(cfg)); } catch (e) {}
+  }
+
+  // Marca quando o jogo mostra uma mensagem de erro (ex: "Não existem unidades
+  // suficientes") enquanto o KeyPress está clicando. Funciona em qualquer idioma.
+  function kpInstalarEscutaErro() {
+    try {
+      if (!window.UI || typeof UI.ErrorMessage !== 'function' || UI.ErrorMessage.__orkKp) { return; }
+      var original = UI.ErrorMessage;
+      var novo = function () {
+        if (kpRodando) {
+          kpErroFlag = true;
+          try { console.log('[OROCHIKING] KeyPress: jogo avisou -> ' + String(arguments[0]).slice(0, 90)); } catch (e) {}
+        }
+        return original.apply(this, arguments);
+      };
+      novo.__orkKp = true;
+      UI.ErrorMessage = novo;
+    } catch (e) {}
+  }
+
+  function kpEsperar(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function kpAleatorio(min, max) { return Math.round(min + Math.random() * (max - min)); }
+
+  function kpLinhasVisiveis() {
+    var linhas = document.querySelectorAll('#plunder_list tr[id^="village_"]');
+    var out = [];
+    for (var i = 0; i < linhas.length; i++) {
+      var tr = linhas[i];
+      if (tr.offsetParent === null || tr.style.display === 'none') { continue; }
+      out.push(tr);
+    }
+    return out;
+  }
+  function kpBotaoDaLinha(tr, letra) {
+    var btn = tr.querySelector('a.farm_icon_' + letra);
+    if (!btn) { return null; }
+    if ((btn.className || '').indexOf('farm_icon_disabled') !== -1) { return null; }
+    if (btn.offsetParent === null) { return null; }
+    return btn;
+  }
+
+  // Clica um modelo nas linhas da página. Devolve {enviados, esgotou}.
+  // "esgotou" = o jogo recusou 2x seguidas (tropa desse modelo acabou).
+  async function kpClicarModelo(letra) {
+    var enviados = 0, errosSeguidos = 0;
+    var linhas = kpLinhasVisiveis();
+    for (var i = 0; i < linhas.length; i++) {
+      var cfg = kpLerConfig();
+      if (!cfg.ativo) { return { enviados: enviados, esgotou: false, parado: true }; }
+      if (window.__ORK_CAPTCHA_BLOQUEADO__) { kpPararPorSeguranca('captcha'); return { enviados: enviados, esgotou: false, parado: true }; }
+      var tr = linhas[i];
+      if (tr.offsetParent === null) { continue; } // já saiu da lista (farmada)
+      var btn = kpBotaoDaLinha(tr, letra);
+      if (!btn) { continue; }
+      kpErroFlag = false;
+      btn.click();
+      // 260-480ms entre cliques: ritmo humano e abaixo de 5/s
+      await kpEsperar(kpAleatorio(260, 480));
+      if (kpErroFlag) {
+        errosSeguidos++;
+        if (errosSeguidos >= 2) { return { enviados: enviados, esgotou: true }; }
+      } else {
+        errosSeguidos = 0;
+        enviados++;
+        kpAtualizarStatus('Enviando ' + letra.toUpperCase() + '... ' + enviados);
+      }
+    }
+    return { enviados: enviados, esgotou: false };
+  }
+
+  function kpPaginaAtual() {
+    var m = window.location.href.match(/[?&]Farm_page=(\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  function kpLinkPagina(n) {
+    var links = document.querySelectorAll('a[href*="Farm_page="]');
+    for (var i = 0; i < links.length; i++) {
+      var h = links[i].getAttribute('href') || '';
+      var m = h.match(/Farm_page=(\d+)/);
+      if (m && parseInt(m[1], 10) === n) { return links[i].href; }
+    }
+    return null;
+  }
+  function kpIrParaPagina(n) {
+    var link = n > 0 ? kpLinkPagina(n) : null;
+    if (link) { window.location.href = link; return; }
+    window.location.href = '/game.php?village=' + game_data.village.id + '&screen=am_farm&Farm_page=' + n;
+  }
+
+  async function kpRodarCiclo() {
+    if (kpRodando) { return; }
+    var cfg = kpLerConfig();
+    if (!cfg.ativo) { return; }
+    if (window.__ORK_CAPTCHA_BLOQUEADO__) { kpPararPorSeguranca('captcha'); return; }
+    kpInstalarEscutaErro();
+    kpRodando = true;
+    kpMostrarStatus();
+    var pagina = kpPaginaAtual();
+    var total = 0, acabouTropa = false;
+    try {
+      if (cfg.modelo === 'a') {
+        var rA = await kpClicarModelo('a');
+        total += rA.enviados;
+        if (rA.parado) { kpRodando = false; return; }
+        // A esgotou OU terminou a página: o que sobrou vai no B
+        var rB = await kpClicarModelo('b');
+        total += rB.enviados;
+        if (rB.parado) { kpRodando = false; return; }
+        acabouTropa = rA.esgotou && rB.esgotou;
+      } else {
+        var r = await kpClicarModelo(cfg.modelo === 'c' ? 'c' : 'b');
+        total += r.enviados;
+        if (r.parado) { kpRodando = false; return; }
+        acabouTropa = r.esgotou;
+      }
+    } catch (e) {
+      console.error('[OROCHIKING] KeyPress: erro no ciclo', e);
+    }
+    kpRodando = false;
+    console.log('[OROCHIKING] KeyPress: página ' + (pagina + 1) + ' — ' + total + ' enviados' + (acabouTropa ? ' (tropa acabou)' : ''));
+
+    cfg = kpLerConfig();
+    if (!cfg.ativo) { return; }
+    // Ainda tem tropa e existe próxima página? Segue pra ela (mesmo ciclo)
+    if (!acabouTropa && kpLinkPagina(pagina + 1)) {
+      var ms = kpAleatorio(2500, 6000);
+      kpAtualizarStatus('Próxima página em ' + Math.round(ms / 1000) + 's');
+      kpTimeoutId = setTimeout(function () { kpIrParaPagina(pagina + 1); }, ms);
+      return;
+    }
+    // Fim do ciclo: espera o intervalo (+ jitter) e recomeça da 1ª página
+    var espera = cfg.intervaloMs;
+    if (window.__ORK_FREIO__) { espera = Math.max(60000, espera * 2); }
+    espera += kpAleatorio(3000, 8000);
+    cfg.proximoEm = Date.now() + espera;
+    kpGravarConfig(cfg);
+    kpAgendar();
+  }
+
+  // Agenda (ou reagenda após reload) o próximo ciclo pelo horário salvo
+  function kpAgendar() {
+    var cfg = kpLerConfig();
+    if (!cfg.ativo) { return; }
+    if (kpTimeoutId) { clearTimeout(kpTimeoutId); }
+    var falta = Math.max(0, (cfg.proximoEm || 0) - Date.now());
+    kpTimeoutId = setTimeout(function () {
+      var c = kpLerConfig();
+      if (!c.ativo) { return; }
+      c.proximoEm = 0;
+      kpGravarConfig(c);
+      if (kpPaginaAtual() !== 0) { kpIrParaPagina(0); } else { window.location.reload(); }
+    }, falta);
+    kpContagem();
+  }
+
+  function kpContagem() {
+    if (kpContagemId) { clearInterval(kpContagemId); }
+    kpContagemId = setInterval(function () {
+      var cfg = kpLerConfig();
+      if (!cfg.ativo) { clearInterval(kpContagemId); kpContagemId = null; return; }
+      var s = Math.max(0, Math.round(((cfg.proximoEm || 0) - Date.now()) / 1000));
+      var txt = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+      var el = document.getElementById('ork-kp-tempo');
+      if (el && !kpRodando) { el.textContent = txt; }
+      kpAtualizarStatus('KeyPress (' + cfg.modelo.toUpperCase() + (cfg.modelo === 'a' ? '+B' : '') + ') — próximo ciclo em ' + txt + ' — clique pra parar');
+    }, 1000);
+  }
+
+  function kpAtualizarStatus(texto) {
+    var b = document.getElementById('ork-kp-bolinha');
+    if (b) { b.title = texto; }
+    if (kpRodando) {
+      var el = document.getElementById('ork-kp-tempo');
+      if (el) { el.textContent = 'ENV'; }
+    }
+  }
+
+  function kpPararPorSeguranca(motivo) {
+    try {
+      var cfg = kpLerConfig();
+      if (cfg.ativo) { cfg.ativo = false; cfg.proximoEm = 0; kpGravarConfig(cfg); }
+      if (kpTimeoutId) { clearTimeout(kpTimeoutId); kpTimeoutId = null; }
+      if (kpContagemId) { clearInterval(kpContagemId); kpContagemId = null; }
+      var b = document.getElementById('ork-kp-bolinha');
+      if (b) { b.remove(); }
+      if (motivo) { console.warn('[OROCHIKING] KeyPress parado (' + motivo + ').'); }
+    } catch (e) {}
+  }
+
+  function kpMostrarStatus() {
+    if (document.getElementById('ork-kp-bolinha')) { return; }
+    if (!document.getElementById('ork-cunhar-style')) {
+      var st = document.createElement('style');
+      st.id = 'ork-cunhar-style';
+      st.textContent = '@keyframes orkCunharPulse{0%,100%{box-shadow:0 10px 26px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.35)}50%{box-shadow:0 10px 26px rgba(0,0,0,.5),0 0 0 6px rgba(232,172,10,.35)}}';
+      document.head.appendChild(st);
+    }
+    var btn = document.createElement('div');
+    btn.id = 'ork-kp-bolinha';
+    btn.title = 'KeyPress ativo — clique pra parar';
+    btn.style.cssText = (
+      'position:fixed;left:84px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+      'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);' +
+      'color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;' +
+      'display:flex;align-items:center;justify-content:center;flex-direction:column;' +
+      'box-shadow:0 10px 26px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.35);' +
+      'font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;animation:orkCunharPulse 2s infinite;' +
+      'font-size:20px;line-height:1;'
+    );
+    btn.innerHTML = '<span>⌨️</span><span id="ork-kp-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">ATIVO</span>';
+    btn.addEventListener('click', function () {
+      if (confirm('Parar o KeyPress Hard?')) { kpPararPorSeguranca('parado pelo usuário'); }
+    });
+    document.body.appendChild(btn);
+  }
+
+  function kpAbrirModal() {
+    if (document.getElementById('ork-modal-kp')) { return; }
+    var cfg = kpLerConfig();
+    var segs = Math.round((cfg.intervaloMs || 300000) / 1000);
+    var emMin = segs >= 60 && segs % 60 === 0;
+    var overlay = document.createElement('div');
+    overlay.id = 'ork-modal-kp';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;' +
+      'display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    function opt(v, titulo, sub) {
+      return '<button type="button" class="ork-kp-mod" data-m="' + v + '" style="flex:1;background:#1c1c1c;border:1px solid #333;' +
+        'border-radius:8px;padding:8px 2px;color:#ddd;cursor:pointer;font-weight:800;font-size:13px;font-family:inherit">' + titulo +
+        '<div style="font-size:8.5px;color:#888;font-weight:700;margin-top:2px">' + sub + '</div></button>';
+    }
+    overlay.innerHTML =
+      '<div style="background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));border:1px solid #3a3a3a;' +
+      'border-radius:14px;padding:18px 20px;width:300px;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75)">' +
+        '<div style="font-weight:800;color:#ffd84d;margin-bottom:4px">⌨️ KeyPress Hard</div>' +
+        '<div style="font-size:11px;color:#9a9a9a;margin-bottom:10px">Clica nos botões do Assistente de Saque com ritmo humano e repete sozinho no intervalo.</div>' +
+        '<div style="font-size:10px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Modelo</div>' +
+        '<div style="display:flex;gap:6px;margin-bottom:12px">' +
+          opt('a', 'A + B', 'A primeiro, sobra no B') + opt('b', 'B', 'só o B') + opt('c', 'C', 'só o C') +
+        '</div>' +
+        '<div style="font-size:10px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Repetir a cada</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:6px">' +
+          '<input id="ork-kp-valor" type="number" min="1" value="' + (emMin ? segs / 60 : segs) + '" ' +
+            'style="flex:1;box-sizing:border-box;background:#111;border:1px solid #444;color:#eee;padding:7px 9px;border-radius:6px;font-size:12.5px">' +
+          '<select id="ork-kp-unidade" style="flex:1;background:#111;border:1px solid #444;color:#eee;padding:7px 9px;border-radius:6px;font-size:12.5px">' +
+            '<option value="min"' + (emMin ? ' selected' : '') + '>minutos</option>' +
+            '<option value="seg"' + (emMin ? '' : ' selected') + '>segundos</option>' +
+          '</select>' +
+        '</div>' +
+        '<div style="font-size:9.5px;color:#666;margin-bottom:12px">Sempre com atraso aleatório extra (nunca no tempo exato). Mínimo 30s.</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="ork-kp-cancelar" style="flex:1;background:#232323;color:#ccc;border:1px solid #3a3a3a;' +
+            'border-radius:7px;padding:8px 0;cursor:pointer;font-weight:700;font-size:11.5px">Cancelar</button>' +
+          '<button id="ork-kp-iniciar" style="flex:1;background:linear-gradient(100deg,#e8ac0a,#ffdc63);' +
+            'color:#141200;border:none;border-radius:7px;padding:8px 0;cursor:pointer;font-weight:800;font-size:11.5px">Iniciar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var modelo = cfg.modelo || 'a';
+    function marcar() {
+      var bs = overlay.querySelectorAll('.ork-kp-mod');
+      for (var i = 0; i < bs.length; i++) {
+        var on = bs[i].getAttribute('data-m') === modelo;
+        bs[i].style.borderColor = on ? '#FFC400' : '#333';
+        bs[i].style.background = on ? '#241f08' : '#1c1c1c';
+        bs[i].style.color = on ? '#fff' : '#ddd';
+      }
+    }
+    marcar();
+    overlay.querySelectorAll('.ork-kp-mod').forEach(function (b) {
+      b.addEventListener('click', function () { modelo = b.getAttribute('data-m'); marcar(); });
+    });
+    function fechar() { overlay.remove(); }
+    document.getElementById('ork-kp-cancelar').addEventListener('click', fechar);
+    document.getElementById('ork-kp-iniciar').addEventListener('click', function () {
+      var valor = parseFloat(document.getElementById('ork-kp-valor').value) || 5;
+      var unidade = document.getElementById('ork-kp-unidade').value;
+      var intervaloMs = Math.max(30000, unidade === 'seg' ? valor * 1000 : valor * 60000);
+      kpGravarConfig({ ativo: true, modelo: modelo, intervaloMs: intervaloMs, proximoEm: 0 });
+      fechar();
+      console.log('[OROCHIKING] KeyPress Hard iniciado — modelo ' + modelo.toUpperCase() + (modelo === 'a' ? '+B' : '') + ', a cada ' + Math.round(intervaloMs / 1000) + 's.');
+      // começa sempre da 1ª página do Assistente
+      if (kpPaginaAtual() !== 0) { kpIrParaPagina(0); return; }
+      kpRodarCiclo();
+    });
+  }
+
+  function checaKeyPress() {
+    return !!(window.game_data && game_data.screen === 'am_farm');
+  }
+  function rodarKeyPress() {
+    kpPararPorSeguranca(); // para ciclo anterior antes de reconfigurar
+    kpAbrirModal();
+  }
+
   var FERRAMENTAS = [
     {
       id: 'farmar',
@@ -4985,6 +5325,17 @@
       checar: checaCunhar,
       rodar: rodarCunhar,
       destino: 'cunhar'
+    }
+,
+    {
+      id: 'keypress',
+      nome: 'KeyPress Hard',
+      abrev: 'KeyPress',
+      icone: '⌨️',
+      dica: 'Roda aqui no Assistente de Saque: escolha o modelo (A+B, B ou C) e o intervalo. Ele clica nos botões com ritmo humano, passa pelas páginas do Assistente enquanto tiver tropa e repete sozinho. Bolinha ⌨️ no canto mostra a contagem — clique nela pra parar.',
+      checar: checaKeyPress,
+      rodar: rodarKeyPress,
+      destino: null
     }
   ];
 
@@ -5106,6 +5457,23 @@
       agendarProximoCicloCunhar(cfg.intervaloMs);
     }
     setTimeout(tentarCunhar, 1200);
+  })();
+
+  /* ============================================================
+     RETOMAR O KEYPRESS HARD APÓS RELOAD / TROCA DE PÁGINA
+  ============================================================ */
+  (function retomarKeyPress() {
+    if (!(window.game_data && game_data.screen === 'am_farm')) return;
+    var cfg = kpLerConfig();
+    if (!cfg.ativo) return;
+    setTimeout(function () {
+      kpMostrarStatus();
+      var c = kpLerConfig();
+      if (!c.ativo) return;
+      // ainda esperando o intervalo (ex: F5 manual no meio da espera)? só reagenda
+      if (c.proximoEm && c.proximoEm > Date.now()) { kpAgendar(); return; }
+      kpRodarCiclo();
+    }, kpAleatorio(1500, 3000));
   })();
 
   /* ============================================================
