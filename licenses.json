@@ -1,9 +1,4 @@
 {
-  "- orochi.2009": {
-    "status": "ativo",
-    "expira": "2026-09-27",
-    "obs": "Semanal"
-  },
   "reddevil": {
     "status": "ativo",
     "expira": "3000-01-01",
@@ -17,6 +12,11 @@
   "eliteteam5": {
     "status": "ativo",
     "expira": "3000-10-09",
+    "obs": "Vitalicio"
+  },
+  "- orochi.2009": {
+    "status": "ativo",
+    "expira": "3000-01-01",
     "obs": "Vitalicio"
   }
 }
