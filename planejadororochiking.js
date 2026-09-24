@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 47;
+  window.__ORK_VERSAO__ = 48;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -3872,7 +3872,320 @@
     return !!(window.game_data && game_data.screen === 'overview_villages' && game_data.mode === 'combined');
   }
   function rodarRename() {
-    !function(){if("undefined"!=typeof $)if(document.getElementById("rh-popup"))$("#rh-popup").show();else{$('<style id="rh-style">').text("#rh-popup{position:fixed;top:80px;left:50%;transform:translateX(-50%);width:460px;max-height:82vh;background:#181818;border:1px solid rgba(255,196,0,.16);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.6);z-index:999999;font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;color:#eee;overflow:hidden;display:flex;flex-direction:column;}#rh-header{background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#111;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:move;user-select:none;}#rh-header .rh-title{font-weight:bold;font-size:15px;letter-spacing:.5px;display:flex;align-items:center;gap:8px;}#rh-header .rh-badge{background:#111;color:#ffd84d;font-size:11px;font-weight:bold;padding:2px 7px;border-radius:16px;}#rh-header .rh-sub{display:block;font-size:10px;font-weight:normal;opacity:.75;}#rh-close{cursor:pointer;font-weight:bold;font-size:16px;color:#111;background:transparent;border:none;}#rh-body{padding:12px 14px;overflow-y:auto;flex:1;}.rh-section{margin-bottom:12px;border:1px solid #333;border-radius:6px;padding:9px 10px;background:#1f1f1f;}.rh-label{font-size:11px;color:#ffd84d;font-weight:bold;text-transform:uppercase;margin-bottom:5px;display:block;}#rh-popup input[type=text],#rh-popup input[type=number],#rh-popup select{width:100%;box-sizing:border-box;background:#111;border:1px solid #444;color:#eee;padding:6px 7px;border-radius:4px;font-size:12px;margin-bottom:6px;}#rh-popup input:focus,#rh-popup select:focus{outline:none;border-color:#ffd84d;}.rh-row{display:flex;gap:6px;}.rh-row > *{flex:1;}.rh-check{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px;}.rh-check input{width:auto;margin:0;}#rh-popup button{cursor:pointer;border:none;border-radius:5px;font-weight:bold;font-size:12px;padding:8px 10px;}.rh-btn-primary{background:#ffd84d;color:#111;}.rh-btn-primary:hover{background:#ffd84d;}.rh-btn-secondary{background:#2a2a2a;color:#ffd84d;border:1px solid #ffd84d !important;}.rh-btn-secondary:hover{background:#333;}.rh-btn-danger{background:#7a1f1f;color:#fff;}.rh-btn-danger:hover{background:#992525;}.rh-btn-mini{padding:4px 7px;font-size:11px;}#rh-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}#rh-actions button{flex:1;min-width:80px;}#rh-progress-wrap{background:#111;border-radius:4px;height:14px;margin:8px 0 4px;overflow:hidden;border:1px solid #333;}#rh-progress-bar{background:linear-gradient(90deg,#f0b90b,#ffd84d);height:100%;width:0%;transition:width .2s;}#rh-status{font-size:11px;color:#ccc;margin-bottom:4px;}#rh-log{background:#0d0d0d;border:1px solid #333;border-radius:5px;height:120px;overflow-y:auto;font-family:Consolas,monospace;font-size:11px;padding:6px;}.rh-log-ok{color:#8fdc7a;}.rh-log-err{color:#ff8080;}.rh-log-info{color:#9ec9ff;}.rh-rule-row{display:flex;gap:4px;margin-bottom:5px;align-items:center;}.rh-rule-row input{margin-bottom:0;}.rh-rule-row .rh-rule-min,.rh-rule-row .rh-rule-max{width:70px;flex:none;}.rh-rule-row .rh-rule-nome{flex:1;}.rh-rule-row .rh-rule-del{flex:none;width:24px;height:24px;padding:0;background:#7a1f1f;color:#fff;border-radius:4px;}#rh-add-rule{width:100%;margin-top:2px;}.rh-hide{display:none !important;}").appendTo("head");var e,o,r,a,t;$("body").append('<div id="rh-popup"><div id="rh-header"><div class="rh-title">RENOMEADOR HARD <span class="rh-badge">1.0</span><span class="rh-sub">BY OROCHIKING</span></div><button id="rh-close">&times;</button></div><div id="rh-body"><div class="rh-section"><span class="rh-label">Nome base</span><input type="text" id="rh-nomebase" placeholder="Ex: THE KING!" value="THE KING!"><label class="rh-check"><input type="checkbox" id="rh-pular-iguais" checked> Pular aldeias que já têm o nome final</label></div><div class="rh-section"><span class="rh-label">Tipo de renomeação</span><select id="rh-modo"><option value="unico">Nome único para todas</option><option value="continente">Nome + Continente (K55)</option><option value="sequencial">Nome + numeração sequencial</option><option value="lote">Nome + lote (quantidade de aldeias por bloco)</option><option value="pontos">Regras por pontuação da aldeia</option></select><div id="rh-opts-sequencial" class="rh-hide"><div class="rh-row"><div><span class="rh-label">Início</span><input type="number" id="rh-seq-inicio" value="1" min="0"></div><div><span class="rh-label">Dígitos</span><input type="number" id="rh-seq-digitos" value="3" min="1" max="6"></div></div></div><div id="rh-opts-lote" class="rh-hide"><span class="rh-label">Aldeias por lote</span><input type="number" id="rh-lote-tam" value="20" min="1"></div><div id="rh-opts-pontos" class="rh-hide"><span class="rh-label">Regras (pontos mín / máx / nome)</span><div id="rh-rules"></div><button id="rh-add-rule" class="rh-btn-secondary rh-btn-mini" type="button">+ adicionar regra</button><label class="rh-check" style="margin-top:6px;"><input type="checkbox" id="rh-pontos-numerar"> Numerar sequencialmente dentro de cada regra</label><span class="rh-label">Nome p/ aldeias fora das regras (deixe vazio p/ pular)</span><input type="text" id="rh-pontos-fallback" placeholder="opcional"></div></div><div class="rh-section"><span class="rh-label">Filtro de aldeias na tela</span><select id="rh-filtro-tipo"><option value="todas">Todas as linhas visíveis nesta aba</option><option value="barbaras">Só aldeias de bárbaros</option><option value="minhas">Só minhas aldeias (com nome de jogador)</option></select><span class="rh-label">Intervalo entre aldeias (ms)</span><input type="number" id="rh-delay" value="800" min="150" step="50"></div><div id="rh-actions"><button id="rh-diag" class="rh-btn-secondary">Diagnosticar</button><button id="rh-diag2" class="rh-btn-secondary">Diagnosticar clique</button><button id="rh-test" class="rh-btn-secondary">Testar 1 aldeia</button><button id="rh-start" class="rh-btn-primary">Iniciar</button><button id="rh-pause" class="rh-btn-secondary" disabled>Pausar</button><button id="rh-stop" class="rh-btn-danger" disabled>Parar</button></div><div id="rh-progress-wrap"><div id="rh-progress-bar"></div></div><div id="rh-status">Pronto.</div><textarea id="rh-diag-area" class="rh-hide" rows="6" readonly style="width:100%;box-sizing:border-box;background:#0d0d0d;color:#8fdc7a;font-family:Consolas,monospace;font-size:10px;border:1px solid #333;border-radius:5px;margin-bottom:6px;padding:5px;"></textarea><div id="rh-log"></div></div></div>'),e=document.getElementById("rh-popup"),o=document.getElementById("rh-header"),r=!1,a=0,t=0,o.addEventListener("mousedown",function(o){r=!0;var n=e.getBoundingClientRect();a=o.clientX-n.left,t=o.clientY-n.top,e.style.transform="none",e.style.left=n.left+"px",e.style.top=n.top+"px"}),document.addEventListener("mousemove",function(o){r&&(e.style.left=o.clientX-a+"px",e.style.top=o.clientY-t+"px")}),document.addEventListener("mouseup",function(){r=!1}),l(0,999,"BARBARA PEQUENA"),l(1e3,999999,"BARBARA GRANDE"),$("#rh-add-rule").on("click",function(){l()}),$("#rh-modo").on("change",s),s();var n={rodando:!1,pausado:!1,parar:!1,fila:[],indice:0,ok:0,erro:0,pulados:0},i=null;$("#rh-diag").on("click",function(){var e=h("todas");if(e.length){for(var o=Math.min(2,e.length),r=[],a=0;a<o;a++)r.push("----- LINHA "+(a+1)+" -----\n"+e[a].row.outerHTML);var t=r.join("\n\n");$("#rh-diag-area").removeClass("rh-hide").val(t),$("#rh-diag-area")[0].select();try{document.execCommand("copy"),d("HTML copiado para a área de transferência (e visível na caixa acima). Cole e me envie.","ok")}catch(e){d("Não deu pra copiar automático. Selecione o texto da caixa acima e copie manualmente (Ctrl+C).","info")}}else d("Nenhuma aldeia encontrada para diagnóstico.","err")}),$("#rh-diag2").on("click",function(){var e=h("todas");if(e.length){var o=e[0].row,r=f(o);r?(r.click(),setTimeout(function(){var e="----- LINHA APÓS CLICAR NO ÍCONE -----\n"+o.outerHTML;$("#rh-diag-area").removeClass("rh-hide").val(e),$("#rh-diag-area")[0].select();try{document.execCommand("copy"),d("HTML pós-clique copiado. Cole e me envie.","ok")}catch(e){d("Selecione o texto da caixa acima e copie manualmente (Ctrl+C).","info")}},600)):d("Ícone de edição não encontrado nesta linha.","err")}else d("Nenhuma aldeia encontrada para diagnóstico.","err")}),$("#rh-test").on("click",function(){var e=w(i=m(),!0);e.length&&(d("Testando em 1 aldeia...","info"),v(e[0].item,e[0].novoNome,function(o,r){o?d('Teste OK: "'+e[0].item.nomeAtual+'" -> "'+e[0].novoNome+'"',"ok"):d("Teste falhou: "+r,"err")}))}),$("#rh-start").on("click",function(){var e=w(i=m(),!1);e.length&&(n={rodando:!0,pausado:!1,parar:!1,fila:e,indice:0,ok:0,erro:0,pulados:0},$("#rh-log").empty(),d("Iniciando renomeação de "+e.length+" aldeia(s)...","info"),$("#rh-start").prop("disabled",!0),$("#rh-pause").prop("disabled",!1),$("#rh-stop").prop("disabled",!1),y())}),$("#rh-pause").on("click",function(){n.pausado=!n.pausado,$(this).text(n.pausado?"Continuar":"Pausar"),p(n.pausado?"Pausado.":"Retomando...")}),$("#rh-stop").on("click",function(){n.parar=!0}),$("#rh-close").on("click",function(){$("#rh-popup").remove(),$("#rh-style").remove()}),p('Configure as opções e clique em "Testar 1 aldeia" antes de rodar em todas.')}else alert("jQuery não encontrado nesta página. Abra o script estando dentro do jogo (game.php).");function l(e,o,r){var a="r"+Math.random().toString(36).slice(2,8),t=$('<div class="rh-rule-row" data-id="'+a+'"><input type="number" class="rh-rule-min" placeholder="mín" value="'+(null!=e?e:"")+'"><input type="number" class="rh-rule-max" placeholder="máx" value="'+(null!=o?o:"")+'"><input type="text" class="rh-rule-nome" placeholder="nome desta faixa" value="'+(r||"")+'"><button type="button" class="rh-rule-del">×</button></div>');t.find(".rh-rule-del").on("click",function(){t.remove()}),$("#rh-rules").append(t)}function s(){var e=$("#rh-modo").val();$("#rh-opts-sequencial, #rh-opts-lote, #rh-opts-pontos").addClass("rh-hide"),"sequencial"===e&&$("#rh-opts-sequencial").removeClass("rh-hide"),"lote"===e&&$("#rh-opts-lote").removeClass("rh-hide"),"pontos"===e&&$("#rh-opts-pontos").removeClass("rh-hide")}function d(e,o){var r=$('<div class="'+("ok"===o?"rh-log-ok":"err"===o?"rh-log-err":"rh-log-info")+'"></div>').text(e);$("#rh-log").append(r),$("#rh-log").scrollTop($("#rh-log")[0].scrollHeight)}function p(e){$("#rh-status").text(e)}function c(e){$("#rh-progress-bar").css("width",Math.max(0,Math.min(100,e))+"%")}function u(e){var o=e.closest("table");if(!o)return null;if(void 0===o.__rhPontosIdx){var r=o.querySelectorAll("thead th");r.length||(r=o.querySelectorAll("tr:first-child th"));var a=-1;r.forEach(function(e,o){/pontos/i.test(e.textContent)&&(a=o)}),o.__rhPontosIdx=a}if((a=o.__rhPontosIdx)<0)return null;var t=e.querySelectorAll("td");if(!t[a])return null;var n=t[a].textContent.replace(/\./g,"").replace(/[^\d]/g,"");return n?parseInt(n,10):null}function h(e){var o=[],r={};return document.querySelectorAll('a[href*="village="]').forEach(function(a){var t=a.closest("tr");if(t&&(!t.id||0!==t.id.indexOf("menu_row"))&&t.querySelector(".quickedit-vn, .rename-icon")){var n=t.textContent.match(/\((\d{1,3})\|(\d{1,3})\)/);if(n){var i=a.getAttribute("href").match(/village=(\d+)/);if(i){var l=i[1];if(!r[l]){r[l]=!0;var s,d=parseInt(n[1],10),p=parseInt(n[2],10),c=t.textContent.match(/K(\d{2,3})\b/),h=c?c[1]:String(Math.floor(p/100))+String(Math.floor(d/100)),m=t.querySelector(".quickedit-label");s=m?m.textContent.replace(/\(\d{1,3}\|\d{1,3}\)\s*K?\d{0,3}\s*$/,"").trim():a.textContent.replace(/\(\d{1,3}\|\d{1,3}\)\s*K?\d{0,3}\s*$/,"").trim();var f=/árbaro|barbar/i.test(s);("barbaras"!==e||f)&&("minhas"===e&&f||o.push({id:l,row:t,link:a,x:d,y:p,continente:h,pontos:u(t),nomeAtual:s}))}}}}}),o}function m(){var e=[];return $("#rh-rules .rh-rule-row").each(function(){var o=$(this),r=parseFloat(o.find(".rh-rule-min").val()),a=parseFloat(o.find(".rh-rule-max").val()),t=o.find(".rh-rule-nome").val().trim();""===t||isNaN(r)||isNaN(a)||e.push({min:r,max:a,nome:t})}),{nomeBase:$("#rh-nomebase").val().trim()||"ALDEIA",modo:$("#rh-modo").val(),pularIguais:$("#rh-pular-iguais").is(":checked"),seqInicio:parseInt($("#rh-seq-inicio").val(),10)||0,seqDigitos:parseInt($("#rh-seq-digitos").val(),10)||3,loteTam:parseInt($("#rh-lote-tam").val(),10)||20,regrasPontos:e,pontosNumerar:$("#rh-pontos-numerar").is(":checked"),pontosFallback:$("#rh-pontos-fallback").val().trim(),filtroTipo:$("#rh-filtro-tipo").val(),delay:Math.max(150,parseInt($("#rh-delay").val(),10)||800)}}function f(e){return e.querySelector("a.rename-icon")}function b(e){var o=e.querySelectorAll(".quickedit-edit");return o.length?o[o.length-1].querySelector('input[type="text"]'):null}function g(e,o,r){var a=b(e);a?r(a):o<=0?r(null):setTimeout(function(){g(e,o-1,r)},150)}function v(e,o,r){var a=e.row,t=b(a);if(!t){var n=f(a);return n?(n.click(),void g(a,12,function(e){e?x(e,o,r):r(!1,"campo de edição não apareceu após clicar no ícone")})):void r(!1,"ícone de edição não encontrado nesta linha")}x(t,o,r)}function x(e,o,r){e.value=o,$(e).trigger("input").trigger("change");var a=e.closest(".quickedit-edit"),t=a?a.querySelector('input.btn, input[type="button"]'):null;t?(t.click(),setTimeout(function(){r(!0,"renomeada")},150)):r(!1,"botão de confirmar (Renomear) não encontrado")}function y(){if(n.parar)k("Parado pelo usuário.");else if(n.pausado)setTimeout(y,300);else{if(!(n.indice>=n.fila.length)){var e=n.fila[n.indice];return c(n.indice/n.fila.length*100),p("Processando "+(n.indice+1)+"/"+n.fila.length+"  (OK: "+n.ok+" | Erros: "+n.erro+" | Pulados: "+n.pulados+")"),null===e.novoNome?(n.pulados++,d("— pulada (fora das regras): "+e.item.nomeAtual,"info"),n.indice++,void setTimeout(y,40)):i.pularIguais&&e.item.nomeAtual===e.novoNome?(n.pulados++,d("— já está com o nome certo: "+e.novoNome,"info"),n.indice++,void setTimeout(y,40)):void v(e.item,e.novoNome,function(o,r){o?(n.ok++,d("OK ("+e.item.x+"|"+e.item.y+'): "'+e.item.nomeAtual+'" -> "'+e.novoNome+'"',"ok")):(n.erro++,d("ERRO ("+e.item.x+"|"+e.item.y+"): "+r,"err")),n.indice++,setTimeout(y,i.delay)})}k("Concluído.")}}function k(e){n.rodando=!1,c(100),p(e+"  (OK: "+n.ok+" | Erros: "+n.erro+" | Pulados: "+n.pulados+")"),$("#rh-start").prop("disabled",!1).text("Iniciar"),$("#rh-pause").prop("disabled",!0).text("Pausar"),$("#rh-stop").prop("disabled",!0)}function w(e,o){var r=h(e.filtroTipo);if(!r.length)return d("Nenhuma aldeia encontrada nesta tabela.","err"),[];var a={},t=[];return r.forEach(function(o,r){var n=function(e,o,r,a){switch(r.modo){case"unico":return r.nomeBase;case"continente":return r.nomeBase+" K"+e.continente;case"sequencial":for(var t=r.seqInicio+o,n=String(t);n.length<r.seqDigitos;)n="0"+n;return r.nomeBase+" "+n;case"lote":var i=Math.floor(o/r.loteTam)+1;return r.nomeBase+" - Lote "+i;case"pontos":for(var l=null,s=0;s<r.regrasPontos.length;s++){var d=r.regrasPontos[s];if(null!=e.pontos&&e.pontos>=d.min&&e.pontos<=d.max){l=d;break}}if(!l)return r.pontosFallback||null;if(r.pontosNumerar){a[l.nome]=(a[l.nome]||0)+1;for(var p=String(a[l.nome]);p.length<r.seqDigitos;)p="0"+p;return l.nome+" "+p}return l.nome}return r.nomeBase}(o,r,e,a);t.push({item:o,novoNome:n})}),o&&(t=t.slice(0,1)),t}}();
+    (function renomeadorHard() {
+      if (typeof $ === 'undefined') { alert('jQuery não encontrado nesta página. Abra o script dentro do jogo (game.php).'); return; }
+      if (document.getElementById('rh-popup')) { $('#rh-popup').show(); return; }
+
+      var RH_SALVO = 'ork_renomeador_config';
+
+      /* ---------- estilo (padrão do painel: preto + dourado) ---------- */
+      $('<style id="rh-style">').text(
+        '#rh-popup{position:fixed;top:70px;left:50%;transform:translateX(-50%);width:500px;max-width:calc(100vw - 20px);max-height:calc(100vh - 90px);' +
+          'background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;' +
+          'box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12);z-index:999999;font-family:"Segoe UI",Arial,Helvetica,sans-serif;' +
+          'color:#eee;overflow:hidden;display:flex;flex-direction:column}' +
+        '#rh-header{background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:8px 10px 8px 14px;display:flex;align-items:center;gap:10px;cursor:move;user-select:none}' +
+        '#rh-header .rh-title{font-weight:800;font-size:13px;letter-spacing:1.1px;white-space:nowrap}' +
+        '#rh-header .rh-badge{font-size:8.5px;background:#141200;color:#FFC400;padding:1px 6px;border-radius:9px;margin-left:6px;font-weight:700;vertical-align:middle}' +
+        '#rh-header .rh-sub{font-size:9px;font-weight:700;color:#5a4700;letter-spacing:.6px;margin-left:8px}' +
+        '#rh-status{flex:1;min-width:0;text-align:center;font-size:10px;font-weight:700;color:#3d3000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+        '#rh-close{cursor:pointer;font-weight:bold;font-size:15px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;color:#141200;background:transparent;border:none;padding:0}' +
+        '#rh-close:hover{background:rgba(0,0,0,.18)}' +
+        '#rh-body{padding:10px;overflow-y:auto;flex:1}' +
+        '#rh-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}' +
+        '.rh-card{background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:8px 10px}' +
+        '.rh-card.rh-full{grid-column:1 / -1}' +
+        '.rh-label{font-size:9.5px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block}' +
+        '#rh-popup input[type=text],#rh-popup input[type=number],#rh-popup select{width:100%;box-sizing:border-box;background:#111;border:1px solid rgba(255,255,255,.12);' +
+          'color:#ececec;padding:6px 8px;border-radius:6px;font-size:12px;margin-bottom:6px;font-family:inherit}' +
+        '#rh-popup input:focus,#rh-popup select:focus{outline:none;border-color:#e8ac0a}' +
+        '.rh-row{display:flex;gap:6px}.rh-row > *{flex:1}' +
+        '.rh-check{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#ccc;cursor:pointer;margin-top:2px}' +
+        '.rh-check input{width:15px;height:15px;margin:0;accent-color:#e8ac0a}' +
+        '.rh-dica{font-size:9.5px;color:#666;margin-top:3px}' +
+        '#rh-popup button{cursor:pointer;border:none;border-radius:8px;font-weight:700;font-size:11px;padding:8px 10px;font-family:inherit;transition:.15s}' +
+        '#rh-popup button:disabled{opacity:.45;cursor:default}' +
+        '.rh-btn-primary{background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;box-shadow:0 3px 10px rgba(255,184,0,.3)}' +
+        '.rh-btn-secondary{background:#232323;color:#FFC400;border:1px solid #3a3a3a !important}' +
+        '.rh-btn-secondary:hover:not(:disabled){background:#2b2b2b}' +
+        '.rh-btn-danger{background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c !important}' +
+        '#rh-actions{display:flex;gap:6px;margin-top:8px}#rh-actions button{flex:1}' +
+        '#rh-progress-wrap{background:#0a0a0a;border:1px solid #2c2c2c;border-radius:6px;height:8px;margin:8px 0 6px;overflow:hidden}' +
+        '#rh-progress-bar{background:linear-gradient(90deg,#FFB800,#FFEB99);height:100%;width:0%;transition:width .2s;box-shadow:0 0 8px rgba(255,196,0,.55)}' +
+        '#rh-log{background:#0d0d0d;border:1px solid #2c2c2c;border-radius:8px;height:110px;overflow-y:auto;font-family:Consolas,monospace;font-size:10.5px;padding:6px 8px}' +
+        '.rh-log-ok{color:#8fdc7a}.rh-log-err{color:#ff8080}.rh-log-info{color:#9ec9ff}' +
+        '.rh-rule-row{display:flex;gap:4px;margin-bottom:5px;align-items:center}.rh-rule-row input{margin-bottom:0 !important}' +
+        '.rh-rule-row .rh-rule-min,.rh-rule-row .rh-rule-max{width:70px;flex:none}.rh-rule-row .rh-rule-nome{flex:1}' +
+        '#rh-popup .rh-rule-del{flex:none;width:24px;height:24px;padding:0;background:#2a1010;color:#ff6b6b;border-radius:6px}' +
+        '#rh-add-rule{width:100%;margin-top:2px}' +
+        '.rh-hide{display:none !important}' +
+        '@media (max-width:560px){#rh-grid{grid-template-columns:1fr}}'
+      ).appendTo('head');
+
+      /* ---------- HTML ---------- */
+      $('body').append(
+        '<div id="rh-popup"><div id="rh-header">' +
+          '<div class="rh-title">RENOMEADOR HARD<span class="rh-badge">4.1</span><span class="rh-sub">BY OROCHIKING</span></div>' +
+          '<div id="rh-status">Pronto</div><button id="rh-close" title="Fechar">&times;</button></div>' +
+        '<div id="rh-body"><div id="rh-grid">' +
+          '<div class="rh-card rh-full"><span class="rh-label">Nome base</span>' +
+            '<input type="text" id="rh-nomebase" placeholder="Ex: THE KING!" value="THE KING!">' +
+            '<div class="rh-row" style="gap:14px">' +
+              '<label class="rh-check"><input type="checkbox" id="rh-pular-iguais" checked> Pular aldeias que já têm o nome final</label>' +
+              '<label class="rh-check"><input type="checkbox" id="rh-salvar"> Lembrar nome e opções</label>' +
+            '</div>' +
+            '<div class="rh-dica">"Lembrar" guarda no navegador: fica salvo até você desmarcar ou limpar os dados/cookies do navegador.</div></div>' +
+          '<div class="rh-card"><span class="rh-label">Tipo de renomeação</span>' +
+            '<select id="rh-modo"><option value="unico">Nome único para todas</option><option value="continente">Nome + Continente (K55)</option>' +
+              '<option value="sequencial">Nome + numeração sequencial</option><option value="lote">Nome + lote (aldeias por bloco)</option>' +
+              '<option value="pontos">Regras por pontuação da aldeia</option></select>' +
+            '<div id="rh-opts-sequencial" class="rh-hide"><div class="rh-row"><div><span class="rh-label">Início</span><input type="number" id="rh-seq-inicio" value="1" min="0"></div>' +
+              '<div><span class="rh-label">Dígitos</span><input type="number" id="rh-seq-digitos" value="3" min="1" max="6"></div></div></div>' +
+            '<div id="rh-opts-lote" class="rh-hide"><span class="rh-label">Aldeias por lote</span><input type="number" id="rh-lote-tam" value="20" min="1"></div></div>' +
+          '<div class="rh-card"><span class="rh-label">Filtro de aldeias na tela</span>' +
+            '<select id="rh-filtro-tipo"><option value="todas">Todas as linhas visíveis</option><option value="barbaras">Só aldeias de bárbaros</option>' +
+              '<option value="minhas">Só minhas aldeias</option></select>' +
+            '<span class="rh-label">Intervalo entre aldeias (ms)</span><input type="number" id="rh-delay" value="50" min="50" step="10"></div>' +
+          '<div id="rh-opts-pontos" class="rh-card rh-full rh-hide"><span class="rh-label">Regras (pontos mín / máx / nome)</span><div id="rh-rules"></div>' +
+            '<button id="rh-add-rule" class="rh-btn-secondary" type="button">+ adicionar regra</button>' +
+            '<label class="rh-check" style="margin:8px 0 6px"><input type="checkbox" id="rh-pontos-numerar"> Numerar sequencialmente dentro de cada regra</label>' +
+            '<span class="rh-label">Nome p/ aldeias fora das regras (vazio = pular)</span><input type="text" id="rh-pontos-fallback" placeholder="opcional"></div>' +
+        '</div>' +
+        '<div id="rh-actions"><button id="rh-test" class="rh-btn-secondary">Testar 1 aldeia</button><button id="rh-start" class="rh-btn-primary">Iniciar</button>' +
+          '<button id="rh-pause" class="rh-btn-secondary" disabled>Pausar</button><button id="rh-stop" class="rh-btn-danger" disabled>Parar</button></div>' +
+        '<div id="rh-progress-wrap"><div id="rh-progress-bar"></div></div><div id="rh-log"></div></div></div>'
+      );
+
+      /* ---------- arrastar pelo cabeçalho ---------- */
+      var popup = document.getElementById('rh-popup'), arrastando = false, dx = 0, dy = 0;
+      document.getElementById('rh-header').addEventListener('mousedown', function (ev) {
+        if (ev.target.id === 'rh-close') { return; }
+        arrastando = true;
+        var r = popup.getBoundingClientRect();
+        dx = ev.clientX - r.left; dy = ev.clientY - r.top;
+        popup.style.transform = 'none'; popup.style.left = r.left + 'px'; popup.style.top = r.top + 'px';
+      });
+      document.addEventListener('mousemove', function (ev) { if (arrastando) { popup.style.left = (ev.clientX - dx) + 'px'; popup.style.top = (ev.clientY - dy) + 'px'; } });
+      document.addEventListener('mouseup', function () { arrastando = false; });
+
+      /* ---------- utilidades de UI ---------- */
+      function addRegra(min, max, nome) {
+        var linha = $('<div class="rh-rule-row"><input type="number" class="rh-rule-min" placeholder="mín" value="' + (min != null ? min : '') + '">' +
+          '<input type="number" class="rh-rule-max" placeholder="máx" value="' + (max != null ? max : '') + '">' +
+          '<input type="text" class="rh-rule-nome" placeholder="nome desta faixa"><button type="button" class="rh-rule-del">×</button></div>');
+        linha.find('.rh-rule-nome').val(nome || '');
+        linha.find('.rh-rule-del').on('click', function () { linha.remove(); salvarSeMarcado(); });
+        $('#rh-rules').append(linha);
+      }
+      function mostrarOpcoesModo() {
+        var m = $('#rh-modo').val();
+        $('#rh-opts-sequencial, #rh-opts-lote, #rh-opts-pontos').addClass('rh-hide');
+        if (m === 'sequencial') { $('#rh-opts-sequencial').removeClass('rh-hide'); }
+        if (m === 'lote') { $('#rh-opts-lote').removeClass('rh-hide'); }
+        if (m === 'pontos') { $('#rh-opts-pontos').removeClass('rh-hide'); }
+      }
+      function log(txt, tipo) {
+        var el = $('<div class="' + (tipo === 'ok' ? 'rh-log-ok' : tipo === 'err' ? 'rh-log-err' : 'rh-log-info') + '"></div>').text(txt);
+        $('#rh-log').append(el); $('#rh-log').scrollTop($('#rh-log')[0].scrollHeight);
+      }
+      function status(txt) { $('#rh-status').text(txt); }
+      function progresso(p) { $('#rh-progress-bar').css('width', Math.max(0, Math.min(100, p)) + '%'); }
+
+      /* ---------- salvar / carregar (só se "Lembrar" estiver marcado) ---------- */
+      function coletarCampos() {
+        var regras = [];
+        $('#rh-rules .rh-rule-row').each(function () {
+          regras.push({ min: $(this).find('.rh-rule-min').val(), max: $(this).find('.rh-rule-max').val(), nome: $(this).find('.rh-rule-nome').val() });
+        });
+        return { nomeBase: $('#rh-nomebase').val(), modo: $('#rh-modo').val(), pularIguais: $('#rh-pular-iguais').is(':checked'),
+          seqInicio: $('#rh-seq-inicio').val(), seqDigitos: $('#rh-seq-digitos').val(), loteTam: $('#rh-lote-tam').val(),
+          regras: regras, pontosNumerar: $('#rh-pontos-numerar').is(':checked'), pontosFallback: $('#rh-pontos-fallback').val(),
+          filtroTipo: $('#rh-filtro-tipo').val(), delay: $('#rh-delay').val() };
+      }
+      function salvarSeMarcado() {
+        try {
+          if ($('#rh-salvar').is(':checked')) { localStorage.setItem(RH_SALVO, JSON.stringify(coletarCampos())); }
+        } catch (e) {}
+      }
+      var salvo = null;
+      try { salvo = JSON.parse(localStorage.getItem(RH_SALVO) || 'null'); } catch (e) {}
+      if (salvo) {
+        $('#rh-salvar').prop('checked', true);
+        $('#rh-nomebase').val(salvo.nomeBase != null ? salvo.nomeBase : 'THE KING!');
+        $('#rh-modo').val(salvo.modo || 'unico');
+        $('#rh-pular-iguais').prop('checked', salvo.pularIguais !== false);
+        if (salvo.seqInicio != null) { $('#rh-seq-inicio').val(salvo.seqInicio); }
+        if (salvo.seqDigitos != null) { $('#rh-seq-digitos').val(salvo.seqDigitos); }
+        if (salvo.loteTam != null) { $('#rh-lote-tam').val(salvo.loteTam); }
+        $('#rh-pontos-numerar').prop('checked', !!salvo.pontosNumerar);
+        $('#rh-pontos-fallback').val(salvo.pontosFallback || '');
+        $('#rh-filtro-tipo').val(salvo.filtroTipo || 'todas');
+        if (salvo.delay != null) { $('#rh-delay').val(salvo.delay); }
+        (salvo.regras && salvo.regras.length ? salvo.regras : []).forEach(function (r) { addRegra(r.min, r.max, r.nome); });
+      }
+      if (!$('#rh-rules .rh-rule-row').length) { addRegra(0, 999, 'BARBARA PEQUENA'); addRegra(1000, 999999, 'BARBARA GRANDE'); }
+      $('#rh-add-rule').on('click', function () { addRegra(); });
+      $('#rh-modo').on('change', mostrarOpcoesModo);
+      mostrarOpcoesModo();
+      $('#rh-popup').on('input change', 'input, select', function () { if (this.id !== 'rh-salvar') { salvarSeMarcado(); } });
+      $('#rh-salvar').on('change', function () {
+        if (this.checked) { salvarSeMarcado(); log('Nome e opções serão lembrados neste navegador.', 'info'); }
+        else { try { localStorage.removeItem(RH_SALVO); } catch (e) {} log('Não vou mais lembrar: da próxima vez abre com o padrão.', 'info'); }
+      });
+
+      /* ---------- leitura das aldeias na tabela ---------- */
+      function pontosDaLinha(tr) {
+        var tabela = tr.closest('table');
+        if (!tabela) { return null; }
+        if (tabela.__rhPontosIdx === undefined) {
+          var ths = tabela.querySelectorAll('thead th');
+          if (!ths.length) { ths = tabela.querySelectorAll('tr:first-child th'); }
+          var idx = -1;
+          ths.forEach(function (th, i) { if (/pontos/i.test(th.textContent)) { idx = i; } });
+          tabela.__rhPontosIdx = idx;
+        }
+        var ix = tabela.__rhPontosIdx;
+        if (ix < 0) { return null; }
+        var tds = tr.querySelectorAll('td');
+        if (!tds[ix]) { return null; }
+        var n = tds[ix].textContent.replace(/[^\d]/g, '');
+        return n ? parseInt(n, 10) : null;
+      }
+      function lerAldeias(filtro) {
+        var lista = [], vistos = {};
+        document.querySelectorAll('a[href*="village="]').forEach(function (a) {
+          var tr = a.closest('tr');
+          if (!tr || (tr.id && tr.id.indexOf('menu_row') === 0) || !tr.querySelector('.quickedit-vn, .rename-icon')) { return; }
+          var mc = tr.textContent.match(/\((\d{1,3})\|(\d{1,3})\)/);
+          var mi = (a.getAttribute('href') || '').match(/village=(\d+)/);
+          if (!mc || !mi || vistos[mi[1]]) { return; }
+          vistos[mi[1]] = true;
+          var x = parseInt(mc[1], 10), y = parseInt(mc[2], 10);
+          var mk = tr.textContent.match(/K(\d{2,3})\b/);
+          var rotulo = tr.querySelector('.quickedit-label');
+          var nome = (rotulo ? rotulo.textContent : a.textContent).replace(/\(\d{1,3}\|\d{1,3}\)\s*K?\d{0,3}\s*$/, '').trim();
+          var barbara = /árbaro|barbar/i.test(nome);
+          if (filtro === 'barbaras' && !barbara) { return; }
+          if (filtro === 'minhas' && barbara) { return; }
+          lista.push({ id: mi[1], row: tr, x: x, y: y, continente: mk ? mk[1] : String(Math.floor(y / 100)) + String(Math.floor(x / 100)),
+            pontos: pontosDaLinha(tr), nomeAtual: nome });
+        });
+        return lista;
+      }
+      function lerConfig() {
+        var regras = [];
+        $('#rh-rules .rh-rule-row').each(function () {
+          var min = parseFloat($(this).find('.rh-rule-min').val()), max = parseFloat($(this).find('.rh-rule-max').val());
+          var nome = $(this).find('.rh-rule-nome').val().trim();
+          if (nome !== '' && !isNaN(min) && !isNaN(max)) { regras.push({ min: min, max: max, nome: nome }); }
+        });
+        return { nomeBase: $('#rh-nomebase').val().trim() || 'ALDEIA', modo: $('#rh-modo').val(), pularIguais: $('#rh-pular-iguais').is(':checked'),
+          seqInicio: parseInt($('#rh-seq-inicio').val(), 10) || 0, seqDigitos: parseInt($('#rh-seq-digitos').val(), 10) || 3,
+          loteTam: parseInt($('#rh-lote-tam').val(), 10) || 20, regrasPontos: regras, pontosNumerar: $('#rh-pontos-numerar').is(':checked'),
+          pontosFallback: $('#rh-pontos-fallback').val().trim(), filtroTipo: $('#rh-filtro-tipo').val(),
+          delay: Math.max(50, parseInt($('#rh-delay').val(), 10) || 50) };
+      }
+      function pad(n, d) { var s = String(n); while (s.length < d) { s = '0' + s; } return s; }
+      function montarFila(cfg, soUma) {
+        var aldeias = lerAldeias(cfg.filtroTipo);
+        if (!aldeias.length) { log('Nenhuma aldeia encontrada nesta tabela.', 'err'); return []; }
+        var contRegra = {};
+        var fila = aldeias.map(function (al, i) {
+          var novo = cfg.nomeBase;
+          if (cfg.modo === 'continente') { novo = cfg.nomeBase + ' K' + al.continente; }
+          else if (cfg.modo === 'sequencial') { novo = cfg.nomeBase + ' ' + pad(cfg.seqInicio + i, cfg.seqDigitos); }
+          else if (cfg.modo === 'lote') { novo = cfg.nomeBase + ' - Lote ' + (Math.floor(i / cfg.loteTam) + 1); }
+          else if (cfg.modo === 'pontos') {
+            var regra = null;
+            for (var k = 0; k < cfg.regrasPontos.length; k++) {
+              var r = cfg.regrasPontos[k];
+              if (al.pontos != null && al.pontos >= r.min && al.pontos <= r.max) { regra = r; break; }
+            }
+            if (!regra) { novo = cfg.pontosFallback || null; }
+            else if (cfg.pontosNumerar) { contRegra[regra.nome] = (contRegra[regra.nome] || 0) + 1; novo = regra.nome + ' ' + pad(contRegra[regra.nome], cfg.seqDigitos); }
+            else { novo = regra.nome; }
+          }
+          return { item: al, novoNome: novo };
+        });
+        return soUma ? fila.slice(0, 1) : fila;
+      }
+
+      /* ---------- renomear uma aldeia (edição rápida do próprio jogo) ---------- */
+      function campoEdicao(tr) { var eds = tr.querySelectorAll('.quickedit-edit'); return eds.length ? eds[eds.length - 1].querySelector('input[type="text"]') : null; }
+      function esperarCampo(tr, tentativas, cb) {
+        var c = campoEdicao(tr);
+        if (c) { cb(c); } else if (tentativas <= 0) { cb(null); } else { setTimeout(function () { esperarCampo(tr, tentativas - 1, cb); }, 150); }
+      }
+      function confirmar(campo, nome, cb) {
+        campo.value = nome; $(campo).trigger('input').trigger('change');
+        var caixa = campo.closest('.quickedit-edit');
+        var btn = caixa ? caixa.querySelector('input.btn, input[type="button"]') : null;
+        if (!btn) { cb(false, 'botão de confirmar (Renomear) não encontrado'); return; }
+        btn.click();
+        setTimeout(function () { cb(true, 'renomeada'); }, 150);
+      }
+      function renomear(item, nome, cb) {
+        var campo = campoEdicao(item.row);
+        if (campo) { confirmar(campo, nome, cb); return; }
+        var icone = item.row.querySelector('a.rename-icon');
+        if (!icone) { cb(false, 'ícone de edição não encontrado nesta linha'); return; }
+        icone.click();
+        esperarCampo(item.row, 12, function (c) { if (c) { confirmar(c, nome, cb); } else { cb(false, 'campo de edição não apareceu'); } });
+      }
+
+      /* ---------- execução ---------- */
+      var est = { rodando: false, pausado: false, parar: false, fila: [], indice: 0, ok: 0, erro: 0, pulados: 0 }, cfgAtual = null;
+      function resumo() { return 'OK: ' + est.ok + ' | Erros: ' + est.erro + ' | Pulados: ' + est.pulados; }
+      function proximo() {
+        if (est.parar) { finalizar('Parado'); return; }
+        if (est.pausado) { setTimeout(proximo, 300); return; }
+        if (est.indice >= est.fila.length) { finalizar('Concluído'); return; }
+        var f = est.fila[est.indice];
+        progresso(est.indice / est.fila.length * 100);
+        status((est.indice + 1) + '/' + est.fila.length + ' — ' + resumo());
+        if (f.novoNome === null) { est.pulados++; log('— pulada (fora das regras): ' + f.item.nomeAtual, 'info'); est.indice++; setTimeout(proximo, 20); return; }
+        if (cfgAtual.pularIguais && f.item.nomeAtual === f.novoNome) { est.pulados++; log('— já está com o nome certo: ' + f.novoNome, 'info'); est.indice++; setTimeout(proximo, 20); return; }
+        renomear(f.item, f.novoNome, function (ok, msg) {
+          if (ok) { est.ok++; log('OK (' + f.item.x + '|' + f.item.y + '): "' + f.item.nomeAtual + '" -> "' + f.novoNome + '"', 'ok'); }
+          else { est.erro++; log('ERRO (' + f.item.x + '|' + f.item.y + '): ' + msg, 'err'); }
+          est.indice++;
+          // intervalo configurado + 0 a 40ms sorteados (nunca o mesmo tempo)
+          setTimeout(proximo, cfgAtual.delay + Math.floor(Math.random() * 41));
+        });
+      }
+      function finalizar(txt) {
+        est.rodando = false; progresso(100); status(txt + ' — ' + resumo());
+        log(txt + '. ' + resumo(), 'info');
+        $('#rh-start').prop('disabled', false); $('#rh-test').prop('disabled', false);
+        $('#rh-pause').prop('disabled', true).text('Pausar'); $('#rh-stop').prop('disabled', true);
+      }
+      $('#rh-test').on('click', function () {
+        cfgAtual = lerConfig(); salvarSeMarcado();
+        var fila = montarFila(cfgAtual, true);
+        if (!fila.length) { return; }
+        if (fila[0].novoNome === null) { log('A primeira aldeia está fora das regras (seria pulada).', 'info'); return; }
+        log('Testando em 1 aldeia...', 'info');
+        renomear(fila[0].item, fila[0].novoNome, function (ok, msg) {
+          if (ok) { log('Teste OK: "' + fila[0].item.nomeAtual + '" -> "' + fila[0].novoNome + '"', 'ok'); } else { log('Teste falhou: ' + msg, 'err'); }
+        });
+      });
+      $('#rh-start').on('click', function () {
+        cfgAtual = lerConfig(); salvarSeMarcado();
+        var fila = montarFila(cfgAtual, false);
+        if (!fila.length) { return; }
+        est = { rodando: true, pausado: false, parar: false, fila: fila, indice: 0, ok: 0, erro: 0, pulados: 0 };
+        $('#rh-log').empty();
+        log('Iniciando renomeação de ' + fila.length + ' aldeia(s)...', 'info');
+        $('#rh-start').prop('disabled', true); $('#rh-test').prop('disabled', true);
+        $('#rh-pause').prop('disabled', false); $('#rh-stop').prop('disabled', false);
+        proximo();
+      });
+      $('#rh-pause').on('click', function () { est.pausado = !est.pausado; $(this).text(est.pausado ? 'Continuar' : 'Pausar'); status(est.pausado ? 'Pausado' : 'Retomando...'); });
+      $('#rh-stop').on('click', function () { est.parar = true; });
+      $('#rh-close').on('click', function () { est.parar = true; $('#rh-popup').remove(); $('#rh-style').remove(); });
+      status('Pronto');
+      log('Configure as opções e use "Testar 1 aldeia" antes de rodar em todas.', 'info');
+    })();
   }
 
   function checaCancelar() {
