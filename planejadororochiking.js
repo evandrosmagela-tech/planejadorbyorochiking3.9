@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 41;
+  window.__ORK_VERSAO__ = 42;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -223,13 +223,13 @@
   ============================================================ */
   var ORK_NOVIDADES = [
     {
-      id: '2026-09-23-keypress',
-      data: '23/09/2026',
-      titulo: 'Nova ferramenta: KeyPress Hard',
+      id: '2026-09-24-keypress-fundo',
+      data: '24/09/2026',
+      titulo: 'Nova ferramenta: KeyPress Hard (roda em segundo plano)',
       itens: [
-        'Nova aba KeyPress no painel: clica nos botões A, B ou C do Assistente de Saque sozinho, com ritmo humano.',
+        'Nova aba KeyPress: manda os modelos A, B ou C do Assistente de Saque sozinho — não precisa ficar na tela do Assistente, roda de qualquer tela.',
         'Modelo A + B: manda o A enquanto tiver tropa e o que sobrar vai no B, na mesma passada. Ou escolha só B ou só C.',
-        'Passa pelas páginas do Assistente enquanto tiver tropa e repete no intervalo que você escolher (sempre com atraso aleatório).',
+        'Passa por todas as páginas do Assistente enquanto tiver tropa e repete no intervalo que você escolher (sempre com atraso aleatório). Com várias abas abertas, só uma executa.',
         'Bolinha ⌨️ no canto mostra a contagem pro próximo ciclo — clique nela pra parar. Para sozinho se aparecer captcha.'
       ]
     },
@@ -4883,27 +4883,39 @@
   }
 
   /* ============================================================
-     KEYPRESS HARD
-     Motor inspirado no "FA KeyPress" (Crimsoni/LilGhost), só a parte
-     que importa: clicar nos botões A / B / C das linhas do Assistente
-     de Saque, com intervalo curto e aleatório entre cliques (ritmo de
-     mão humana, e abaixo do limite de 5 ataques/s do servidor).
+     KEYPRESS HARD — 100% VIA AJAX (roda de qualquer tela)
 
-       - Modelo "A + B": manda A em todas as linhas que der; quando as
-         tropas do A acabam (o jogo mostra erro), segue mandando B nas
-         linhas que sobraram, na mesma passada.
-       - Modelo "B" ou "C": manda só aquele modelo.
-       - Terminou a página e ainda tem tropa? Vai pra próxima página do
-         Assistente. Acabou a tropa ou as páginas? Espera o intervalo
-         configurado (+ atraso aleatório) e recomeça do início.
-       - Sobrevive a reload (retoma sozinho no Assistente de Saque).
-       - Para sozinho no captcha. Com o FREIO: intervalo x2, mínimo 60s.
+     Não clica mais na página: busca a lista do Assistente de Saque por
+     fetch e manda os ataques pelos MESMOS endpoints que já funcionam
+     no painel:
+       - A / B: ajaxaction=farm (source/target/template_id) — o mesmo
+         do Coletor Hard
+       - C:     ajaxaction=farm_from_report (report_id) — o mesmo do
+         Farm Hard
+
+     Aldeia de origem = a aldeia que estava aberta quando você ativou.
+
+       - "A + B": manda A enquanto tiver tropa pro modelo A e o resto
+         vai no B, na mesma passada. "B" ou "C": só aquele.
+       - Tropa: lê as tropas em casa + a composição dos modelos A/B da
+         própria página e para o modelo quando não dá mais (sem gastar
+         requisição à toa). Se a leitura falhar, cai no plano B: 2
+         recusas seguidas do servidor = tropa acabou.
+       - Percorre todas as páginas do Assistente, 1 ataque por alvo por
+         ciclo, e espera o intervalo (+ atraso aleatório) pra repetir.
+       - Várias abas abertas: só UMA roda (trava entre abas), as outras
+         só mostram a bolinha. Se essa aba fechar, outra assume.
+       - Trocou de tela no meio? Retoma de onde parou sem repetir alvo.
+       - Para no captcha. FREIO: intervalo x2, mínimo 60s.
   ============================================================ */
   var KP_CHAVE = 'ork_keypress_config';
+  var KP_TRAVA = 'ork_keypress_trava';
+  var KP_ABA = 'aba' + Math.random().toString(36).slice(2, 10);
   var kpTimeoutId = null;
   var kpContagemId = null;
+  var kpTravaId = null;
   var kpRodando = false;
-  var kpErroFlag = false;
+  var KP_UNIDADES = ['spear', 'sword', 'axe', 'archer', 'spy', 'light', 'marcher', 'heavy', 'ram', 'catapult', 'knight'];
 
   function kpLerConfig() {
     try {
@@ -4911,150 +4923,284 @@
       var c = bruto ? JSON.parse(bruto) : null;
       if (c && typeof c === 'object') { return c; }
     } catch (e) {}
-    return { ativo: false, modelo: 'a', intervaloMs: 300000, proximoEm: 0 };
+    return { ativo: false, modelo: 'a', intervaloMs: 300000, proximoEm: 0, origem: 0, feitos: [] };
   }
   function kpGravarConfig(cfg) {
     try { localStorage.setItem(KP_CHAVE, JSON.stringify(cfg)); } catch (e) {}
   }
-
-  // Marca quando o jogo mostra uma mensagem de erro (ex: "Não existem unidades
-  // suficientes") enquanto o KeyPress está clicando. Funciona em qualquer idioma.
-  function kpInstalarEscutaErro() {
-    try {
-      if (!window.UI || typeof UI.ErrorMessage !== 'function' || UI.ErrorMessage.__orkKp) { return; }
-      var original = UI.ErrorMessage;
-      var novo = function () {
-        if (kpRodando) {
-          kpErroFlag = true;
-          try { console.log('[OROCHIKING] KeyPress: jogo avisou -> ' + String(arguments[0]).slice(0, 90)); } catch (e) {}
-        }
-        return original.apply(this, arguments);
-      };
-      novo.__orkKp = true;
-      UI.ErrorMessage = novo;
-    } catch (e) {}
-  }
-
   function kpEsperar(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function kpAleatorio(min, max) { return Math.round(min + Math.random() * (max - min)); }
 
-  function kpLinhasVisiveis() {
-    var linhas = document.querySelectorAll('#plunder_list tr[id^="village_"]');
-    var out = [];
-    for (var i = 0; i < linhas.length; i++) {
-      var tr = linhas[i];
-      if (tr.offsetParent === null || tr.style.display === 'none') { continue; }
-      out.push(tr);
-    }
-    return out;
-  }
-  function kpBotaoDaLinha(tr, letra) {
-    var btn = tr.querySelector('a.farm_icon_' + letra);
-    if (!btn) { return null; }
-    if ((btn.className || '').indexOf('farm_icon_disabled') !== -1) { return null; }
-    if (btn.offsetParent === null) { return null; }
-    return btn;
-  }
-
-  // Clica um modelo nas linhas da página. Devolve {enviados, esgotou}.
-  // "esgotou" = o jogo recusou 2x seguidas (tropa desse modelo acabou).
-  async function kpClicarModelo(letra) {
-    var enviados = 0, errosSeguidos = 0;
-    var linhas = kpLinhasVisiveis();
-    for (var i = 0; i < linhas.length; i++) {
-      var cfg = kpLerConfig();
-      if (!cfg.ativo) { return { enviados: enviados, esgotou: false, parado: true }; }
-      if (window.__ORK_CAPTCHA_BLOQUEADO__) { kpPararPorSeguranca('captcha'); return { enviados: enviados, esgotou: false, parado: true }; }
-      var tr = linhas[i];
-      if (tr.offsetParent === null) { continue; } // já saiu da lista (farmada)
-      var btn = kpBotaoDaLinha(tr, letra);
-      if (!btn) { continue; }
-      kpErroFlag = false;
-      btn.click();
-      // 260-480ms entre cliques: ritmo humano e abaixo de 5/s
-      await kpEsperar(kpAleatorio(260, 480));
-      if (kpErroFlag) {
-        errosSeguidos++;
-        if (errosSeguidos >= 2) { return { enviados: enviados, esgotou: true }; }
-      } else {
-        errosSeguidos = 0;
-        enviados++;
-        kpAtualizarStatus('Enviando ' + letra.toUpperCase() + '... ' + enviados);
+  /* ---------- trava entre abas (só uma aba executa) ---------- */
+  function kpPegarTrava() {
+    try {
+      var t = JSON.parse(localStorage.getItem(KP_TRAVA) || 'null');
+      var agora = Date.now();
+      if (t && t.aba !== KP_ABA && agora - (t.ts || 0) < 20000) { return false; }
+      localStorage.setItem(KP_TRAVA, JSON.stringify({ aba: KP_ABA, ts: agora }));
+      // confere se não houve empate com outra aba no mesmo instante
+      var conf = JSON.parse(localStorage.getItem(KP_TRAVA) || 'null');
+      if (!conf || conf.aba !== KP_ABA) { return false; }
+      if (!kpTravaId) {
+        kpTravaId = setInterval(function () {
+          try {
+            var at = JSON.parse(localStorage.getItem(KP_TRAVA) || 'null');
+            if (at && at.aba === KP_ABA) { localStorage.setItem(KP_TRAVA, JSON.stringify({ aba: KP_ABA, ts: Date.now() })); }
+          } catch (e) {}
+        }, 5000);
       }
+      return true;
+    } catch (e) { return true; }
+  }
+  function kpSoltarTrava() {
+    try {
+      if (kpTravaId) { clearInterval(kpTravaId); kpTravaId = null; }
+      var t = JSON.parse(localStorage.getItem(KP_TRAVA) || 'null');
+      if (t && t.aba === KP_ABA) { localStorage.removeItem(KP_TRAVA); }
+    } catch (e) {}
+  }
+  window.addEventListener('pagehide', kpSoltarTrava);
+
+  /* ---------- leitura da página do Assistente (por fetch) ---------- */
+  async function kpBuscarPagina(origem, p) {
+    var r = await fetch('/game.php?village=' + origem + '&screen=am_farm&Farm_page=' + p, { credentials: 'include' });
+    var html = await r.text();
+    return { html: html, doc: new DOMParser().parseFromString(html, 'text/html') };
+  }
+  function kpTotalPaginas(doc) {
+    var total = 1;
+    try {
+      var sels = doc.querySelectorAll('select');
+      for (var i = 0; i < sels.length; i++) {
+        var reais = Array.prototype.filter.call(sels[i].options || [], function (o) {
+          return /Farm_page=/.test(o.value || '') && !/Farm_page=-1/.test(o.value || '');
+        });
+        if (reais.length > 0) { return reais.length; }
+      }
+      var links = doc.querySelectorAll('a[href*="Farm_page="]');
+      for (var j = 0; j < links.length; j++) {
+        var m = (links[j].getAttribute('href') || '').match(/Farm_page=(\d+)/);
+        if (m) { total = Math.max(total, parseInt(m[1], 10) + 1); }
+      }
+    } catch (e) {}
+    return total;
+  }
+  function kpLerModelos(doc) {
+    var modelos = {};
+    doc.querySelectorAll('form[action*="action=edit_all"] tr').forEach(function (tr) {
+      try {
+        var idInput = tr.querySelector('input[type="hidden"][name*="template"][name*="[id]"]');
+        if (!idInput) { return; }
+        var icone = tr.previousElementSibling && tr.previousElementSibling.querySelector('a.farm_icon_a, a.farm_icon_b');
+        if (!icone) { return; }
+        var m = (icone.className || '').match(/farm_icon_([ab])\b/);
+        if (!m) { return; }
+        var tid = parseInt(idInput.value, 10);
+        if (!(tid > 0)) { return; }
+        var unidades = {};
+        tr.querySelectorAll('input[type="text"], input[type="number"]').forEach(function (inp) {
+          var chave = (inp.name || '').split('[')[0];
+          if (KP_UNIDADES.indexOf(chave) === -1) { return; }
+          var q = parseInt(inp.value || '0', 10) || 0;
+          if (q > 0) { unidades[chave] = q; }
+        });
+        modelos[m[1]] = { id: tid, unidades: unidades };
+      } catch (e) {}
+    });
+    return modelos;
+  }
+  // Tropas em casa: acha cada coluna pelo ícone (unit_spear, unit_light...) — qualquer idioma
+  function kpLerTropas(doc) {
+    var tropas = {};
+    try {
+      var tabela = doc.querySelector('#units_home');
+      if (!tabela) { return null; }
+      var linhas = Array.prototype.slice.call(tabela.querySelectorAll('tr'));
+      var colunas = {};
+      for (var l = 0; l < linhas.length; l++) {
+        var cels = Array.prototype.slice.call(linhas[l].children);
+        for (var c = 0; c < cels.length; c++) {
+          var img = cels[c].querySelector('img');
+          var src = img ? (img.getAttribute('src') || '') : '';
+          var m = src.match(/unit_([a-z]+)\./);
+          if (m && KP_UNIDADES.indexOf(m[1]) !== -1 && colunas[m[1]] === undefined) { colunas[m[1]] = c; }
+        }
+        if (Object.keys(colunas).length) { break; }
+      }
+      if (!Object.keys(colunas).length) { return null; }
+      Object.keys(colunas).forEach(function (u) {
+        for (var l2 = 0; l2 < linhas.length; l2++) {
+          var cel = linhas[l2].children[colunas[u]];
+          if (!cel || cel.tagName === 'TH') { continue; }
+          var bruto = String(cel.textContent).replace(/[^0-9]/g, '');
+          if (bruto !== '') { tropas[u] = parseInt(bruto, 10); break; }
+        }
+      });
+    } catch (e) { return null; }
+    return Object.keys(tropas).length ? tropas : null;
+  }
+  function kpLerAlvos(doc) {
+    var alvos = [];
+    doc.querySelectorAll('#plunder_list tr[id^="village_"]').forEach(function (tr) {
+      var id = parseInt((tr.id || '').split('_')[1], 10);
+      if (!(id > 0)) { return; }
+      function ativo(l) {
+        var b = tr.querySelector('a.farm_icon_' + l);
+        return !!b && (b.className || '').indexOf('farm_icon_disabled') === -1;
+      }
+      var link = tr.querySelector('a[href*="view="]');
+      var mr = link ? (link.getAttribute('href') || '').match(/view=(\d+)/) : null;
+      alvos.push({ id: id, a: ativo('a'), b: ativo('b'), c: ativo('c'), relatorio: mr ? mr[1] : null });
+    });
+    return alvos;
+  }
+  function kpCabe(modelo, tropas) {
+    if (!tropas || !modelo) { return true; } // sem leitura: deixa o servidor decidir
+    var us = Object.keys(modelo.unidades || {});
+    if (!us.length) { return true; }
+    for (var i = 0; i < us.length; i++) {
+      var u = us[i];
+      if (tropas[u] === undefined) { continue; }
+      if (tropas[u] < modelo.unidades[u]) { return false; }
     }
-    return { enviados: enviados, esgotou: false };
+    return true;
+  }
+  function kpDescontar(modelo, tropas) {
+    if (!tropas || !modelo) { return; }
+    Object.keys(modelo.unidades || {}).forEach(function (u) {
+      if (tropas[u] !== undefined) { tropas[u] -= modelo.unidades[u]; }
+    });
   }
 
-  function kpPaginaAtual() {
-    var m = window.location.href.match(/[?&]Farm_page=(\d+)/);
-    return m ? parseInt(m[1], 10) : 0;
-  }
-  function kpLinkPagina(n) {
-    var links = document.querySelectorAll('a[href*="Farm_page="]');
-    for (var i = 0; i < links.length; i++) {
-      var h = links[i].getAttribute('href') || '';
-      var m = h.match(/Farm_page=(\d+)/);
-      if (m && parseInt(m[1], 10) === n) { return links[i].href; }
+  /* ---------- envio (mesmos endpoints já usados no painel) ---------- */
+  async function kpEnviar(origem, letra, alvo, modelos) {
+    var csrf = window.csrf_token || (window.game_data && game_data.csrf) || '';
+    var url, corpo;
+    if (letra === 'c') {
+      url = '/game.php?village=' + origem + '&screen=am_farm&mode=farm&ajaxaction=farm_from_report&json=1&h=' + encodeURIComponent(csrf);
+      corpo = 'report_id=' + alvo.relatorio;
+    } else {
+      url = '/game.php?village=' + origem + '&screen=am_farm&mode=farm&ajaxaction=farm&json=1';
+      corpo = 'source=' + origem + '&target=' + alvo.id + '&template_id=' + modelos[letra].id + '&h=' + encodeURIComponent(csrf);
     }
-    return null;
+    try {
+      var r = await fetch(url, {
+        method: 'POST', credentials: 'include',
+        headers: {
+          'accept': 'application/json, text/javascript, */*; q=0.01',
+          'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'tribalwars-ajax': '1', 'x-requested-with': 'XMLHttpRequest'
+        },
+        body: corpo
+      });
+      var texto = await r.text();
+      var j = null;
+      try { j = JSON.parse(texto); } catch (e) {}
+      if (!j) { return { ok: false, erro: 'resposta não-JSON (HTTP ' + r.status + ')' }; }
+      var erro = j.error || (j.response && j.response.error);
+      if (erro) { return { ok: false, erro: Array.isArray(erro) ? erro.join(' ') : String(erro) }; }
+      if (r.status !== 200) { return { ok: false, erro: 'HTTP ' + r.status }; }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erro: 'rede: ' + ((e && e.message) || 'falhou') };
+    }
   }
-  function kpIrParaPagina(n) {
-    var link = n > 0 ? kpLinkPagina(n) : null;
-    if (link) { window.location.href = link; return; }
-    window.location.href = '/game.php?village=' + game_data.village.id + '&screen=am_farm&Farm_page=' + n;
+  function kpEhLimiteSegundo(msg) {
+    return /\b5\b/.test(msg) && /segundo|second|seconde|sekund|secondo/i.test(msg);
   }
 
+  /* ---------- ciclo ---------- */
   async function kpRodarCiclo() {
     if (kpRodando) { return; }
     var cfg = kpLerConfig();
     if (!cfg.ativo) { return; }
     if (window.__ORK_CAPTCHA_BLOQUEADO__) { kpPararPorSeguranca('captcha'); return; }
-    kpInstalarEscutaErro();
+    if (!kpPegarTrava()) { kpAtualizarStatus('KeyPress rodando em outra aba'); setTimeout(kpRetomar, kpAleatorio(15000, 25000)); return; }
     kpRodando = true;
     kpMostrarStatus();
-    var pagina = kpPaginaAtual();
-    var total = 0, acabouTropa = false;
+    var origem = cfg.origem || (window.game_data && game_data.village.id);
+    var feitos = {};
+    (cfg.feitos || []).forEach(function (k) { feitos[k] = 1; });
+    var enviados = 0, falhas = 0;
+    var parado = false;
     try {
-      if (cfg.modelo === 'a') {
-        var rA = await kpClicarModelo('a');
-        total += rA.enviados;
-        if (rA.parado) { kpRodando = false; return; }
-        // A esgotou OU terminou a página: o que sobrou vai no B
-        var rB = await kpClicarModelo('b');
-        total += rB.enviados;
-        if (rB.parado) { kpRodando = false; return; }
-        acabouTropa = rA.esgotou && rB.esgotou;
-      } else {
-        var r = await kpClicarModelo(cfg.modelo === 'c' ? 'c' : 'b');
-        total += r.enviados;
-        if (r.parado) { kpRodando = false; return; }
-        acabouTropa = r.esgotou;
+      var p0 = await kpBuscarPagina(origem, 0);
+      var modelos = kpLerModelos(p0.doc);
+      var tropas = kpLerTropas(p0.doc);
+      var paginas = kpTotalPaginas(p0.doc);
+      var fila = cfg.modelo === 'a' ? ['a', 'b'] : [cfg.modelo === 'c' ? 'c' : 'b'];
+      // modelo A/B sem id lido = não dá pra mandar esse modelo
+      fila = fila.filter(function (l) { return l === 'c' || (modelos[l] && modelos[l].id); });
+      if (!fila.length) {
+        console.warn('[OROCHIKING] KeyPress: não achei os modelos A/B na página do Assistente da aldeia ' + origem + '.');
+      }
+      console.log('[OROCHIKING] KeyPress: origem ' + origem + ', ' + paginas + ' página(s), modelos ' + fila.join('+').toUpperCase() +
+        (tropas ? ', tropas lidas' : ', tropas NÃO lidas (usa recusa do servidor)'));
+      var esgotado = {};
+      var recusasSeguidas = {};
+      for (var p = 0; p < paginas && !parado; p++) {
+        var pag = p === 0 ? p0 : await kpBuscarPagina(origem, p);
+        var alvos = kpLerAlvos(pag.doc);
+        for (var i = 0; i < alvos.length && !parado; i++) {
+          var alvo = alvos[i];
+          if (feitos[alvo.id]) { continue; }
+          var letra = null;
+          for (var f = 0; f < fila.length; f++) {
+            var l = fila[f];
+            if (esgotado[l] || !alvo[l]) { continue; }
+            if (l === 'c' && !alvo.relatorio) { continue; }
+            if (l !== 'c' && !kpCabe(modelos[l], tropas)) { esgotado[l] = true; continue; }
+            letra = l; break;
+          }
+          if (fila.every(function (x) { return esgotado[x]; })) { break; }
+          if (!letra) { continue; }
+          // checagens de segurança antes de cada envio
+          cfg = kpLerConfig();
+          if (!cfg.ativo) { parado = true; break; }
+          if (window.__ORK_CAPTCHA_BLOQUEADO__) { kpPararPorSeguranca('captcha'); parado = true; break; }
+          var res = await kpEnviar(origem, letra, alvo, modelos);
+          var tentativas = 0;
+          while (!res.ok && kpEhLimiteSegundo(res.erro) && tentativas < 3) {
+            tentativas++;
+            await kpEsperar(kpAleatorio(1100, 1800));
+            res = await kpEnviar(origem, letra, alvo, modelos);
+          }
+          if (res.ok) {
+            enviados++;
+            recusasSeguidas[letra] = 0;
+            if (letra !== 'c') { kpDescontar(modelos[letra], tropas); }
+            feitos[alvo.id] = 1;
+            cfg.feitos = Object.keys(feitos);
+            kpGravarConfig(cfg);
+            kpAtualizarStatus('KeyPress enviando... ' + enviados + ' (página ' + (p + 1) + '/' + paginas + ')');
+          } else {
+            falhas++;
+            recusasSeguidas[letra] = (recusasSeguidas[letra] || 0) + 1;
+            console.log('[OROCHIKING] KeyPress: ' + letra.toUpperCase() + ' -> ' + alvo.id + ' recusado: ' + String(res.erro).slice(0, 100));
+            if (recusasSeguidas[letra] >= 2) { esgotado[letra] = true; i--; } // tenta o próximo modelo neste mesmo alvo
+          }
+          await kpEsperar(kpAleatorio(260, 480));
+        }
+        if (fila.length && fila.every(function (x) { return esgotado[x]; })) { break; }
+        if (p + 1 < paginas) { await kpEsperar(kpAleatorio(700, 1600)); }
       }
     } catch (e) {
       console.error('[OROCHIKING] KeyPress: erro no ciclo', e);
     }
     kpRodando = false;
-    console.log('[OROCHIKING] KeyPress: página ' + (pagina + 1) + ' — ' + total + ' enviados' + (acabouTropa ? ' (tropa acabou)' : ''));
-
+    if (parado) { return; }
+    console.log('[OROCHIKING] KeyPress: ciclo concluído — ' + enviados + ' enviados, ' + falhas + ' recusados.');
     cfg = kpLerConfig();
     if (!cfg.ativo) { return; }
-    // Ainda tem tropa e existe próxima página? Segue pra ela (mesmo ciclo)
-    if (!acabouTropa && kpLinkPagina(pagina + 1)) {
-      var ms = kpAleatorio(2500, 6000);
-      kpAtualizarStatus('Próxima página em ' + Math.round(ms / 1000) + 's');
-      kpTimeoutId = setTimeout(function () { kpIrParaPagina(pagina + 1); }, ms);
-      return;
-    }
-    // Fim do ciclo: espera o intervalo (+ jitter) e recomeça da 1ª página
     var espera = cfg.intervaloMs;
     if (window.__ORK_FREIO__) { espera = Math.max(60000, espera * 2); }
     espera += kpAleatorio(3000, 8000);
     cfg.proximoEm = Date.now() + espera;
+    cfg.feitos = [];
     kpGravarConfig(cfg);
     kpAgendar();
   }
 
-  // Agenda (ou reagenda após reload) o próximo ciclo pelo horário salvo
   function kpAgendar() {
     var cfg = kpLerConfig();
     if (!cfg.ativo) { return; }
@@ -5063,46 +5209,60 @@
     kpTimeoutId = setTimeout(function () {
       var c = kpLerConfig();
       if (!c.ativo) { return; }
-      c.proximoEm = 0;
-      kpGravarConfig(c);
-      if (kpPaginaAtual() !== 0) { kpIrParaPagina(0); } else { window.location.reload(); }
+      if (c.proximoEm && c.proximoEm > Date.now() + 1000) { kpAgendar(); return; } // outra aba reagendou
+      kpRodarCiclo();
     }, falta);
     kpContagem();
   }
 
+  // decide o que fazer ao carregar uma página (ou quando a outra aba some)
+  function kpRetomar() {
+    var c = kpLerConfig();
+    if (!c.ativo) { return; }
+    kpMostrarStatus();
+    kpContagem();
+    if (c.proximoEm && c.proximoEm > Date.now()) { kpAgendar(); return; }
+    kpRodarCiclo();
+  }
+
   function kpContagem() {
-    if (kpContagemId) { clearInterval(kpContagemId); }
+    if (kpContagemId) { return; }
     kpContagemId = setInterval(function () {
       var cfg = kpLerConfig();
-      if (!cfg.ativo) { clearInterval(kpContagemId); kpContagemId = null; return; }
-      var s = Math.max(0, Math.round(((cfg.proximoEm || 0) - Date.now()) / 1000));
-      var txt = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+      if (!cfg.ativo) { kpPararPorSeguranca(); return; }
       var el = document.getElementById('ork-kp-tempo');
-      if (el && !kpRodando) { el.textContent = txt; }
-      kpAtualizarStatus('KeyPress (' + cfg.modelo.toUpperCase() + (cfg.modelo === 'a' ? '+B' : '') + ') — próximo ciclo em ' + txt + ' — clique pra parar');
+      if (kpRodando) { if (el) { el.textContent = 'ENV'; } return; }
+      if (!cfg.proximoEm) { if (el) { el.textContent = '...'; } return; }
+      var s = Math.max(0, Math.round((cfg.proximoEm - Date.now()) / 1000));
+      var txt = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+      if (el) { el.textContent = txt; }
+      kpAtualizarStatus('KeyPress (' + (cfg.modelo === 'a' ? 'A+B' : cfg.modelo.toUpperCase()) + ') — próximo ciclo em ' + txt + ' — clique pra parar');
     }, 1000);
   }
 
   function kpAtualizarStatus(texto) {
     var b = document.getElementById('ork-kp-bolinha');
     if (b) { b.title = texto; }
-    if (kpRodando) {
-      var el = document.getElementById('ork-kp-tempo');
-      if (el) { el.textContent = 'ENV'; }
-    }
   }
 
   function kpPararPorSeguranca(motivo) {
     try {
       var cfg = kpLerConfig();
-      if (cfg.ativo) { cfg.ativo = false; cfg.proximoEm = 0; kpGravarConfig(cfg); }
+      if (cfg.ativo) { cfg.ativo = false; cfg.proximoEm = 0; cfg.feitos = []; kpGravarConfig(cfg); }
       if (kpTimeoutId) { clearTimeout(kpTimeoutId); kpTimeoutId = null; }
       if (kpContagemId) { clearInterval(kpContagemId); kpContagemId = null; }
+      kpSoltarTrava();
       var b = document.getElementById('ork-kp-bolinha');
       if (b) { b.remove(); }
       if (motivo) { console.warn('[OROCHIKING] KeyPress parado (' + motivo + ').'); }
     } catch (e) {}
   }
+  // parou em outra aba? some a bolinha aqui também
+  window.addEventListener('storage', function (ev) {
+    if (ev.key !== KP_CHAVE) { return; }
+    var c = kpLerConfig();
+    if (!c.ativo) { kpPararPorSeguranca(); }
+  });
 
   function kpMostrarStatus() {
     if (document.getElementById('ork-kp-bolinha')) { return; }
@@ -5149,7 +5309,7 @@
       '<div style="background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));border:1px solid #3a3a3a;' +
       'border-radius:14px;padding:18px 20px;width:300px;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75)">' +
         '<div style="font-weight:800;color:#ffd84d;margin-bottom:4px">⌨️ KeyPress Hard</div>' +
-        '<div style="font-size:11px;color:#9a9a9a;margin-bottom:10px">Clica nos botões do Assistente de Saque com ritmo humano e repete sozinho no intervalo.</div>' +
+        '<div style="font-size:11px;color:#9a9a9a;margin-bottom:10px">Manda os modelos do Assistente de Saque desta aldeia (<b style="color:#ddd">' + ((window.game_data && game_data.village && game_data.village.name) || 'atual') + '</b>) em segundo plano — pode sair do Assistente, roda de qualquer tela.</div>' +
         '<div style="font-size:10px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Modelo</div>' +
         '<div style="display:flex;gap:6px;margin-bottom:12px">' +
           opt('a', 'A + B', 'A primeiro, sobra no B') + opt('b', 'B', 'só o B') + opt('c', 'C', 'só o C') +
@@ -5193,17 +5353,17 @@
       var valor = parseFloat(document.getElementById('ork-kp-valor').value) || 5;
       var unidade = document.getElementById('ork-kp-unidade').value;
       var intervaloMs = Math.max(30000, unidade === 'seg' ? valor * 1000 : valor * 60000);
-      kpGravarConfig({ ativo: true, modelo: modelo, intervaloMs: intervaloMs, proximoEm: 0 });
+      kpGravarConfig({ ativo: true, modelo: modelo, intervaloMs: intervaloMs, proximoEm: 0, origem: game_data.village.id, feitos: [] });
       fechar();
       console.log('[OROCHIKING] KeyPress Hard iniciado — modelo ' + modelo.toUpperCase() + (modelo === 'a' ? '+B' : '') + ', a cada ' + Math.round(intervaloMs / 1000) + 's.');
-      // começa sempre da 1ª página do Assistente
-      if (kpPaginaAtual() !== 0) { kpIrParaPagina(0); return; }
+      kpMostrarStatus();
+      kpContagem();
       kpRodarCiclo();
     });
   }
 
   function checaKeyPress() {
-    return !!(window.game_data && game_data.screen === 'am_farm');
+    return !!(window.game_data && game_data.village && game_data.village.id);
   }
   function rodarKeyPress() {
     kpPararPorSeguranca(); // para ciclo anterior antes de reconfigurar
@@ -5332,7 +5492,7 @@
       nome: 'KeyPress Hard',
       abrev: 'KeyPress',
       icone: '⌨️',
-      dica: 'Roda aqui no Assistente de Saque: escolha o modelo (A+B, B ou C) e o intervalo. Ele clica nos botões com ritmo humano, passa pelas páginas do Assistente enquanto tiver tropa e repete sozinho. Bolinha ⌨️ no canto mostra a contagem — clique nela pra parar.',
+      dica: 'Escolha o modelo (A+B, B ou C) e o intervalo. Roda em segundo plano (pode sair do Assistente e usar qualquer tela): manda os modelos da aldeia atual em todas as páginas do Assistente enquanto tiver tropa e repete sozinho. Bolinha ⌨️ no canto mostra a contagem — clique nela pra parar.',
       checar: checaKeyPress,
       rodar: rodarKeyPress,
       destino: null
@@ -5460,20 +5620,12 @@
   })();
 
   /* ============================================================
-     RETOMAR O KEYPRESS HARD APÓS RELOAD / TROCA DE PÁGINA
+     RETOMAR O KEYPRESS HARD (em QUALQUER tela do jogo)
   ============================================================ */
   (function retomarKeyPress() {
-    if (!(window.game_data && game_data.screen === 'am_farm')) return;
-    var cfg = kpLerConfig();
-    if (!cfg.ativo) return;
-    setTimeout(function () {
-      kpMostrarStatus();
-      var c = kpLerConfig();
-      if (!c.ativo) return;
-      // ainda esperando o intervalo (ex: F5 manual no meio da espera)? só reagenda
-      if (c.proximoEm && c.proximoEm > Date.now()) { kpAgendar(); return; }
-      kpRodarCiclo();
-    }, kpAleatorio(1500, 3000));
+    if (!(window.game_data && game_data.village)) return;
+    if (!kpLerConfig().ativo) return;
+    setTimeout(kpRetomar, kpAleatorio(1500, 3000));
   })();
 
   /* ============================================================
