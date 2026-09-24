@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 46;
+  window.__ORK_VERSAO__ = 47;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -6175,8 +6175,10 @@
   async function balCalcular(cfg) {
     balStatus('lendo produção');
     var prod = await balDadosProducao();
-    var lp = prod.list_production;
-    if (!lp.length) { throw new Error('não consegui ler a visão de produção'); }
+    var semMercado = prod.list_production.filter(function (v) { return !(v.merchants_total > 0); }).length;
+    var lp = prod.list_production.filter(function (v) { return v.merchants_total > 0; });
+    if (semMercado) { balLog(semMercado + ' aldeia(s) sem Mercado ficaram fora do balanceamento.'); }
+    if (!lp.length) { throw new Error('não consegui ler a visão de produção (ou nenhuma aldeia tem Mercado)'); }
     balStatus('lendo transportes a caminho');
     var chegando = await balDadosChegando();
     var horas = Math.min(50, Math.max(0, Number(cfg.horas) || 0));
@@ -6230,7 +6232,7 @@
     var lista = Array.from(porDestino.values()).sort(function (a, b) { return b.total - a.total; });
     var tw = 0, ts = 0, ti = 0;
     lp.forEach(function (v) { tw += v.wood; ts += v.stone; ti += v.iron; });
-    return { lista: lista, aldeias: lp.length, horasUsadas: horasUsadas,
+    return { lista: lista, aldeias: lp.length, semMercado: semMercado, horasUsadas: horasUsadas,
       resumo: { total: [tw, ts, ti], media: [tw / lp.length, ts / lp.length, ti / lp.length].map(Math.round),
         excedente: [res.tot.ws, res.tot.ss, res.tot.is].map(Math.round), deficit: [res.tot.wg, res.tot.sg, res.tot.ig].map(Math.round) } };
   }
@@ -6355,7 +6357,9 @@
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
     var inp = 'width:78px;background:#111;border:1px solid #444;color:#eee;padding:5px 7px;border-radius:6px;font-size:12px;box-sizing:border-box';
     function linha(rot, dica, campo) {
-      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span title="' + dica + '" style="flex:1;font-size:11.5px;color:#ccc;cursor:help">' + rot + ' <span style="color:#665400">ⓘ</span></span>' + campo + '</div>';
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+        '<span class="ork-bal-rot" data-dica="' + dica.replace(/"/g, '&quot;') + '" style="flex:1;font-size:11.5px;color:#ccc;cursor:help">' + rot +
+        ' <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;border:1px solid #8a6d00;color:#e8ac0a;font-size:9px;font-weight:800;margin-left:3px">?</span></span>' + campo + '</div>';
     }
     var ult = c.ultimo;
     ov.innerHTML =
@@ -6363,13 +6367,13 @@
         '<div style="display:flex;align-items:center;margin-bottom:4px"><div style="flex:1;font-weight:800;color:#ffd84d">⚖️ Balanceador Hard</div><span id="ork-bal-x" style="cursor:pointer;color:#888;font-size:16px">&times;</span></div>' +
         '<div style="font-size:11px;color:#9a9a9a;margin-bottom:10px">Equilibra os recursos entre suas aldeias pelo mercado, sozinho, e repete no intervalo. 1 a 3s aleatórios entre cada envio.</div>' +
         '<div style="background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:9px 10px">' +
-          linha('Mercadores de reserva', 'Quantos mercadores ficam em casa em cada aldeia', '<input id="ork-bal-res" type="number" min="0" value="' + c.reserva + '" style="' + inp + '">') +
-          linha('Tempo de construção (h)', 'Garante recursos pra X horas de construção do Gerente de Conta (precisa de modelo de construção ativo). 0 = ignora. Máx 50.', '<input id="ork-bal-horas" type="number" min="0" max="50" value="' + c.horas + '" style="' + inp + '">') +
-          linha('Fator de média (0-1)', '1 = todas as aldeias ficam com a mesma quantidade. 0 = só recursos pra construção. 0.2 = 20% da média + construção.', '<input id="ork-bal-fator" type="number" min="0" max="1" step="0.1" value="' + c.fator + '" style="' + inp + '">') +
-          linha('Nº de clusters', '1 = balanceia a conta toda junta. 2+ = balanceia por região (viagens mais curtas, menos ideal).', '<input id="ork-bal-cl" type="number" min="1" value="' + c.clusters + '" style="' + inp + '">') +
-          (mostraCap ? linha('Capacidade do mercador', '1000 ou 1500 (alguns servidores, ex: PT)', '<input id="ork-bal-cap" type="number" min="1000" max="1500" step="500" value="' + c.capacidade + '" style="' + inp + '">') : '') +
-          linha('Max construção', 'Com fator ≤ 0.5: acha sozinho o maior tempo de construção em que o excedente ainda cobre o déficit.', '<input id="ork-bal-max" type="checkbox"' + (c.maxConstrucao ? ' checked' : '') + ' style="width:16px;height:16px;accent-color:#e8ac0a">') +
-          linha('Balancear a cada (min)', 'Intervalo entre um balanceamento e outro (+2 a 4s aleatórios). Com o FREIO: x2.', '<input id="ork-bal-int" type="number" min="1" value="' + c.intervaloMin + '" style="' + inp + '">') +
+          linha('Mercadores de reserva', 'Quantos mercadores cada aldeia deixa PARADOS em casa, sem usar no balanceamento. Útil se você quer mercadores livres pra negociar ou mandar recurso na mão. 0 = usa todos.', '<input id="ork-bal-res" type="number" min="0" value="' + c.reserva + '" style="' + inp + '">') +
+          linha('Tempo de construção (h)', 'Além de igualar, manda pra cada aldeia recurso suficiente pra construir por X horas o que está no modelo de construção do Gerente de Conta (precisa de conta premium com modelo ativo). Ex: 5 = recurso pra 5h de obras. 0 = ignora construção. Máximo 50.', '<input id="ork-bal-horas" type="number" min="0" max="50" value="' + c.horas + '" style="' + inp + '">') +
+          linha('Fator de média (0-1)', 'Quanto da média cada aldeia deve ter. 1 = iguala tudo (no final todas ficam com a mesma quantidade). 0.5 = cada aldeia fica com pelo menos metade da média. 0 = não iguala, só manda o necessário pra construção (campo acima).', '<input id="ork-bal-fator" type="number" min="0" max="1" step="0.1" value="' + c.fator + '" style="' + inp + '">') +
+          linha('Nº de clusters', 'Divide suas aldeias em grupos por região e equilibra cada grupo separado. 1 = a conta toda junta (melhor equilíbrio, viagens podem ser longas). 2 ou mais = viagens mais curtas, mas só equilibra dentro de cada região. Aldeias próximas: use 1.', '<input id="ork-bal-cl" type="number" min="1" value="' + c.clusters + '" style="' + inp + '">') +
+          (mostraCap ? linha('Capacidade do mercador', 'Quanto cada mercador carrega: 1000 ou 1500 (depende do servidor, ex: PT).', '<input id="ork-bal-cap" type="number" min="1000" max="1500" step="500" value="' + c.capacidade + '" style="' + inp + '">') : '') +
+          linha('Max construção', 'Só funciona com Fator de média 0.5 ou menos: calcula sozinho o MAIOR tempo de construção possível sem faltar recurso na conta (ignora o campo Tempo de construção). Com fator acima de 0.5 não faz nada.', '<input id="ork-bal-max" type="checkbox"' + (c.maxConstrucao ? ' checked' : '') + ' style="width:16px;height:16px;accent-color:#e8ac0a">') +
+          linha('Balancear a cada (min)', 'Minutos entre um balanceamento e o próximo (+2 a 4s aleatórios). Com o FREIO ligado, dobra. Intervalo curto demais não adianta: a próxima rodada só usa os mercadores que já voltaram pra casa.', '<input id="ork-bal-int" type="number" min="1" value="' + c.intervaloMin + '" style="' + inp + '">') +
         '</div>' +
         (ult ? '<div style="font-size:10.5px;color:#8a8a8a;margin-top:8px">Último: ' + new Date(ult.quando).toLocaleTimeString() + ' — ' + ult.enviados + ' envios, ' + balFmt(ult.volume) + ' recursos' + (ult.falhas ? ', ' + ult.falhas + ' falhas' : '') + '</div>' : '') +
         '<div id="ork-bal-prev" style="margin-top:8px"></div>' +
@@ -6380,6 +6384,25 @@
         '</div>' +
       '</div>';
     document.body.appendChild(ov);
+    // balão de ajuda: passa o mouse (ou toca) no nome do campo
+    var balao = document.createElement('div');
+    balao.style.cssText = 'position:fixed;z-index:9999999;max-width:260px;background:#141414;border:1px solid #8a6d00;color:#e6e6e6;' +
+      'font-size:11px;line-height:1.45;padding:8px 10px;border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.6);display:none;pointer-events:none';
+    ov.appendChild(balao);
+    function mostrarDica(el) {
+      balao.textContent = el.getAttribute('data-dica');
+      balao.style.display = 'block';
+      var r = el.getBoundingClientRect();
+      var top = r.bottom + 6;
+      if (top + balao.offsetHeight > window.innerHeight - 8) { top = r.top - balao.offsetHeight - 6; }
+      balao.style.top = Math.max(8, top) + 'px';
+      balao.style.left = Math.max(8, Math.min(r.left, window.innerWidth - balao.offsetWidth - 8)) + 'px';
+    }
+    ov.querySelectorAll('.ork-bal-rot').forEach(function (el) {
+      el.addEventListener('mouseenter', function () { mostrarDica(el); });
+      el.addEventListener('mouseleave', function () { balao.style.display = 'none'; });
+      el.addEventListener('click', function (e) { e.stopPropagation(); if (balao.style.display === 'block') { balao.style.display = 'none'; } else { mostrarDica(el); } });
+    });
     function fechar() { ov.remove(); }
     function lerCampos() {
       var n = balLer();
@@ -6408,6 +6431,7 @@
         var h = '<div style="background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:8px;font-size:11px">' +
           '<table style="width:100%;border-collapse:collapse"><tr style="color:#FFC400;font-weight:800"><td></td><td style="text-align:right">🪵 Madeira</td><td style="text-align:right">🧱 Argila</td><td style="text-align:right">⛓️ Ferro</td></tr>' +
           lin('Total', rs.total) + lin('Média', rs.media) + lin('Excedente', rs.excedente) + lin('Déficit', rs.deficit) + '</table>' +
+          (r.semMercado ? '<div style="margin-top:6px;color:#999">' + r.semMercado + ' aldeia(s) sem Mercado ficaram de fora.</div>' : '') +
           '<div style="margin:8px 0 4px;color:#FFC400;font-weight:800">' + r.lista.length + ' aldeias vão receber' + (n.maxConstrucao ? ' (construção calculada: ' + r.horasUsadas + 'h)' : '') + '</div>' +
           '<div style="max-height:180px;overflow:auto"><table style="width:100%;border-collapse:collapse">' +
           r.lista.map(function (x, i) { return '<tr style="border-top:1px solid #222"><td style="padding:3px 4px;color:#666">' + (i + 1) + '</td><td style="padding:3px 4px">' + x.coord + '</td><td style="padding:3px 4px;color:#999">' + x.distance.toFixed(1) + ' campos</td><td style="padding:3px 4px;text-align:right;font-weight:700">' + balFmt(x.total) + '</td></tr>'; }).join('') +
