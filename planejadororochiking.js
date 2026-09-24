@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 43;
+  window.__ORK_VERSAO__ = 45;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -222,6 +222,17 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-24-auto247',
+      data: '24/09/2026',
+      titulo: 'Nova ferramenta: Automatização 24/7',
+      itens: [
+        'Nova aba 24/7: farma, cunha e descansa sozinho, em ciclo, numa aba só.',
+        'Farm Hard no preset que você escolher (padrão 1.5x + Normal) por 2-3 min, depois cunhagem em todas as páginas, depois pausa configurável.',
+        'Todos os tempos são sorteados em milissegundos. Captcha: tudo espera e continua sozinho quando você resolver.',
+        'Opcional: deslogar e relogar a cada N ciclos (precisa do script OROCHIKING Relogin no Tampermonkey).'
+      ]
+    },
     {
       id: '2026-09-24-keypress-fundo',
       data: '24/09/2026',
@@ -387,27 +398,80 @@
      aqui — nada do resto do painel roda sem game_data.
   ============================================================ */
   if (typeof game_data === 'undefined') {
-    (function tentarRelogarSozinho() {
-      var dominioAtual = window.location.hostname.replace(/^www./, '');
-      var mundo = null;
-      try { mundo = localStorage.getItem('ork_mundo_' + dominioAtual); } catch (e) {}
-      if (!mundo) {
-        console.warn('[OROCHIKING] sem mundo salvo para ' + dominioAtual + ' — faça login manual uma vez neste mundo para o relogin automático aprender.');
-        return;
+    (function orkRelogarNaTelaDeLogin() {
+      // Só age se a Automatização 24/7 pediu (cookie ork_relogin) ou está ativa
+      // (cookie ork_auto247_mundo). Logout manual sem automação = não faz nada.
+      function lerCookie(n) {
+        var m = document.cookie.match(new RegExp('(?:^|; )' + n + '=([^;]*)'));
+        return m ? decodeURIComponent(m[1]) : '';
       }
-
-      var urlEntrar = 'https://www.' + dominioAtual + '/page/join/' + mundo;
-
-      var jaTentou = null;
-      try { jaTentou = sessionStorage.getItem('ork_tentando_relogar'); } catch (e) {}
-      if (jaTentou === urlEntrar) return; // já tentamos essa mesma URL nesta aba, evita loop
-
-      try { sessionStorage.setItem('ork_tentando_relogar', urlEntrar); } catch (e) {}
-
-      console.log('[OROCHIKING] tentando relogar em', urlEntrar);
+      var mundo = (lerCookie('ork_relogin') || lerCookie('ork_auto247_mundo')).toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!mundo) { return; }
+      // casa o mundo EXATO: br14 não pode casar com br144, brc1 não casa com brc12
+      var reMundo = new RegExp('/page/(join|play)/' + mundo + '(?![a-z0-9])');
+      var reMundoSolto = new RegExp('(^|[^a-z0-9])' + mundo + '(?![a-z0-9])');
+      if (window.__ORK_RELOGIN_AGENDADO__) { return; }
+      window.__ORK_RELOGIN_AGENDADO__ = true;
+      // proteção contra loop: no máximo 3 tentativas a cada 10 minutos nesta aba
+      var hist = [];
+      try { hist = JSON.parse(sessionStorage.getItem('ork_relogin_tentativas') || '[]'); } catch (e) {}
+      var agora = Date.now();
+      hist = hist.filter(function (t) { return agora - t < 600000; });
+      if (hist.length >= 3) { console.warn('[OROCHIKING] Relogin: 3 tentativas em 10 min, parei pra não entrar em loop.'); return; }
       setTimeout(function () {
-        window.location.href = urlEntrar;
-      }, 600);
+        try { hist = JSON.parse(sessionStorage.getItem('ork_relogin_tentativas') || '[]').filter(function (t) { return Date.now() - t < 600000; }); } catch (e) { hist = []; }
+        if (hist.length >= 3) { return; }
+        hist.push(Date.now());
+        try { sessionStorage.setItem('ork_relogin_tentativas', JSON.stringify(hist)); } catch (e) {}
+        var caminho = window.location.pathname;
+        var naPaginaDoMundo = reMundo.test(caminho);
+        // 1) já estamos na página de entrada do mundo (ex: /page/join/brs1):
+        //    clica no botão de entrar/jogar dela, sem recarregar a mesma página
+        if (naPaginaDoMundo) {
+          var cands = document.querySelectorAll('button, input[type="submit"], a.btn, a.button, a[href], .btn');
+          for (var k = 0; k < cands.length; k++) {
+            var el = cands[k];
+            if (el.offsetParent === null) { continue; }
+            var txt = ((el.textContent || '') + ' ' + (el.value || '')).trim().toLowerCase();
+            var href = el.getAttribute('href') || '';
+            if (href && href.indexOf(caminho) !== -1) { continue; } // link pra própria página
+            var botaoEntrar = el.tagName !== 'A' || /btn|button/.test(el.className || '');
+            if ((botaoEntrar && /jogar|entrar|login|play|join|participar|iniciar|jouer|connexion/.test(txt)) || (reMundoSolto.test(href) && href.indexOf('game.php') !== -1)) {
+              console.log('[OROCHIKING] Relogin: na página do mundo, clicando em "' + txt.slice(0, 30) + '".');
+              el.click();
+              return;
+            }
+          }
+          var senhaM = document.querySelector('input[type="password"]');
+          if (senhaM && senhaM.form) {
+            var sub = senhaM.form.querySelector('[type="submit"], .btn-login');
+            if (sub) { console.log('[OROCHIKING] Relogin: clicando em Entrar (senha salva).'); sub.click(); return; }
+          }
+          console.warn('[OROCHIKING] Relogin: estou em ' + caminho + ' mas não achei o botão de entrar. Manda um print desta tela.');
+          return;
+        }
+        // 2) botão/link do mundo na lista (senha salva / já logado no site)
+        var links = document.querySelectorAll('a[href]');
+        for (var i = 0; i < links.length; i++) {
+          var h = links[i].getAttribute('href') || '';
+          if (reMundo.test(h)) {
+            console.log('[OROCHIKING] Relogin: entrando em ' + mundo + ' pelo botão do mundo.');
+            links[i].click();
+            return;
+          }
+        }
+        // 3) formulário de login com senha salva: clica em entrar
+        var senha = document.querySelector('input[type="password"]');
+        var entrar = senha && senha.form ? senha.form.querySelector('[type="submit"], a.btn-login, .btn-login') : null;
+        if (senha && entrar) {
+          console.log('[OROCHIKING] Relogin: clicando em Entrar (senha salva do navegador).');
+          entrar.click();
+          return;
+        }
+        // 4) endereço de entrada do mundo (formato confirmado no Speed: /page/join/brs1)
+        console.log('[OROCHIKING] Relogin: abrindo /page/join/' + mundo);
+        window.location.href = '/page/join/' + mundo;
+      }, 3000 + Math.floor(Math.random() * 3001));
     })();
     return;
   }
@@ -5371,6 +5435,313 @@
     kpAbrirModal();
   }
 
+  /* ============================================================
+     AUTOMATIZAÇÃO 24/7
+     Maestro que alterna, numa aba só:
+       FARM (Farm Hard no preset, 2-3 min) -> CUNHAR (página por
+       página, 1.000 aldeias cada) -> PAUSA (configurável) -> repete.
+     Opcional: a cada N ciclos, na hora de voltar pro farm, desloga e
+     reloga no mundo escolhido (precisa do script "OROCHIKING Relogin"
+     no Tampermonkey, que roda na tela de login).
+
+       - Preset do farm (velocidade + rotação) fica salvo SÓ nesta aba
+         (sessionStorage): fechou a aba, volta pro padrão 1.5x + Normal.
+       - Todos os tempos são sorteados em milissegundos (nunca iguais).
+       - Captcha: tudo espera. Resolveu, continua sozinho de onde parou.
+       - Sobrevive a reload/troca de tela: a fase fica salva.
+  ============================================================ */
+  var AUTO_CHAVE = 'ork_auto247';
+  var AUTO_PRESET = 'ork_auto247_preset';
+  var autoTimer = null;
+  var autoRelogio = null;
+  var autoPasso = false; // evita duas ações ao mesmo tempo
+
+  function autoLer() {
+    try {
+      var c = JSON.parse(localStorage.getItem(AUTO_CHAVE) || 'null');
+      if (c && typeof c === 'object') { return c; }
+    } catch (e) {}
+    return { ativo: false, fase: 'farm', fimFase: 0, ciclos: 0, from: 0,
+      farmMin: 2, farmMax: 3, pausaMin: 3, pausaMax: 4, relogarCada: 0, mundo: '' };
+  }
+  function autoGravar(c) { try { localStorage.setItem(AUTO_CHAVE, JSON.stringify(c)); } catch (e) {} }
+  function autoLerPreset() {
+    try {
+      var p = JSON.parse(sessionStorage.getItem(AUTO_PRESET) || 'null');
+      if (p && p.fator && p.rotacao) { return p; }
+    } catch (e) {}
+    return { fator: '1.5', rotacao: '1' };
+  }
+  function autoGravarPreset(p) { try { sessionStorage.setItem(AUTO_PRESET, JSON.stringify(p)); } catch (e) {} }
+  function autoMs(minMin, maxMin) {
+    var a = Math.max(0.05, Number(minMin) || 0), b = Math.max(a, Number(maxMin) || a);
+    return Math.floor(a * 60000 + Math.random() * ((b - a) * 60000 + 1));
+  }
+  function autoEntre(minMs, maxMs) { return Math.floor(minMs + Math.random() * (maxMs - minMs + 1)); }
+  function autoLog(t) { try { console.log('[OROCHIKING] 24/7: ' + t); } catch (e) {} }
+
+  /* ---------- cookie compartilhado com a tela de login (www) ---------- */
+  function autoDominioBase() {
+    var p = window.location.hostname.split('.');
+    return p.length > 2 ? p.slice(1).join('.') : window.location.hostname;
+  }
+  function autoCookie(nome, valor, segundos) {
+    try {
+      document.cookie = nome + '=' + encodeURIComponent(valor) + '; domain=.' + autoDominioBase() +
+        '; path=/; max-age=' + segundos + '; SameSite=Lax';
+    } catch (e) {}
+  }
+  function autoMarcarCookies() {
+    var c = autoLer();
+    if (!c.ativo) { autoCookie('ork_auto247_mundo', '', 0); return; }
+    // enquanto a automação está ativa, a tela de login sabe em qual mundo reentrar
+    autoCookie('ork_auto247_mundo', c.mundo || (window.game_data && game_data.world) || '', 3600);
+  }
+
+  /* ---------- controle do Farm Hard ---------- */
+  function autoFarmAberto() { return !!document.getElementById('fh-iniciar'); }
+  function autoIniciarFarm() {
+    var p = autoLerPreset();
+    try { localStorage.removeItem('ork_retomar_dormindo'); } catch (e) {}
+    if (!autoFarmAberto()) { rodarFarmar(); }
+    setTimeout(function () {
+      try {
+        var vel = document.querySelector('.fh-vel[data-fator="' + p.fator + '"]');
+        if (vel) { vel.click(); }
+        var rot = document.querySelector('.fh-opcao-input[value="' + p.rotacao + '"]');
+        if (rot && !rot.checked) {
+          rot.checked = true;
+          rot.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        var ini = document.getElementById('fh-iniciar');
+        if (ini) { ini.click(); }
+        autoLog('farm iniciado em ' + p.fator + 'x, rotação ' + p.rotacao + '.');
+      } catch (e) { console.error('[OROCHIKING] 24/7: erro ao iniciar o Farm Hard', e); }
+    }, autoEntre(600, 1100));
+  }
+  function autoPararFarm() {
+    try { var f = document.getElementById('fh-fechar'); if (f) { f.click(); } } catch (e) {}
+  }
+
+  /* ---------- máquina de fases ---------- */
+  function autoAgendar(ms) {
+    if (autoTimer) { clearTimeout(autoTimer); }
+    autoTimer = setTimeout(autoPasso2, Math.max(0, ms));
+  }
+  function autoIrCunhagem(from) {
+    var url = '/game.php?village=' + game_data.village.id + '&screen=snob&mode=coin&from=' + from;
+    setTimeout(function () { window.location.href = url; }, autoEntre(1500, 3000));
+  }
+  function autoNaTelaCunhagem() {
+    return !!(window.game_data && game_data.screen === 'snob' && /[?&]mode=coin/.test(window.location.href));
+  }
+
+  function autoPasso2() {
+    var c = autoLer();
+    if (!c.ativo) { autoParar(); return; }
+    // captcha: não faz nada, confere de novo em 3-5s (continua sozinho quando resolver)
+    if (window.__ORK_CAPTCHA_BLOQUEADO__) {
+      autoStatus('Captcha — esperando resolver');
+      autoAgendar(autoEntre(3000, 5000));
+      return;
+    }
+    var agora = Date.now();
+
+    if (c.fase === 'farm') {
+      if (agora < c.fimFase) {
+        // farm devia estar rodando: se o captcha fechou o Farm Hard, reabre
+        if (!autoFarmAberto()) { autoIniciarFarm(); }
+        autoAgendar(Math.min(c.fimFase - agora, autoEntre(4000, 6000)));
+        return;
+      }
+      autoPararFarm();
+      c.fase = 'cunhar'; c.from = 0; autoGravar(c);
+      autoLog('farm encerrado, indo cunhar.');
+      autoStatus('Indo para a Academia...');
+      autoIrCunhagem(0);
+      return;
+    }
+
+    if (c.fase === 'cunhar') {
+      if (!autoNaTelaCunhagem() || (function () { var m = window.location.href.match(/[?&]from=(\d+)/); return (m ? parseInt(m[1], 10) : 0) !== (c.from || 0); })()) {
+        autoIrCunhagem(c.from || 0);
+        return;
+      }
+      if (autoPasso) { return; }
+      autoPasso = true;
+      setTimeout(function () {
+        var ok = false;
+        try { ok = clicarCunhar(); } catch (e) {}
+        autoLog('cunhagem página from=' + (c.from || 0) + (ok ? ' — cunhado.' : ' — nada pra cunhar nesta página.'));
+        setTimeout(function () {
+          autoPasso = false;
+          var c2 = autoLer();
+          if (!c2.ativo) { return; }
+          if (window.__ORK_CAPTCHA_BLOQUEADO__) { autoAgendar(3000); return; }
+          var prox = (c2.from || 0) + 1000;
+          if (temProximaPaginaCunhar(prox)) {
+            c2.from = prox; autoGravar(c2);
+            autoStatus('Cunhando... próxima página');
+            autoIrCunhagem(prox);
+          } else {
+            c2.fase = 'pausa'; c2.from = 0; c2.ciclos = (c2.ciclos || 0) + 1;
+            c2.fimFase = Date.now() + autoMs(c2.pausaMin, c2.pausaMax);
+            autoGravar(c2);
+            autoLog('cunhagem concluída (ciclo ' + c2.ciclos + '). Pausa até ' + new Date(c2.fimFase).toLocaleTimeString() + '.');
+            autoAgendar(c2.fimFase - Date.now());
+          }
+        }, autoEntre(6000, 12000));
+      }, autoEntre(2000, 4000));
+      return;
+    }
+
+    if (c.fase === 'pausa') {
+      if (agora < c.fimFase) { autoAgendar(c.fimFase - agora); return; }
+      var relogar = (c.relogarCada || 0) > 0 && (c.ciclos % c.relogarCada === 0);
+      if (relogar) {
+        var sair = document.querySelector('a[href*="action=logout"]');
+        if (sair) {
+          c.fase = 'relogar'; autoGravar(c);
+          autoCookie('ork_relogin', c.mundo || game_data.world, 900);
+          autoLog('deslogando pra relogar em ' + (c.mundo || game_data.world) + '.');
+          setTimeout(function () { window.location.href = sair.href; }, autoEntre(1000, 2500));
+          return;
+        }
+        autoLog('botão Sair não encontrado — pulando o relogin deste ciclo.');
+      }
+      c.fase = 'farm'; c.fimFase = Date.now() + autoMs(c.farmMin, c.farmMax); autoGravar(c);
+      autoIniciarFarm();
+      autoAgendar(autoEntre(4000, 6000));
+      return;
+    }
+
+    if (c.fase === 'relogar') {
+      // se estamos aqui com game_data, o relogin deu certo
+      autoCookie('ork_relogin', '', 0);
+      c.fase = 'farm'; c.fimFase = Date.now() + autoMs(c.farmMin, c.farmMax); autoGravar(c);
+      autoLog('relogado com sucesso, voltando ao farm.');
+      autoIniciarFarm();
+      autoAgendar(autoEntre(4000, 6000));
+      return;
+    }
+
+    c.fase = 'farm'; c.fimFase = 0; autoGravar(c); autoAgendar(1000);
+  }
+
+  /* ---------- bolinha de status ---------- */
+  function autoStatus(txt) {
+    var b = document.getElementById('ork-auto-bolinha');
+    if (b && txt) { b.title = '24/7: ' + txt + ' — clique pra parar'; }
+  }
+  function autoMostrarBolinha() {
+    if (document.getElementById('ork-auto-bolinha')) { return; }
+    var b = document.createElement('div');
+    b.id = 'ork-auto-bolinha';
+    b.style.cssText = 'position:fixed;left:148px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+      'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);' +
+      'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
+      'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
+    b.innerHTML = '<span style="font-size:17px">♾️</span><span id="ork-auto-fase" style="font-size:8px;font-weight:800;margin-top:2px">24/7</span>';
+    b.addEventListener('click', function () {
+      if (confirm('Parar a Automatização 24/7?')) { autoParar(true); }
+    });
+    document.body.appendChild(b);
+    if (autoRelogio) { clearInterval(autoRelogio); }
+    autoRelogio = setInterval(function () {
+      var c = autoLer();
+      var el = document.getElementById('ork-auto-fase');
+      if (!c.ativo || !el) { return; }
+      var nomes = { farm: 'FARM', cunhar: 'CUNHA', pausa: 'PAUSA', relogar: 'LOGIN' };
+      var txt = nomes[c.fase] || '24/7';
+      if ((c.fase === 'farm' || c.fase === 'pausa') && c.fimFase > Date.now()) {
+        var s = Math.round((c.fimFase - Date.now()) / 1000);
+        txt += ' ' + Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+      }
+      if (window.__ORK_CAPTCHA_BLOQUEADO__) { txt = 'CAPTCHA'; }
+      el.textContent = txt;
+      autoStatus(txt + ' (ciclo ' + ((c.ciclos || 0) + 1) + ')');
+    }, 1000);
+  }
+
+  function autoParar(peloUsuario) {
+    var c = autoLer();
+    var estavaAtivo = c.ativo;
+    c.ativo = false; autoGravar(c);
+    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+    if (autoRelogio) { clearInterval(autoRelogio); autoRelogio = null; }
+    autoCookie('ork_auto247_mundo', '', 0);
+    autoCookie('ork_relogin', '', 0);
+    var b = document.getElementById('ork-auto-bolinha'); if (b) { b.remove(); }
+    if (peloUsuario && estavaAtivo) { autoPararFarm(); autoLog('parada pelo usuário.'); }
+  }
+
+  /* ---------- modal de configuração ---------- */
+  function autoAbrirModal() {
+    if (document.getElementById('ork-modal-auto')) { return; }
+    var c = autoLer(), p = autoLerPreset();
+    var mundoPadrao = c.mundo || (window.game_data && game_data.world) || '';
+    var ov = document.createElement('div');
+    ov.id = 'ork-modal-auto';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    var inp = 'background:#111;border:1px solid #444;color:#eee;padding:6px 8px;border-radius:6px;font-size:12px;box-sizing:border-box';
+    var lbl = 'font-size:10px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 5px';
+    function opcoes(lista, atual) {
+      return lista.map(function (o) { return '<option value="' + o[0] + '"' + (String(o[0]) === String(atual) ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
+    }
+    ov.innerHTML =
+      '<div style="background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));border:1px solid #3a3a3a;border-radius:14px;padding:18px 20px;width:340px;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75)">' +
+        '<div style="font-weight:800;color:#ffd84d;margin-bottom:4px">♾️ Automatização 24/7</div>' +
+        '<div style="font-size:11px;color:#9a9a9a">Farm → Cunhagem (todas as páginas) → Pausa → repete. Tempos sempre sorteados.</div>' +
+        '<div style="' + lbl + '">Farm Hard (salvo só nesta aba)</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<select id="ork-auto-fator" style="flex:1;' + inp + '">' + opcoes([['0.5','0.5x'],['1','1x'],['1.25','1.25x'],['1.5','1.5x'],['2','2x'],['2.5','2.5x']], p.fator) + '</select>' +
+          '<select id="ork-auto-rot" style="flex:1.4;' + inp + '">' + opcoes([['1','Normal (1 coluna)'],['2','2 grupos'],['3','3 grupos'],['4','4 grupos']], p.rotacao) + '</select>' +
+        '</div>' +
+        '<div style="' + lbl + '">Farm roda por (minutos)</div>' +
+        '<div style="display:flex;gap:8px;align-items:center"><input id="ork-auto-fmin" type="number" min="0.5" step="0.5" value="' + c.farmMin + '" style="flex:1;' + inp + '"><span style="color:#666">a</span><input id="ork-auto-fmax" type="number" min="0.5" step="0.5" value="' + c.farmMax + '" style="flex:1;' + inp + '"></div>' +
+        '<div style="' + lbl + '">Pausa depois de cunhar (minutos)</div>' +
+        '<div style="display:flex;gap:8px;align-items:center"><input id="ork-auto-pmin" type="number" min="0" step="0.5" value="' + c.pausaMin + '" style="flex:1;' + inp + '"><span style="color:#666">a</span><input id="ork-auto-pmax" type="number" min="0" step="0.5" value="' + c.pausaMax + '" style="flex:1;' + inp + '"></div>' +
+        '<div style="' + lbl + '">Deslogar e relogar</div>' +
+        '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:11px;color:#bbb">a cada</span><input id="ork-auto-rel" type="number" min="0" step="1" value="' + (c.relogarCada || 0) + '" style="width:58px;' + inp + '"><span style="font-size:11px;color:#bbb">ciclos (0 = nunca) no mundo</span></div>' +
+        '<input id="ork-auto-mundo" type="text" value="' + mundoPadrao + '" placeholder="ex: br144, brc1, brs1" style="width:100%;margin-top:6px;' + inp + '">' +
+        '<div style="font-size:9.5px;color:#666;margin-top:4px">Mundo: normal br + número (br144), clássico brc + número (brc1), speed brs + número (brs1). Precisa do script "OROCHIKING Relogin" no Tampermonkey.</div>' +
+        '<div style="display:flex;gap:8px;margin-top:14px">' +
+          '<button id="ork-auto-cancelar" style="flex:1;background:#232323;color:#ccc;border:1px solid #3a3a3a;border-radius:7px;padding:8px 0;cursor:pointer;font-weight:700;font-size:11.5px">' + (c.ativo ? 'Parar' : 'Cancelar') + '</button>' +
+          '<button id="ork-auto-iniciar" style="flex:1;background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#141200;border:none;border-radius:7px;padding:8px 0;cursor:pointer;font-weight:800;font-size:11.5px">' + (c.ativo ? 'Salvar e reiniciar' : 'Iniciar') + '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    function fechar() { ov.remove(); }
+    document.getElementById('ork-auto-cancelar').addEventListener('click', function () {
+      if (autoLer().ativo) { autoParar(true); }
+      fechar();
+    });
+    document.getElementById('ork-auto-iniciar').addEventListener('click', function () {
+      function num(id, def) { var v = parseFloat(document.getElementById(id).value); return isNaN(v) ? def : v; }
+      var n = autoLer();
+      n.farmMin = Math.max(0.5, num('ork-auto-fmin', 2)); n.farmMax = Math.max(n.farmMin, num('ork-auto-fmax', 3));
+      n.pausaMin = Math.max(0, num('ork-auto-pmin', 3)); n.pausaMax = Math.max(n.pausaMin, num('ork-auto-pmax', 4));
+      n.relogarCada = Math.max(0, Math.floor(num('ork-auto-rel', 0)));
+      n.mundo = (document.getElementById('ork-auto-mundo').value || '').toLowerCase().replace(/[^a-z0-9]/g, '') || game_data.world;
+      n.ativo = true; n.fase = 'farm'; n.ciclos = 0; n.from = 0;
+      n.fimFase = Date.now() + autoMs(n.farmMin, n.farmMax);
+      autoGravar(n);
+      autoGravarPreset({ fator: document.getElementById('ork-auto-fator').value, rotacao: document.getElementById('ork-auto-rot').value });
+      // a automação comanda farm e cunhagem: desliga a Cunhagem avulsa pra não brigarem
+      try { pararCunharPorSeguranca(); } catch (e) {}
+      fechar();
+      autoMarcarCookies();
+      autoMostrarBolinha();
+      autoLog('iniciada — farm ' + n.farmMin + '-' + n.farmMax + 'min, pausa ' + n.pausaMin + '-' + n.pausaMax + 'min' +
+        (n.relogarCada ? ', relogar a cada ' + n.relogarCada + ' ciclo(s) em ' + n.mundo : '') + '.');
+      autoIniciarFarm();
+      autoAgendar(autoEntre(4000, 6000));
+    });
+  }
+
+  function checaAuto247() { return !!(window.game_data && game_data.village && game_data.village.id); }
+  function rodarAuto247() { autoAbrirModal(); }
+
   var FERRAMENTAS = [
     {
       id: 'farmar',
@@ -5496,6 +5867,17 @@
       dica: 'Escolha o modelo (A+B, B ou C) e o intervalo. Roda em segundo plano (pode sair do Assistente e usar qualquer tela): manda os modelos da aldeia atual em todas as páginas do Assistente enquanto tiver tropa e repete sozinho. Bolinha ⌨️ no canto mostra a contagem — clique nela pra parar.',
       checar: checaKeyPress,
       rodar: rodarKeyPress,
+      destino: null
+    }
+,
+    {
+      id: 'auto247',
+      nome: 'Automatização 24/7',
+      abrev: '24/7',
+      icone: '♾️',
+      dica: 'Ciclo automático numa aba só: Farm Hard (preset da aba, padrão 1.5x + Normal) por 2-3 min → cunhagem em todas as páginas → pausa configurável → repete. Opcional: deslogar/relogar a cada N ciclos. Captcha: espera e continua sozinho. Bolinha ♾️ no canto — clique pra parar.',
+      checar: checaAuto247,
+      rodar: rodarAuto247,
       destino: null
     }
   ];
@@ -5627,6 +6009,20 @@
     if (!(window.game_data && game_data.village)) return;
     if (!kpLerConfig().ativo) return;
     setTimeout(kpRetomar, kpAleatorio(1500, 3000));
+  })();
+
+  /* ============================================================
+     RETOMAR A AUTOMATIZAÇÃO 24/7 (qualquer tela do jogo)
+  ============================================================ */
+  (function retomarAuto247() {
+    if (!(window.game_data && game_data.village)) return;
+    var c = autoLer();
+    autoMarcarCookies();
+    if (!c.ativo) return;
+    setTimeout(function () {
+      autoMostrarBolinha();
+      autoPasso2();
+    }, autoEntre(1500, 3000));
   })();
 
   /* ============================================================
