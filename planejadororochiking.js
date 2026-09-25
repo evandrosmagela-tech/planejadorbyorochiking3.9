@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 53;
+  window.__ORK_VERSAO__ = 55;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -223,14 +223,14 @@
   ============================================================ */
   var ORK_NOVIDADES = [
     {
-      id: '2026-09-25-gerente',
+      id: '2026-09-25-gerente-grupos',
       data: '25/09/2026',
-      titulo: 'Nova ferramenta: Gerente Hard (construir + recrutar)',
+      titulo: 'Gerente Hard (BETA TEST): regras por grupo',
       itens: [
-        'Nova aba Gerente: constrói sozinho pelos modelos de construção do seu Gerente de Conta, repondo a fila de cada aldeia (sem o limite de ordens do Gerente).',
-        'Você escolhe o máximo de ordens na fila por aldeia (padrão 2 — da 3ª em diante o jogo cobra custo adicional).',
-        'Recrutamento: defina quanto quer de cada tropa por aldeia; ele recruta só o que falta, com o recurso que tiver.',
-        'Botão "Simular construção" mostra o que vai ser construído antes de ativar.'
+        'O Gerente Hard agora lê do jogo os seus grupos (manuais e dinâmicos), os modelos de construção e os modelos de tropas do Gerente de Conta.',
+        'Cada regra liga um grupo a um modelo de construção e a um modelo de tropas — ex: FARM → 9444 + FAAARRMMM, atk → Ofensiva.',
+        'Recruta até o alvo do modelo de tropas, respeitando a reserva (buffer) de recursos e população dele.',
+        'Constrói na ordem do modelo, repondo a fila sozinho (máximo de ordens configurável; da 3ª em diante o jogo cobra custo adicional).'
       ]
     },
     {
@@ -5268,7 +5268,7 @@
     if (document.getElementById('ork-modal-cunhar')) return;
     var overlay = document.createElement('div');
     overlay.id = 'ork-modal-cunhar';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;' +
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;' +
       'display:flex;align-items:center;justify-content:center;font-family:Verdana,Arial,sans-serif';
     overlay.innerHTML =
       '<div style="background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));border:1px solid #3a3a3a;' +
@@ -5732,7 +5732,7 @@
     var emMin = segs >= 60 && segs % 60 === 0;
     var overlay = document.createElement('div');
     overlay.id = 'ork-modal-kp';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;' +
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;' +
       'display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
     function opt(v, titulo, sub) {
       return '<button type="button" class="ork-kp-mod" data-m="' + v + '" style="flex:1;background:#1c1c1c;border:1px solid #333;' +
@@ -6435,7 +6435,7 @@
     var mundoPadrao = c.mundo || (window.game_data && game_data.world) || '';
     var ov = document.createElement('div');
     ov.id = 'ork-modal-auto';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
     var inp = 'background:#111;border:1px solid rgba(255,255,255,.12);color:#ececec;padding:6px 8px;border-radius:6px;font-size:12px;box-sizing:border-box;font-family:inherit';
     var card = 'background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:9px 10px;margin-top:8px';
     var tit = 'font-size:9.5px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:block';
@@ -6830,9 +6830,10 @@
     var opts = docMain.querySelector('select[name=template]');
     var lista = opts ? Array.prototype.slice.call(opts.options) : [];
     for (var k = 0; k < lista.length; k++) {
-      var nome = lista[k].textContent.replace(/[\n\t]/g, '');
-      if (k < 3) { nome = nome.replace(/\(\w+\)/, ''); }
-      if (!vazio.map_construction_templates.has(nome)) { continue; }
+      var nomeBruto = lista[k].textContent.replace(/[\n\t]/g, '').trim();
+      // modelos do sistema aparecem como "Recursos (Sistema)" na lista e às vezes só "Recursos" na aldeia
+      var nome = [nomeBruto, nomeBruto.replace(/\s*\([^)]*\)\s*$/, '').trim()].filter(function (x) { return vazio.map_construction_templates.has(x); })[0];
+      if (!nome) { continue; }
       var d = await balGetDoc(game_data.link_base_pure + 'am_village&mode=queue&template=' + lista[k].value);
       var tpl = [];
       d.querySelectorAll('.sortable_row').forEach(function (it) {
@@ -7257,7 +7258,7 @@
     var mostraCap = ['pt_PT', 'de_DE'].indexOf(game_data.locale) !== -1;
     var ov = document.createElement('div');
     ov.id = 'ork-modal-bal';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
     var inp = 'width:78px;background:#111;border:1px solid #444;color:#eee;padding:5px 7px;border-radius:6px;font-size:12px;box-sizing:border-box';
     function linha(rot, dica, campo) {
       return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
@@ -7360,18 +7361,23 @@
   function rodarBalanceador() { balAbrirModal(); }
 
   /* ============================================================
-     GERENTE HARD (construir + recrutar)  — v53
-     Usa os MODELOS DE CONSTRUÇÃO do Gerente de Conta do próprio jogo
-     (aldeia -> modelo -> ordem dos prédios e nível alvo) e manda as
-     construções pelo mesmo pedido do botão "Construir" do Edifício
-     Principal. Sem depender da fila do Gerente: repõe a fila de cada
-     aldeia sozinho, respeitando um máximo de ordens (acima de 2 o jogo
-     cobra custo adicional por ordem).
-     Recrutamento: você define quanto quer de cada tropa por aldeia; ele
-     recruta o que falta (conta o que já existe + o que está na fila) com
-     o recurso disponível, pelo mesmo pedido do botão "Recrutar".
+     GERENTE HARD (construir + recrutar por GRUPO)  — v54
+     Funciona por REGRAS, lidas do próprio jogo:
+       Grupo (manual ou dinâmico) -> modelo de construção do Gerente
+                                  -> modelo de tropas do Gerente
+     Ex.: FARM -> "9444" + "FAAARRMMM";  atk -> "Ofensiva";  def -> "Defensiva".
+     Uma aldeia em mais de um grupo usa a PRIMEIRA regra que bater.
+
+     Construção: segue a ordem do modelo (fila do Gerente), repõe a fila
+     de cada aldeia sozinho até o máximo escolhido (da 3ª ordem em diante
+     o jogo cobra custo adicional), só manda o que dá pra pagar, sobe a
+     fazenda antes quando ela está quase cheia (se o modelo pedir).
+     Tropas: o modelo de tropas é o ALVO por aldeia; recruta o que falta
+     (conta o que existe + o que está na fila), respeitando o buffer
+     (reserva) de recursos e de população do modelo, dividindo o recurso
+     entre as tropas.
      Roda por AJAX de qualquer tela, 1 a 3s aleatórios entre envios,
-     repete no intervalo, uma aba só executa, captcha: espera e continua.
+     uma aba só executa, captcha: espera e continua.
   ============================================================ */
   var GER_CHAVE = 'ork_gerente';
   var GER_TRAVA = 'ork_gerente_trava';
@@ -7380,26 +7386,33 @@
   var GER_TROPAS_FORA = ['militia', 'knight', 'snob'];
 
   function gerLer() {
-    var p = { ativo: false, construir: true, maxFila: 2, recrutar: false, alvos: {}, grupo: '0', intervaloMin: 10,
-      proximoEm: 0, feitos: [], ultimo: null };
+    var p = { ativo: false, regras: [], maxFila: 2, semRegraUsaAldeia: false, intervaloMin: 10, proximoEm: 0, feitos: [], ultimo: null };
     try { var c = JSON.parse(localStorage.getItem(GER_CHAVE) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
+    if (!Array.isArray(p.regras)) { p.regras = []; }
     return p;
   }
   function gerGravar(c) { try { localStorage.setItem(GER_CHAVE, JSON.stringify(c)); } catch (e) {} }
+  function gerChaveCatalogo() { return 'ork_gerente_catalogo_' + ((window.game_data && game_data.world) || ''); }
+  function gerLerCatalogo() { try { return JSON.parse(localStorage.getItem(gerChaveCatalogo()) || 'null'); } catch (e) { return null; } }
+  function gerGravarCatalogo(c) { try { localStorage.setItem(gerChaveCatalogo(), JSON.stringify(c)); } catch (e) {} }
   function gerEsperar(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function gerEntre(a, b) { return Math.floor(a + Math.random() * (b - a + 1)); }
   function gerLog(t) { try { console.log('[OROCHIKING] Gerente: ' + t); } catch (e) {} }
-  function gerStatus(t) { var b = document.getElementById('ork-ger-bolinha'); if (b && t) { b.title = 'Gerente Hard: ' + t + ' — clique pra parar'; } }
+  function gerStatus(t) { var b = document.getElementById('ork-ger-bolinha'); if (b && t) { b.title = 'Gerente Hard (BETA): ' + t + ' — clique pra parar'; } }
+  function gerNum(t) { var n = parseInt(String(t == null ? '' : t).replace(/[^0-9]/g, ''), 10); return isNaN(n) ? 0 : n; }
   function gerNomePredio(id) {
     var n = { main: 'Ed. Principal', barracks: 'Quartel', stable: 'Estábulo', garage: 'Oficina', church: 'Igreja', church_f: 'Primeira igreja',
       watchtower: 'Torre de vigia', snob: 'Academia', smith: 'Ferreiro', place: 'Praça', statue: 'Estátua', market: 'Mercado',
       wood: 'Bosque', stone: 'Poço de argila', iron: 'Mina de ferro', farm: 'Fazenda', storage: 'Armazém', hide: 'Esconderijo', wall: 'Muralha' };
     return n[id] || id;
   }
+  var GER_NOMES_TROPA = { spear: 'lanceiro', sword: 'espadachim', axe: 'bárbaro', archer: 'arqueiro', spy: 'explorador', light: 'CL',
+    marcher: 'arq. a cavalo', heavy: 'CP', ram: 'aríete', catapult: 'catapulta' };
   function gerTropasDoMundo() {
     var u = (window.game_data && game_data.units) ? game_data.units : ['spear', 'sword', 'axe', 'spy', 'light', 'heavy', 'ram', 'catapult'];
     return u.filter(function (x) { return GER_TROPAS_FORA.indexOf(x) === -1; });
   }
+  function gerHtml(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   /* ---------- trava entre abas ---------- */
   function gerPegarTrava() {
@@ -7425,58 +7438,213 @@
   }
   window.addEventListener('pagehide', gerSoltarTrava);
 
-  /* ---------- plano de construção ---------- */
-  // Para cada aldeia com modelo: próximo(s) prédio(s) do modelo, na ordem do
-  // modelo, enquanto houver vaga na fila e recurso. Conta o que já está na fila.
-  async function gerPlanoConstrucao(cfg) {
-    gerStatus('lendo aldeias');
-    var prod = await balDadosProducao(cfg.grupo);
-    gerStatus('lendo modelos do Gerente de Conta');
-    var tpl = await balModelosAM();
-    if (!tpl.map_coord_templates.size) {
-      return { plano: [], aldeias: prod.list_production.length, semModelo: prod.list_production.length, aviso: 'Nenhuma aldeia com modelo de construção no Gerente de Conta (ou Gerente/Premium desativado).' };
+  /* ---------- leitura do jogo: grupos e modelos ---------- */
+  async function gerLerGrupos() {
+    var grupos = [], vistos = {};
+    function add(id, nome, dinamico) {
+      id = String(id); nome = String(nome || '').replace(/^\s*\[|\]\s*$/g, '').trim();
+      if (!nome || vistos[id] || id === '0') { return; }
+      vistos[id] = 1; grupos.push({ id: id, nome: nome, dinamico: !!dinamico });
     }
-    gerStatus('lendo prédios e filas');
-    var ed = await balDadosEdificios(cfg.grupo);
-    var consts = await balConstantesEdificios();
-    var maxFila = Math.max(1, Math.min(5, parseInt(cfg.maxFila, 10) || 2));
-    var plano = [], semModelo = 0, filaCheia = 0, semRecurso = 0, completas = 0;
-    prod.list_production.forEach(function (v) {
-      var nomeT = tpl.map_coord_templates.get(v.coord);
-      var lista = nomeT ? tpl.map_construction_templates.get(nomeT) : null;
-      if (!lista || !lista.length) { semModelo++; return; }
-      var fila = ed.get(v.coord + '_fila') || 0;
-      if (fila >= maxFila) { filaCheia++; return; }
-      var rec = { wood: v.wood, stone: v.stone, iron: v.iron };
-      var nivel = function (b) { return ed.get(v.coord + '_' + b) || 0; };
-      var envios = [];
-      var capFarm = (tpl.map_priortize_farm.get(nomeT) || 99) / 100;
-      var usoFarm = prod.map_farm_usage.get(v.coord) || 0;
-      var faltouRecurso = false;
-      while (fila + envios.length < maxFila) {
-        var prox = null;
-        // fazenda quase cheia: sobe a fazenda antes (igual o Gerente faz)
-        if (usoFarm >= capFarm && nivel('farm') < 30 && consts.get('farm') && !envios.some(function (e) { return e.id === 'farm'; })) {
-          prox = { id: 'farm', alvo: nivel('farm') + 1 };
-        } else {
-          for (var i = 0; i < lista.length; i++) {
-            if (nivel(lista[i].name) < lista[i].level_absolute) { prox = { id: lista[i].name, alvo: nivel(lista[i].name) + 1 }; break; }
-          }
-        }
-        if (!prox) { if (!envios.length) { completas++; } break; }
-        var c = consts.get(prox.id);
-        if (c) {
-          var custo = balCustoNivel(nivel('main') || 1, prox.alvo, c);
-          if (rec.wood < custo[1] || rec.stone < custo[2] || rec.iron < custo[3]) { faltouRecurso = true; break; }
-          rec.wood -= custo[1]; rec.stone -= custo[2]; rec.iron -= custo[3];
-        }
-        envios.push({ id: prox.id, nivel: prox.alvo });
-        ed.set(v.coord + '_' + prox.id, prox.alvo);
-      }
-      if (faltouRecurso && !envios.length) { semRecurso++; }
-      if (envios.length) { plano.push({ vid: v.id, coord: v.coord, modelo: nomeT, envios: envios }); }
+    // 1) menu de grupos do próprio jogo (traz manuais e dinâmicos)
+    try {
+      var r = await fetch(game_data.link_base_pure + 'groups&mode=overview&ajax=load_group_menu', {
+        credentials: 'include', headers: { 'tribalwars-ajax': '1', 'x-requested-with': 'XMLHttpRequest' } });
+      var j = JSON.parse(await r.text());
+      var lista = (j && (j.result || (j.response && j.response.result))) || [];
+      lista.forEach(function (g) {
+        if (!g || g.type === 'separator' || g.group_id == null) { return; }
+        add(g.group_id, g.name, /dynamic/i.test(g.type || ''));
+      });
+    } catch (e) {}
+    // 2) reserva: links de grupo da visão geral
+    if (!grupos.length) {
+      try {
+        var d = await balGetDoc(game_data.link_base_pure + 'overview_villages&mode=prod');
+        d.querySelectorAll('a[href*="group="]').forEach(function (a) {
+          var m = (a.getAttribute('href') || '').match(/[?&]group=(\d+)/);
+          var t = (a.textContent || '').trim();
+          if (m && /^\[.*\]$/.test(t)) { add(m[1], t, false); }
+        });
+      } catch (e) {}
+    }
+    return grupos;
+  }
+  async function gerLerModelosConstrucao() {
+    var lista = [], vistos = {};
+    var d = await balGetDoc(game_data.link_base_pure + 'am_village');
+    var sel = d.querySelector('select[name=template]');
+    if (sel) {
+      Array.prototype.forEach.call(sel.options, function (o) {
+        var id = String(o.value || '').trim(), nome = (o.textContent || '').replace(/[\n\t]/g, '').trim();
+        if (id && /^\d+$/.test(id) && !vistos[id]) { vistos[id] = 1; lista.push({ id: id, nome: nome }); }
+      });
+    }
+    d.querySelectorAll('a[href*="template="]').forEach(function (a) {
+      var m = (a.getAttribute('href') || '').match(/[?&]template=(\d+)/);
+      var nome = (a.textContent || '').trim();
+      if (m && nome && !vistos[m[1]]) { vistos[m[1]] = 1; lista.push({ id: m[1], nome: nome }); }
     });
-    return { plano: plano, aldeias: prod.list_production.length, semModelo: semModelo, filaCheia: filaCheia, semRecurso: semRecurso, completas: completas };
+    return lista;
+  }
+  async function gerFilaModelo(id) {
+    var d = await balGetDoc(game_data.link_base_pure + 'am_village&mode=queue&template=' + id);
+    var fila = [];
+    d.querySelectorAll('.sortable_row').forEach(function (it) {
+      var m = ((it.querySelector('.level_absolute') || {}).textContent || '').match(/\d+/);
+      if (it.getAttribute('data-building')) { fila.push({ name: it.getAttribute('data-building'), level_absolute: m ? parseInt(m[0], 10) : 0 }); }
+    });
+    var cap = 99;
+    var tog = d.querySelector('input[name=farm_upgrade_toggle]');
+    if (tog && tog.checked) { var ps = d.querySelector('select[name=population_upgrades]'); cap = 100 - parseInt(ps ? ps.value : '1', 10); }
+    return { fila: fila, capFarm: cap };
+  }
+  // Tabela "Modelos" da aba Tropas do Gerente: nome, buffer (madeira, argila, ferro, população) e alvo de cada tropa.
+  function gerParseModelosTropas(doc) {
+    var modelos = [];
+    doc.querySelectorAll('table').forEach(function (tab) {
+      var linhas = Array.prototype.slice.call(tab.querySelectorAll('tr'));
+      var cab = null, unidades = [];
+      for (var i = 0; i < linhas.length; i++) {
+        var imgs = linhas[i].querySelectorAll('th img, td img');
+        var us = [];
+        imgs.forEach(function (im) { var m = (im.getAttribute('src') || '').match(/unit_([a-z]+)/); if (m) { us.push(m[1]); } });
+        if (us.length >= 3 && !linhas[i].querySelector('input[type=text], input[type=number]')) { cab = i; unidades = us; break; }
+      }
+      if (cab === null) { return; }
+      for (var k = cab + 1; k < linhas.length; k++) {
+        var tds = Array.prototype.slice.call(linhas[k].children).filter(function (x) { return x.tagName === 'TD'; });
+        if (tds.length < unidades.length + 1) { continue; }
+        if (linhas[k].querySelector('input[type=text], input[type=number]')) { continue; }
+        var cols = tds.slice(tds.length - unidades.length);
+        var resto = tds.slice(0, tds.length - unidades.length);
+        var nome = '', buffer = [0, 0, 0, 0];
+        resto.forEach(function (td) {
+          var t = (td.textContent || '').replace(/\s+/g, ' ').trim();
+          var nums = t.match(/\d[\d.]*/g) || [];
+          if (!nome && /[A-Za-zÀ-ÿ]/.test(t) && nums.length < 3) { nome = t; }
+          else if (nums.length >= 3) { buffer = nums.map(gerNum).concat([0, 0, 0, 0]).slice(0, 4); }
+        });
+        if (!nome) { continue; }
+        var alvo = {};
+        unidades.forEach(function (u, ix) { var n = gerNum(cols[ix].textContent); if (n > 0) { alvo[u] = n; } });
+        modelos.push({ nome: nome, unidades: alvo, buffer: buffer });
+      }
+    });
+    return modelos;
+  }
+  async function gerLerModelosTropas() {
+    var chaveUrl = 'ork_gerente_url_tropas_' + game_data.world;
+    var tentativas = [];
+    try { var salvo = localStorage.getItem(chaveUrl); if (salvo) { tentativas.push(salvo); } } catch (e) {}
+    tentativas.push(game_data.link_base_pure + 'am_troops');
+    // descobre as abas do Gerente pela navegação da própria página
+    try {
+      var d0 = await balGetDoc(game_data.link_base_pure + 'am_village');
+      d0.querySelectorAll('a[href*="screen=am_"]').forEach(function (a) {
+        var h = a.getAttribute('href') || '';
+        if (/screen=am_(village|farm)\b/.test(h) || tentativas.indexOf(h) !== -1) { return; }
+        tentativas.push(h);
+      });
+    } catch (e) {}
+    for (var i = 0; i < tentativas.length && i < 8; i++) {
+      try {
+        var d = await balGetDoc(tentativas[i]);
+        var m = gerParseModelosTropas(d);
+        if (m.length) { try { localStorage.setItem(chaveUrl, tentativas[i]); } catch (e) {} return m; }
+      } catch (e) {}
+      await gerEsperar(gerEntre(250, 500));
+    }
+    return [];
+  }
+  async function gerAtualizarCatalogo() {
+    var cat = { grupos: [], construcao: [], tropas: [], quando: Date.now() };
+    cat.grupos = await gerLerGrupos();
+    await gerEsperar(gerEntre(300, 600));
+    cat.construcao = await gerLerModelosConstrucao();
+    await gerEsperar(gerEntre(300, 600));
+    cat.tropas = await gerLerModelosTropas();
+    gerGravarCatalogo(cat);
+    return cat;
+  }
+
+  /* ---------- plano: quem é de qual regra + o que construir ---------- */
+  async function gerPlano(cfg, catTropas) {
+    var regras = (cfg.regras || []).filter(function (r) { return r.grupo != null && (r.cons || r.trop); });
+    var aldeias = new Map(); // vid -> { v (dados de produção), regra }
+    for (var i = 0; i < regras.length; i++) {
+      gerStatus('lendo grupo ' + (regras[i].grupoNome || regras[i].grupo));
+      var prod = await balDadosProducao(regras[i].grupo);
+      prod.list_production.forEach(function (v) {
+        if (!aldeias.has(v.id)) { aldeias.set(v.id, { v: v, regra: regras[i], usoFarm: prod.map_farm_usage.get(v.coord) || 0 }); }
+      });
+    }
+    if (cfg.semRegraUsaAldeia) {
+      var todas = await balDadosProducao('0');
+      todas.list_production.forEach(function (v) {
+        if (!aldeias.has(v.id)) { aldeias.set(v.id, { v: v, regra: { grupo: '0', grupoNome: 'sem regra', cons: 'aldeia', trop: '' }, usoFarm: todas.map_farm_usage.get(v.coord) || 0 }); }
+      });
+    }
+    var lista = Array.from(aldeias.values());
+    var stats = { aldeias: lista.length, filaCheia: 0, semRecurso: 0, completas: 0, semModelo: 0 };
+    var plano = [];
+    var precisaCons = lista.some(function (a) { return a.regra.cons; });
+    if (precisaCons) {
+      gerStatus('lendo prédios e filas');
+      var ed = await balDadosEdificios('0');
+      var consts = await balConstantesEdificios();
+      var filas = {}; // cache: 'tpl:ID' -> {fila, capFarm}
+      var am = null;
+      var maxFila = Math.max(1, Math.min(5, parseInt(cfg.maxFila, 10) || 2));
+      for (var k = 0; k < lista.length; k++) {
+        var a = lista[k], v = a.v, cons = a.regra.cons;
+        if (!cons) { continue; }
+        var modelo = null, nomeModelo = '';
+        if (cons === 'aldeia') {
+          if (!am) { gerStatus('lendo modelos das aldeias no Gerente'); am = await balModelosAM(); }
+          nomeModelo = am.map_coord_templates.get(v.coord) || '';
+          var fl = nomeModelo ? am.map_construction_templates.get(nomeModelo) : null;
+          if (fl && fl.length) { modelo = { fila: fl, capFarm: am.map_priortize_farm.get(nomeModelo) || 99 }; }
+        } else if (cons.indexOf('tpl:') === 0) {
+          if (!filas[cons]) { gerStatus('lendo modelo ' + (a.regra.consNome || cons)); filas[cons] = await gerFilaModelo(cons.slice(4)); await gerEsperar(gerEntre(250, 500)); }
+          modelo = filas[cons]; nomeModelo = a.regra.consNome || cons;
+        }
+        if (!modelo || !modelo.fila.length) { stats.semModelo++; continue; }
+        var fila = ed.get(v.coord + '_fila') || 0;
+        if (fila >= maxFila) { stats.filaCheia++; continue; }
+        var rec = { wood: v.wood, stone: v.stone, iron: v.iron };
+        var nivel = function (b) { return ed.get(v.coord + '_' + b) || 0; };
+        var envios = [], faltou = false;
+        while (fila + envios.length < maxFila) {
+          var prox = null;
+          if (a.usoFarm >= modelo.capFarm / 100 && nivel('farm') < 30 && consts.get('farm') && !envios.some(function (e) { return e.id === 'farm'; })) {
+            prox = { id: 'farm', alvo: nivel('farm') + 1 };
+          } else {
+            for (var q = 0; q < modelo.fila.length; q++) {
+              if (nivel(modelo.fila[q].name) < modelo.fila[q].level_absolute) { prox = { id: modelo.fila[q].name, alvo: nivel(modelo.fila[q].name) + 1 }; break; }
+            }
+          }
+          if (!prox) { if (!envios.length) { stats.completas++; } break; }
+          var c = consts.get(prox.id);
+          if (c) {
+            var custo = balCustoNivel(nivel('main') || 1, prox.alvo, c);
+            if (rec.wood < custo[1] || rec.stone < custo[2] || rec.iron < custo[3]) { faltou = true; break; }
+            rec.wood -= custo[1]; rec.stone -= custo[2]; rec.iron -= custo[3];
+          }
+          envios.push({ id: prox.id, nivel: prox.alvo });
+          ed.set(v.coord + '_' + prox.id, prox.alvo);
+        }
+        if (faltou && !envios.length) { stats.semRecurso++; }
+        if (envios.length) { plano.push({ vid: v.id, coord: v.coord, regra: a.regra.grupoNome || a.regra.grupo, modelo: nomeModelo, envios: envios }); }
+      }
+    }
+    var recrutar = [];
+    lista.forEach(function (a) {
+      if (!a.regra.trop) { return; }
+      var mt = (catTropas || []).filter(function (t) { return t.nome === a.regra.trop; })[0];
+      if (mt) { recrutar.push({ vid: a.v.id, coord: a.v.coord, modelo: mt }); }
+    });
+    return { plano: plano, recrutar: recrutar, stats: stats };
   }
 
   async function gerPost(url, corpo) {
@@ -7502,8 +7670,7 @@
   }
 
   /* ---------- recrutamento ---------- */
-  function gerNum(t) { var n = parseInt(String(t == null ? '' : t).replace(/[^0-9]/g, ''), 10); return isNaN(n) ? 0 : n; }
-  // Lê a tela de recrutamento: total de cada tropa, quanto dá pra recrutar agora, e o que já está na fila.
+  // Lê a tela de recrutamento: total, máximo agora, custo, fila; e os recursos/população da aldeia.
   function gerLerTreino(doc, unidades) {
     var info = {}, filaOk = true;
     unidades.forEach(function (u) {
@@ -7514,9 +7681,10 @@
       var txt = tr.textContent || '';
       var tot = txt.match(/(\d[\d.]*)\s*\/\s*(\d[\d.]*)/);
       var max = txt.match(/\((\d[\d.]*)\)/);
-      info[u] = { total: tot ? gerNum(tot[2]) : 0, max: max ? gerNum(max[1]) : 0, fila: 0 };
+      function custo(t) { var el = doc.getElementById(u + '_0_cost_' + t); return el ? gerNum(el.textContent) : null; }
+      info[u] = { total: tot ? gerNum(tot[2]) : 0, max: max ? gerNum(max[1]) : 0, fila: 0,
+        custo: { wood: custo('wood'), stone: custo('stone'), iron: custo('iron'), pop: custo('pop') } };
     });
-    // fila de recrutamento (quartel, estábulo, oficina)
     doc.querySelectorAll('[id^="trainqueue"] tr').forEach(function (tr) {
       if (!tr.querySelector('td')) { return; }
       var achou = null;
@@ -7528,34 +7696,55 @@
       });
       var n = (tr.textContent || '').match(/(\d[\d.]*)/);
       if (!achou || !n) {
-        // linha de fila que não consegui identificar: por segurança não recruta nesta aldeia
-        if (tr.querySelector('a[href*="cancel"], .btn-cancel')) { filaOk = false; }
+        if (tr.querySelector('a[href*="cancel"], .btn-cancel')) { filaOk = false; } // fila que não entendi: não arrisca
         return;
       }
       if (info[achou]) { info[achou].fila += gerNum(n[1]); }
     });
-    return { info: info, filaOk: filaOk };
+    function num(id) { var el = doc.getElementById(id); return el ? gerNum(el.textContent) : null; }
+    var recursos = { wood: num('wood'), stone: num('stone'), iron: num('iron'), popAtual: num('pop_current_label'), popMax: num('pop_max_label') };
+    return { info: info, filaOk: filaOk, recursos: recursos };
   }
-  // Divide o recurso entre as tropas sem passar do que dá: soma de (qtd / máximo) <= 1.
-  function gerQuantidades(info, alvos, ordem) {
-    var sobra = 1, pedido = {};
+  // Quanto recrutar de cada tropa: o que falta pro alvo, dividindo o recurso
+  // (menos o buffer do modelo) de forma proporcional entre as tropas.
+  function gerQuantidades(lido, modelo, ordem) {
+    var falta = {};
     ordem.forEach(function (u) {
-      var alvo = parseInt(alvos[u], 10) || 0;
-      var i = info[u];
-      if (!alvo || !i || !i.max || sobra <= 0) { return; }
-      var falta = alvo - i.total - i.fila;
-      if (falta <= 0) { return; }
-      var n = Math.min(falta, Math.floor(i.max * sobra));
-      if (n > 0) { pedido[u] = n; sobra -= n / i.max; }
+      var alvo = modelo.unidades[u] || 0, i = lido.info[u];
+      if (!alvo || !i) { return; }
+      var f = alvo - i.total - i.fila;
+      if (f > 0 && i.max > 0) { falta[u] = f; }
     });
+    var us = Object.keys(falta);
+    if (!us.length) { return {}; }
+    var r = lido.recursos, b = modelo.buffer || [0, 0, 0, 0];
+    var temCusto = us.every(function (u) { var c = lido.info[u].custo; return c.wood != null && c.stone != null && c.iron != null && c.pop != null; });
+    var temRec = r.wood != null && r.stone != null && r.iron != null && r.popAtual != null && r.popMax != null;
+    var pedido = {};
+    if (temCusto && temRec) {
+      var disp = { wood: r.wood - b[0], stone: r.stone - b[1], iron: r.iron - b[2], pop: r.popMax - r.popAtual - b[3] };
+      var tot = { wood: 0, stone: 0, iron: 0, pop: 0 };
+      us.forEach(function (u) { var c = lido.info[u].custo; ['wood', 'stone', 'iron', 'pop'].forEach(function (k) { tot[k] += falta[u] * c[k]; }); });
+      var fator = 1;
+      ['wood', 'stone', 'iron', 'pop'].forEach(function (k) { if (tot[k] > 0) { fator = Math.min(fator, Math.max(0, disp[k]) / tot[k]); } });
+      us.forEach(function (u) { var n = Math.min(lido.info[u].max, Math.floor(falta[u] * fator)); if (n > 0) { pedido[u] = n; } });
+    } else {
+      // sem os custos na página: usa o "(máximo)" do próprio jogo, dividindo igual entre
+      // as tropas (soma de qtd/máximo <= 1 garante que o recurso dá pra todas)
+      us.forEach(function (u) {
+        var n = Math.min(falta[u], Math.floor(lido.info[u].max / us.length));
+        if (n > 0) { pedido[u] = n; }
+      });
+    }
     return pedido;
   }
-  async function gerRecrutarAldeia(vid, alvos, ordem) {
+  async function gerRecrutarAldeia(vid, modelo) {
+    var ordem = gerTropasDoMundo();
     var r = await fetch('/game.php?village=' + vid + '&screen=train', { credentials: 'include' });
     var doc = new DOMParser().parseFromString(await r.text(), 'text/html');
     var lido = gerLerTreino(doc, ordem);
-    if (!lido.filaOk) { return { ok: false, pulou: true, erro: 'não consegui ler a fila de recrutamento desta aldeia — pulei por segurança' }; }
-    var pedido = gerQuantidades(lido.info, alvos, ordem);
+    if (!lido.filaOk) { return { ok: false, erro: 'não consegui ler a fila de recrutamento desta aldeia — pulei por segurança' }; }
+    var pedido = gerQuantidades(lido, modelo, ordem);
     var chaves = Object.keys(pedido);
     if (!chaves.length) { return { ok: true, nada: true }; }
     await gerEsperar(gerEntre(600, 1300));
@@ -7583,47 +7772,41 @@
       return gerLer().ativo;
     }
     try {
-      if (cfg.construir) {
-        var p = await gerPlanoConstrucao(cfg);
-        if (p.aviso) { gerLog(p.aviso); }
-        gerLog(p.plano.length + ' aldeia(s) pra construir (' + p.aldeias + ' lidas; fila cheia: ' + (p.filaCheia || 0) + ', sem recurso: ' + (p.semRecurso || 0) + ', modelo completo: ' + (p.completas || 0) + ', sem modelo: ' + (p.semModelo || 0) + ').');
-        for (var i = 0; i < p.plano.length; i++) {
-          var a = p.plano[i];
-          for (var j = 0; j < a.envios.length; j++) {
-            var chave = 'c' + a.vid + '_' + a.envios[j].id + '_' + a.envios[j].nivel;
-            if (feitos[chave]) { continue; }
-            if (!(await esperarCaptcha())) { gerRodando = false; return; }
-            gerStatus('construindo ' + (i + 1) + '/' + p.plano.length);
-            var r = await gerConstruir(a.vid, a.envios[j].id);
-            marcar(chave);
-            if (r.ok) { res.construidos++; }
-            else { res.falhasC++; gerLog(a.coord + ' — ' + gerNomePredio(a.envios[j].id) + ' ' + a.envios[j].nivel + ': ' + String(r.erro).slice(0, 100)); await gerEsperar(gerEntre(1000, 3000)); break; }
-            await gerEsperar(gerEntre(1000, 3000)); // 1 a 3s, sorteado em ms
-          }
+      var precisaTropas = (cfg.regras || []).some(function (r) { return r.trop; });
+      var catTropas = precisaTropas ? await gerLerModelosTropas() : [];
+      if (precisaTropas && !catTropas.length) { gerLog('não achei os modelos de tropas do Gerente — o recrutamento fica parado neste ciclo.'); }
+      var p = await gerPlano(cfg, catTropas);
+      var st = p.stats;
+      gerLog(st.aldeias + ' aldeia(s) nas regras — construir em ' + p.plano.length + ' (fila cheia: ' + st.filaCheia + ', sem recurso: ' + st.semRecurso +
+        ', modelo completo: ' + st.completas + ', sem modelo: ' + st.semModelo + '); recrutar em até ' + p.recrutar.length + '.');
+      for (var i = 0; i < p.plano.length; i++) {
+        var a = p.plano[i];
+        for (var j = 0; j < a.envios.length; j++) {
+          var chave = 'c' + a.vid + '_' + a.envios[j].id + '_' + a.envios[j].nivel;
+          if (feitos[chave]) { continue; }
+          if (!(await esperarCaptcha())) { gerRodando = false; return; }
+          gerStatus('construindo ' + (i + 1) + '/' + p.plano.length);
+          var r = await gerConstruir(a.vid, a.envios[j].id);
+          marcar(chave);
+          if (r.ok) { res.construidos++; }
+          else { res.falhasC++; gerLog(a.coord + ' — ' + gerNomePredio(a.envios[j].id) + ' ' + a.envios[j].nivel + ': ' + String(r.erro).slice(0, 100)); await gerEsperar(gerEntre(1000, 3000)); break; }
+          await gerEsperar(gerEntre(1000, 3000)); // 1 a 3s, sorteado em ms
         }
       }
-      var ordem = gerTropasDoMundo().filter(function (u) { return (parseInt((cfg.alvos || {})[u], 10) || 0) > 0; });
-      if (cfg.recrutar && ordem.length) {
-        var prod = await balDadosProducao(cfg.grupo);
-        var ald = prod.list_production;
-        gerLog('recrutamento: conferindo ' + ald.length + ' aldeia(s).');
-        for (var k = 0; k < ald.length; k++) {
-          var chaveR = 'r' + ald[k].id;
-          if (feitos[chaveR]) { continue; }
-          if (!(await esperarCaptcha())) { gerRodando = false; return; }
-          gerStatus('recrutamento ' + (k + 1) + '/' + ald.length);
-          var rr = await gerRecrutarAldeia(ald[k].id, cfg.alvos, ordem);
-          marcar(chaveR);
-          if (rr.nada) { await gerEsperar(gerEntre(700, 1600)); continue; }
-          if (rr.ok) {
-            res.recrutadas++;
-            Object.keys(rr.pedido).forEach(function (u) { res.tropas[u] = (res.tropas[u] || 0) + rr.pedido[u]; });
-          } else {
-            res.falhasR++;
-            gerLog(ald[k].coord + ' — recrutamento: ' + String(rr.erro).slice(0, 100));
-          }
-          await gerEsperar(gerEntre(1000, 3000));
-        }
+      for (var k = 0; k < p.recrutar.length; k++) {
+        var al = p.recrutar[k];
+        var chaveR = 'r' + al.vid;
+        if (feitos[chaveR]) { continue; }
+        if (!(await esperarCaptcha())) { gerRodando = false; return; }
+        gerStatus('recrutamento ' + (k + 1) + '/' + p.recrutar.length);
+        var rr = await gerRecrutarAldeia(al.vid, al.modelo);
+        marcar(chaveR);
+        if (rr.nada) { await gerEsperar(gerEntre(700, 1600)); continue; }
+        if (rr.ok) {
+          res.recrutadas++;
+          Object.keys(rr.pedido).forEach(function (u) { res.tropas[u] = (res.tropas[u] || 0) + rr.pedido[u]; });
+        } else { res.falhasR++; gerLog(al.coord + ' — recrutamento: ' + String(rr.erro).slice(0, 100)); }
+        await gerEsperar(gerEntre(1000, 3000));
       }
     } catch (e) {
       console.error('[OROCHIKING] Gerente: erro no ciclo', e);
@@ -7639,7 +7822,7 @@
     c2.ultimo = { quando: Date.now(), construidos: res.construidos, falhasC: res.falhasC, recrutadas: res.recrutadas, falhasR: res.falhasR, tropas: res.tropas };
     gerGravar(c2);
     gerLog('ciclo concluído — ' + res.construidos + ' construção(ões)' + (res.falhasC ? ' (' + res.falhasC + ' recusada(s))' : '') +
-      ', recrutamento em ' + res.recrutadas + ' aldeia(s)' + (Object.keys(res.tropas).length ? ' (' + Object.keys(res.tropas).map(function (u) { return res.tropas[u] + ' ' + u; }).join(', ') + ')' : '') +
+      ', recrutamento em ' + res.recrutadas + ' aldeia(s)' + (Object.keys(res.tropas).length ? ' (' + Object.keys(res.tropas).map(function (u) { return res.tropas[u] + ' ' + (GER_NOMES_TROPA[u] || u); }).join(', ') + ')' : '') +
       '. Próximo às ' + new Date(c2.proximoEm).toLocaleTimeString() + '.');
     gerAgendar();
   }
@@ -7680,7 +7863,7 @@
       'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
       'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
     b.innerHTML = '<span style="font-size:18px">🏗️</span><span id="ork-ger-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">GER</span>';
-    b.addEventListener('click', function () { if (confirm('Parar o Gerente Hard?')) { gerParar('parado pelo usuário'); } });
+    b.addEventListener('click', function () { if (confirm('Parar o Gerente Hard (BETA TEST)?')) { gerParar('parado pelo usuário'); } });
     document.body.appendChild(b);
     if (gerRelogio) { clearInterval(gerRelogio); }
     gerRelogio = setInterval(function () {
@@ -7695,53 +7878,58 @@
   }
 
   /* ---------- modal ---------- */
+  function gerResumoTropas(m) {
+    if (!m) { return ''; }
+    var t = Object.keys(m.unidades).map(function (u) { return m.unidades[u].toLocaleString('pt-BR') + ' ' + (GER_NOMES_TROPA[u] || u); }).join(', ');
+    var b = m.buffer || [0, 0, 0, 0];
+    return t + ((b[0] || b[1] || b[2] || b[3]) ? ' • reserva: ' + b[0] + '/' + b[1] + '/' + b[2] + ' rec., ' + b[3] + ' pop.' : '');
+  }
   function gerAbrirModal() {
     if (document.getElementById('ork-modal-ger')) { return; }
     var c = gerLer();
-    var unidades = gerTropasDoMundo();
+    var cat = gerLerCatalogo() || { grupos: [], construcao: [], tropas: [], quando: 0 };
+    var regras = JSON.parse(JSON.stringify(c.regras || []));
     var ov = document.createElement('div');
     ov.id = 'ork-modal-ger';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
-    var inp = 'background:#111;border:1px solid rgba(255,255,255,.12);color:#ececec;padding:6px 8px;border-radius:6px;font-size:12px;box-sizing:border-box;font-family:inherit';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    var inp = 'background:#111;border:1px solid rgba(255,255,255,.12);color:#ececec;padding:6px 7px;border-radius:6px;font-size:11.5px;box-sizing:border-box;font-family:inherit';
     var card = 'background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:9px 10px;margin-top:8px';
-    var tit = 'font-size:9.5px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:7px';
+    var tit = 'font-size:9.5px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px';
     var lin = 'display:flex;align-items:center;gap:8px;margin-bottom:6px';
     var rot = 'flex:1;font-size:11.5px;color:#ccc;cursor:help';
-    var nomesU = { spear: 'Lanceiro', sword: 'Espadachim', axe: 'Bárbaro', archer: 'Arqueiro', spy: 'Explorador', light: 'Cav. leve',
-      marcher: 'Arq. a cavalo', heavy: 'Cav. pesada', ram: 'Aríete', catapult: 'Catapulta' };
-    var tropasHtml = unidades.map(function (u) {
-      var v = (c.alvos && c.alvos[u] != null) ? c.alvos[u] : 0;
-      return '<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:#aaa">' + (nomesU[u] || u) +
-        '<input class="ork-ger-alvo" data-u="' + u + '" type="number" min="0" step="10" value="' + v + '" style="width:100%;' + inp + '"></label>';
-    }).join('');
     var ult = c.ultimo;
     ov.innerHTML =
-      '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:470px;max-width:calc(100vw - 20px);' +
+      '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:600px;max-width:calc(100vw - 20px);' +
         'max-height:calc(100vh - 30px);overflow:auto;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12)">' +
         '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:9px 12px;display:flex;align-items:center;gap:8px">' +
           '<span style="font-weight:800;font-size:13px;letter-spacing:1.1px">🏗️ GERENTE HARD</span>' +
+          '<span title="Ferramenta em teste: pode apresentar bugs. Use o Simular antes de ativar e avise se algo sair errado." style="font-size:8.5px;background:#141200;color:#FFC400;padding:2px 7px;border-radius:9px;font-weight:800;letter-spacing:.5px;cursor:help">BETA TEST</span>' +
           '<span style="flex:1;text-align:center;font-size:10px;font-weight:700;color:#3d3000">' + (c.ativo ? 'RODANDO' : 'PARADO') + '</span>' +
           '<span id="ork-ger-x" style="cursor:pointer;font-weight:bold;font-size:15px">&times;</span></div>' +
         '<div style="padding:10px 12px">' +
-          '<div style="font-size:11px;color:#9a9a9a">Constrói pelos modelos do seu Gerente de Conta e recruta até o alvo de cada tropa, sozinho, de tempos em tempos. 1 a 3s aleatórios entre cada envio.</div>' +
-          '<div style="' + card + '"><span style="' + tit + '"><input id="ork-ger-cons" type="checkbox"' + (c.construir ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">🏗️ Construir (modelos do Gerente)</span>' +
-            '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Quantas ordens cada aldeia pode ter na fila de construção ao mesmo tempo. Até 2 não tem custo extra; da 3ª em diante o jogo cobra um custo adicional por ordem (aparece no Edifício Principal). Máximo 5.">Máx. ordens na fila por aldeia' + autoInterrogacao() + '</span>' +
-              '<input id="ork-ger-fila" type="number" min="1" max="5" value="' + c.maxFila + '" style="width:62px;' + inp + '"></div>' +
-          '</div>' +
-          '<div style="' + card + '"><span style="' + tit + '"><input id="ork-ger-rec" type="checkbox"' + (c.recrutar ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">⚔️ Recrutar — alvo por aldeia</span>' +
-            '<div style="font-size:10px;color:#777;margin-bottom:6px" data-dica="Quanto você quer de cada tropa em CADA aldeia (conta as que existem + as que estão na fila). Ele recruta só o que falta, com o recurso disponível. 0 = não recruta essa tropa. A ordem de prioridade é a da lista.">Quanto quer de cada tropa em cada aldeia (conta as que já tem + as da fila). 0 = não recruta.' + autoInterrogacao() + '</div>' +
-            '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">' + tropasHtml + '</div>' +
+          '<div style="font-size:10.5px;color:#ffb347;background:rgba(255,179,71,.08);border:1px solid rgba(255,179,71,.25);border-radius:6px;padding:5px 8px;margin-bottom:6px">⚠️ BETA TEST — ferramenta nova, pode apresentar bugs. Use o <b>Simular</b> antes de ativar e acompanhe o Console (F12) nos primeiros ciclos.</div>' +
+          '<div style="font-size:11px;color:#9a9a9a">Cada regra liga um <b style="color:#ddd">grupo</b> do jogo a um <b style="color:#ddd">modelo de construção</b> e a um <b style="color:#ddd">modelo de tropas</b> do seu Gerente de Conta. Ele constrói e recruta sozinho, de tempos em tempos, 1 a 3s entre cada envio.</div>' +
+          '<div style="' + card + '">' +
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="' + tit + ';flex:1">Regras (grupo → construção → tropas)</span>' +
+              '<button type="button" id="ork-ger-ler" style="background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:6px;padding:4px 9px;cursor:pointer;font-weight:700;font-size:10.5px;font-family:inherit">🔄 Ler grupos e modelos do jogo</button></div>' +
+            '<div id="ork-ger-cat" style="font-size:10px;color:#777;margin-bottom:6px"></div>' +
+            '<div style="display:grid;grid-template-columns:1.1fr 1.1fr 1.1fr 24px;gap:5px;font-size:9.5px;color:#777;font-weight:700;text-transform:uppercase;margin-bottom:3px"><span>Grupo</span><span>Modelo de construção</span><span>Modelo de tropas</span><span></span></div>' +
+            '<div id="ork-ger-regras"></div>' +
+            '<button type="button" id="ork-ger-add" style="width:100%;margin-top:4px;background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:6px;padding:6px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">+ adicionar regra</button>' +
+            '<div style="font-size:9.5px;color:#666;margin-top:6px" data-dica="Se uma aldeia está em mais de um grupo (ex: FARM e um grupo dinâmico), vale a regra que estiver mais em cima.">Aldeia em mais de um grupo usa a primeira regra que bater (de cima pra baixo).' + autoInterrogacao() + '</div>' +
           '</div>' +
           '<div style="' + card + '">' +
-            '<div style="' + lin + '"><span style="' + rot + '" data-dica="Número do grupo de aldeias do jogo (o mesmo usado no Coletor Hard). 0 = todas as aldeias.">Grupo de aldeias (0 = todas)' + autoInterrogacao() + '</span>' +
-              '<input id="ork-ger-grupo" type="text" value="' + (c.grupo || '0') + '" style="width:62px;' + inp + '"></div>' +
+            '<div style="' + lin + '"><span style="' + rot + '" data-dica="Quantas ordens cada aldeia pode ter na fila de construção ao mesmo tempo. Até 2 não tem custo extra; da 3ª em diante o jogo cobra um custo adicional por ordem (aparece no Edifício Principal). Máximo 5.">Máx. ordens na fila de construção por aldeia' + autoInterrogacao() + '</span>' +
+              '<input id="ork-ger-fila" type="number" min="1" max="5" value="' + c.maxFila + '" style="width:62px;' + inp + '"></div>' +
+            '<div style="' + lin + '"><input id="ork-ger-semregra" type="checkbox"' + (c.semRegraUsaAldeia ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">' +
+              '<span style="' + rot + '" data-dica="Aldeias que não estão em nenhum grupo das regras: se marcado, constrói nelas usando o modelo que o Gerente de Conta já tem aplicado em cada uma (sem recrutar). Desmarcado: ignora.">Aldeias fora das regras: construir com o modelo que o Gerente já tem nelas' + autoInterrogacao() + '</span></div>' +
             '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Minutos entre um ciclo e o próximo, contados do fim do ciclo (+2 a 4s aleatórios). Com o FREIO: x2, mínimo 10 min.">Repetir a cada (min)' + autoInterrogacao() + '</span>' +
               '<input id="ork-ger-int" type="number" min="1" value="' + c.intervaloMin + '" style="width:62px;' + inp + '"></div>' +
           '</div>' +
           (ult ? '<div style="font-size:10.5px;color:#8a8a8a;margin-top:8px">Último ciclo: ' + new Date(ult.quando).toLocaleTimeString() + ' — ' + ult.construidos + ' construção(ões), recrutamento em ' + ult.recrutadas + ' aldeia(s)' + ((ult.falhasC || ult.falhasR) ? ', ' + ((ult.falhasC || 0) + (ult.falhasR || 0)) + ' recusa(s)' : '') + '</div>' : '') +
           '<div id="ork-ger-prev" style="margin-top:8px"></div>' +
           '<div style="display:flex;gap:6px;margin-top:10px">' +
-            '<button id="ork-ger-sim" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:9px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Simular construção</button>' +
+            '<button id="ork-ger-sim" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:9px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Simular (sem enviar)</button>' +
             (c.ativo ? '<button id="ork-ger-parar" style="flex:1;background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:8px;padding:9px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Parar</button>' : '') +
             '<button id="ork-ger-ok" style="flex:1.2;background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;border:none;border-radius:8px;padding:9px 0;cursor:pointer;font-weight:800;font-size:11px;font-family:inherit">' + (c.ativo ? 'Salvar e rodar agora' : 'Ativar') + '</button>' +
           '</div>' +
@@ -7749,53 +7937,111 @@
       '</div>';
     document.body.appendChild(ov);
     var balao = autoLigarDicas(ov);
+
+    function mostrarCatalogo() {
+      var el = document.getElementById('ork-ger-cat');
+      if (!cat.quando) { el.innerHTML = '<span style="color:#ffb347">Ainda não li os grupos e modelos deste mundo — clique em 🔄.</span>'; return; }
+      el.textContent = 'Lido às ' + new Date(cat.quando).toLocaleTimeString() + ': ' + cat.grupos.length + ' grupo(s), ' + cat.construcao.length +
+        ' modelo(s) de construção, ' + cat.tropas.length + ' modelo(s) de tropas.' + (cat.tropas.length ? '' : ' (Nenhum modelo de tropas encontrado.)');
+    }
+    function opcoes(lista, atual, rotuloAtual) {
+      var achou = lista.some(function (o) { return String(o[0]) === String(atual); });
+      var h = lista.map(function (o) { return '<option value="' + gerHtml(o[0]) + '"' + (String(o[0]) === String(atual) ? ' selected' : '') + '>' + gerHtml(o[1]) + '</option>'; }).join('');
+      if (!achou && atual) { h += '<option value="' + gerHtml(atual) + '" selected>' + gerHtml(rotuloAtual || atual) + ' (salvo)</option>'; }
+      return h;
+    }
+    function desenharRegras() {
+      var box = document.getElementById('ork-ger-regras');
+      var gOps = [['0', 'Todas as aldeias']].concat(cat.grupos.map(function (g) { return [g.id, g.nome + (g.dinamico ? ' (dinâmico)' : '')]; }));
+      var cOps = [['', '— não construir —'], ['aldeia', 'O que a aldeia já tem no Gerente']].concat(cat.construcao.map(function (m) { return ['tpl:' + m.id, m.nome]; }));
+      var tOps = [['', '— não recrutar —']].concat(cat.tropas.map(function (m) { return [m.nome, m.nome]; }));
+      box.innerHTML = regras.map(function (r, i) {
+        var mt = cat.tropas.filter(function (t) { return t.nome === r.trop; })[0];
+        return '<div style="display:grid;grid-template-columns:1.1fr 1.1fr 1.1fr 24px;gap:5px;margin-bottom:5px;align-items:center">' +
+          '<select class="ork-ger-rg" data-i="' + i + '" style="width:100%;' + inp + '">' + opcoes(gOps, r.grupo, r.grupoNome) + '</select>' +
+          '<select class="ork-ger-rc" data-i="' + i + '" style="width:100%;' + inp + '">' + opcoes(cOps, r.cons, r.consNome) + '</select>' +
+          '<select class="ork-ger-rt" data-i="' + i + '" style="width:100%;' + inp + '" title="' + gerHtml(gerResumoTropas(mt)) + '">' + opcoes(tOps, r.trop, r.trop) + '</select>' +
+          '<button type="button" class="ork-ger-rx" data-i="' + i + '" style="height:26px;background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:6px;cursor:pointer;font-weight:800;padding:0">×</button>' +
+          (mt ? '<div style="grid-column:1 / -1;font-size:9.5px;color:#777;margin:-2px 0 2px 2px">Tropas: ' + gerHtml(gerResumoTropas(mt)) + '</div>' : '') +
+        '</div>';
+      }).join('') || '<div style="font-size:11px;color:#777;padding:4px 0">Nenhuma regra ainda. Clique em "+ adicionar regra".</div>';
+      function nomeSel(sel) { return sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent.replace(/ \(salvo\)$/, '') : ''; }
+      box.querySelectorAll('.ork-ger-rg').forEach(function (s) { s.addEventListener('change', function () { var r = regras[+s.getAttribute('data-i')]; r.grupo = s.value; r.grupoNome = nomeSel(s); }); });
+      box.querySelectorAll('.ork-ger-rc').forEach(function (s) { s.addEventListener('change', function () { var r = regras[+s.getAttribute('data-i')]; r.cons = s.value; r.consNome = nomeSel(s); }); });
+      box.querySelectorAll('.ork-ger-rt').forEach(function (s) { s.addEventListener('change', function () { regras[+s.getAttribute('data-i')].trop = s.value; desenharRegras(); }); });
+      box.querySelectorAll('.ork-ger-rx').forEach(function (b) { b.addEventListener('click', function () { regras.splice(+b.getAttribute('data-i'), 1); desenharRegras(); }); });
+    }
+    async function lerDoJogo() {
+      var btn = document.getElementById('ork-ger-ler');
+      btn.disabled = true; btn.textContent = 'Lendo...';
+      try { cat = await gerAtualizarCatalogo(); }
+      catch (e) { document.getElementById('ork-ger-cat').innerHTML = '<span style="color:#ff8080">Erro ao ler: ' + gerHtml(e && e.message) + '</span>'; }
+      btn.disabled = false; btn.textContent = '🔄 Ler grupos e modelos do jogo';
+      mostrarCatalogo(); desenharRegras();
+    }
+    mostrarCatalogo(); desenharRegras();
+    if (!cat.quando) { lerDoJogo(); }
+    document.getElementById('ork-ger-ler').addEventListener('click', lerDoJogo);
+    document.getElementById('ork-ger-add').addEventListener('click', function () {
+      regras.push({ grupo: '0', grupoNome: 'Todas as aldeias', cons: '', consNome: '', trop: '' });
+      desenharRegras();
+    });
     function fechar() { try { balao.remove(); } catch (e) {} ov.remove(); }
     function lerCampos() {
       var n = gerLer();
-      n.construir = document.getElementById('ork-ger-cons').checked;
-      n.recrutar = document.getElementById('ork-ger-rec').checked;
+      n.regras = regras.filter(function (r) { return r.cons || r.trop; });
       n.maxFila = Math.max(1, Math.min(5, parseInt(document.getElementById('ork-ger-fila').value, 10) || 2));
-      n.grupo = String(document.getElementById('ork-ger-grupo').value || '0').trim() || '0';
+      n.semRegraUsaAldeia = document.getElementById('ork-ger-semregra').checked;
       n.intervaloMin = Math.max(1, parseFloat(document.getElementById('ork-ger-int').value) || 10);
-      n.alvos = {};
-      ov.querySelectorAll('.ork-ger-alvo').forEach(function (i) { n.alvos[i.getAttribute('data-u')] = Math.max(0, parseInt(i.value, 10) || 0); });
       return n;
     }
+    function erro(t) { document.getElementById('ork-ger-prev').innerHTML = '<div style="color:#ff8080;font-size:11px">' + t + '</div>'; }
     document.getElementById('ork-ger-x').addEventListener('click', fechar);
     if (document.getElementById('ork-ger-parar')) {
       document.getElementById('ork-ger-parar').addEventListener('click', function () { gerParar('parado pelo usuário'); fechar(); });
     }
     document.getElementById('ork-ger-sim').addEventListener('click', async function () {
+      var n = lerCampos();
+      if (!n.regras.length && !n.semRegraUsaAldeia) { erro('Adicione pelo menos uma regra com modelo de construção ou de tropas.'); return; }
       var box = document.getElementById('ork-ger-prev'), btn = this;
       btn.disabled = true; btn.textContent = 'Lendo...';
       try {
-        var n = lerCampos(); gerGravar(n);
-        var p = await gerPlanoConstrucao(n);
+        gerGravar(n);
+        var tropas = n.regras.some(function (r) { return r.trop; }) ? await gerLerModelosTropas() : [];
+        var p = await gerPlano(n, tropas);
+        var td = 'padding:3px 4px;font-size:11px;';
         var linhas = p.plano.slice(0, 40).map(function (a) {
-          return '<tr style="border-top:1px solid #222"><td style="padding:3px 4px;font-size:11px;color:#ddd">' + a.coord + '</td><td style="padding:3px 4px;font-size:11px;color:#999">' + a.modelo + '</td><td style="padding:3px 4px;font-size:11px;color:#ddd">' +
+          return '<tr style="border-top:1px solid #222"><td style="' + td + 'color:#ddd">' + a.coord + '</td><td style="' + td + 'color:#999">' + gerHtml(a.regra) + ' → ' + gerHtml(a.modelo) + '</td><td style="' + td + 'color:#ddd">' +
             a.envios.map(function (e) { return gerNomePredio(e.id) + ' ' + e.nivel; }).join(', ') + '</td></tr>';
         }).join('');
+        var porModelo = {};
+        p.recrutar.forEach(function (a) { porModelo[a.modelo.nome] = (porModelo[a.modelo.nome] || 0) + 1; });
+        var st = p.stats;
         box.innerHTML = '<div style="background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:8px;font-size:11px">' +
-          (p.aviso ? '<div style="color:#ffb347;margin-bottom:6px">' + p.aviso + '</div>' : '') +
-          '<div style="color:#FFC400;font-weight:800;margin-bottom:4px">' + p.plano.length + ' aldeia(s) vão construir agora</div>' +
-          '<div style="color:#888;margin-bottom:6px">' + p.aldeias + ' lidas • fila cheia: ' + (p.filaCheia || 0) + ' • sem recurso: ' + (p.semRecurso || 0) + ' • modelo completo: ' + (p.completas || 0) + ' • sem modelo: ' + (p.semModelo || 0) + '</div>' +
-          (linhas ? '<div style="max-height:190px;overflow:auto"><table style="width:100%;border-collapse:collapse">' + linhas + '</table></div>' : '') +
-          (p.plano.length > 40 ? '<div style="color:#666;margin-top:4px">(+' + (p.plano.length - 40) + ' aldeias)</div>' : '') + '</div>';
+          '<div style="color:#888;margin-bottom:6px">' + st.aldeias + ' aldeia(s) nas regras • fila cheia: ' + st.filaCheia + ' • sem recurso: ' + st.semRecurso + ' • modelo completo: ' + st.completas + ' • sem modelo: ' + st.semModelo + '</div>' +
+          '<div style="color:#FFC400;font-weight:800;margin-bottom:4px">🏗️ ' + p.plano.length + ' aldeia(s) vão construir agora</div>' +
+          (linhas ? '<div style="max-height:170px;overflow:auto"><table style="width:100%;border-collapse:collapse">' + linhas + '</table></div>' : '') +
+          (p.plano.length > 40 ? '<div style="color:#666;margin-top:4px">(+' + (p.plano.length - 40) + ' aldeias)</div>' : '') +
+          '<div style="color:#FFC400;font-weight:800;margin:8px 0 4px">⚔️ Recrutamento: ' + p.recrutar.length + ' aldeia(s) vão ser conferidas</div>' +
+          (Object.keys(porModelo).map(function (nm) {
+            var m = tropas.filter(function (t) { return t.nome === nm; })[0];
+            return '<div style="color:#ccc">' + gerHtml(nm) + ' — ' + porModelo[nm] + ' aldeia(s) • alvo: ' + gerHtml(gerResumoTropas(m)) + '</div>';
+          }).join('') || '<div style="color:#777">Nenhuma regra com modelo de tropas' + (n.regras.some(function (r) { return r.trop; }) && !tropas.length ? ' (não consegui ler os modelos de tropas do Gerente)' : '') + '.</div>') +
+          '<div style="color:#666;margin-top:4px">O quanto recrutar em cada aldeia é decidido na hora (tropas que já tem + fila + recurso menos a reserva do modelo).</div>' +
+          '</div>';
       } catch (e) {
-        box.innerHTML = '<div style="color:#ff6b6b;font-size:11px">Erro ao ler: ' + (e && e.message) + '</div>';
+        box.innerHTML = '<div style="color:#ff6b6b;font-size:11px">Erro ao ler: ' + gerHtml(e && e.message) + '</div>';
       }
-      btn.disabled = false; btn.textContent = 'Simular construção';
+      btn.disabled = false; btn.textContent = 'Simular (sem enviar)';
     });
     document.getElementById('ork-ger-ok').addEventListener('click', function () {
       var n = lerCampos();
-      if (!n.construir && !(n.recrutar && Object.keys(n.alvos).some(function (u) { return n.alvos[u] > 0; }))) {
-        document.getElementById('ork-ger-prev').innerHTML = '<div style="color:#ff8080;font-size:11px">Ligue "Construir" e/ou "Recrutar" (com pelo menos uma tropa acima de 0).</div>';
-        return;
-      }
+      if (!n.regras.length && !n.semRegraUsaAldeia) { erro('Adicione pelo menos uma regra com modelo de construção ou de tropas.'); return; }
       n.ativo = true; n.proximoEm = 0; n.feitos = [];
       gerGravar(n);
       fechar();
-      gerLog('ativado — ' + (n.construir ? 'construir (fila máx. ' + n.maxFila + ')' : '') + (n.construir && n.recrutar ? ' + ' : '') + (n.recrutar ? 'recrutar' : '') + ', a cada ' + n.intervaloMin + ' min, grupo ' + n.grupo + '.');
+      gerLog('ativado — ' + n.regras.length + ' regra(s): ' + n.regras.map(function (r) { return (r.grupoNome || r.grupo) + ' → ' + (r.consNome || (r.cons ? r.cons : 'sem construção')) + ' / ' + (r.trop || 'sem tropas'); }).join('; ') +
+        '. Fila máx. ' + n.maxFila + ', a cada ' + n.intervaloMin + ' min.');
       gerMostrarBolinha();
       gerRodarCiclo();
     });
@@ -7955,10 +8201,10 @@
     },
     {
       id: 'gerente',
-      nome: 'Gerente Hard',
-      abrev: 'Gerente',
+      nome: 'Gerente Hard (BETA TEST)',
+      abrev: 'Gerente BETA',
       icone: '🏗️',
-      dica: 'Constrói pelos modelos de construção do seu Gerente de Conta (repõe a fila sozinho, sem o limite do Gerente) e recruta até o alvo de cada tropa por aldeia. Roda de qualquer tela, 1 a 3s entre envios, repete no intervalo. Use "Simular construção" pra conferir antes. Bolinha 🏗️ no canto — clique pra parar.',
+      dica: 'Constrói e recruta sozinho por GRUPO: cada regra liga um grupo do jogo (manual ou dinâmico) a um modelo de construção e a um modelo de tropas do seu Gerente de Conta. Repõe a fila sem o limite do Gerente, respeita a reserva do modelo de tropas. Use "Simular" pra conferir antes. Bolinha 🏗️ no canto — clique pra parar.',
       checar: checaGerente,
       rodar: rodarGerente,
       destino: null
@@ -8210,7 +8456,7 @@
     if (document.getElementById('ork-modal-nick')) return;
     var overlay = document.createElement('div');
     overlay.id = 'ork-modal-nick';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;' +
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;' +
       'display:flex;align-items:center;justify-content:center;font-family:Verdana,Arial,sans-serif';
     overlay.innerHTML =
       '<div style="background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));border:1px solid #3a3a3a;' +
