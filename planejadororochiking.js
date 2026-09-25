@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 55;
+  window.__ORK_VERSAO__ = 57;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -222,6 +222,27 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-25-247-seg-coletor',
+      data: '25/09/2026',
+      titulo: '24/7 em segundos + Coletor Hard corrigido',
+      itens: [
+        '24/7: pausa, tempo de farm e intervalo das levas agora podem ser em minutos OU segundos.',
+        '24/7: a velocidade e os grupos que você escolher (na janela do 24/7 ou no próprio Farm Hard) ficam salvos e voltam iguais depois do relogin.',
+        'Coletor Hard: corrigido — algumas aldeias suas não eram lidas como origem (ex: 196 de 337). Agora ele confere com o total e busca todas.',
+        'Coletor Hard: novo "📖 O que cada opção faz" dentro dele, com a configuração recomendada pra explorar bárbaras novas.'
+      ]
+    },
+    {
+      id: '2026-09-25-sem-esperar',
+      data: '25/09/2026',
+      titulo: 'Menos espera pelo "Ativar agora"',
+      itens: [
+        'Cunhar: agora você escolhe o intervalo antes de sair do Assistente; ele vai pra Academia e começa a cunhar sozinho quando a página carregar.',
+        'Ataque, Renomeador, Bárbaras e BB Padrão abrem sozinhos ao chegar na tela, sem precisar clicar em "Ativar agora".',
+        'Cancelar Recrutamento, Coletar Atk/Def e Perfil continuam pedindo o clique (cancelam na hora ou abrem janela nova).'
+      ]
+    },
     {
       id: '2026-09-25-gerente-grupos',
       data: '25/09/2026',
@@ -734,6 +755,10 @@
         font-weight: 800; transition: all .2s ease;
       }
       .btn-flutuante:hover { transform: scale(1.07); box-shadow: 0 12px 30px rgba(0,0,0,.6); }
+      .ajuda { background: rgba(255,196,0,.05); border: 1px solid rgba(255,196,0,.22); border-radius: 10px; padding: 8px 10px; margin: 10px 0 4px; font-size: 11px; color: #cfcfcf; }
+      .ajuda summary { cursor: pointer; color: #ffd84d; font-weight: 800; outline: none; }
+      .ajuda p { margin: 7px 0 0; line-height: 1.45; }
+      .ajuda b { color: #fff; }
       .btn-flutuante svg { width: 26px; height: 26px; }
       .btn-flutuante.on { animation: pulse 1.8s infinite; }
     
@@ -867,6 +892,24 @@
           <label class="chave" style="margin:4px 0 0;"><input type="checkbox" id="ativo"> Ligar o coletor</label>
         </div>
         
+        <details class="ajuda">
+          <summary>📖 O que cada opção faz (clique)</summary>
+          <div>
+            <p><b>Pra que serve:</b> o Coletor procura bárbaras no <b>mapa</b> e manda o primeiro ataque nelas (com o modelo do Assistente). É ele que <b>expande</b> seu farm pra bárbaras novas; depois que uma bárbara tem relatório, o Farm Hard / KeyPress cuidam dela.</p>
+            <p><b>Grupo de origens:</b> número do grupo de aldeias que atacam. 0 = todas.</p>
+            <p><b>Raio de ação:</b> até quantos campos de distância de cada aldeia ele procura. <b>Recomendado 20 a 40.</b> Raio muito grande (ex: 333) baixa o mapa inteiro a cada ciclo — fica lento e pesa pro servidor.</p>
+            <p><b>Máx. comandos/origem:</b> quantos ataques cada aldeia manda por ciclo (as bárbaras mais perto dela primeiro). Ex: 20 a 30 = cada aldeia abre até 20-30 bárbaras novas ao redor.</p>
+            <p><b>Template do assistente:</b> qual modelo (A ou B) do Assistente de Saque vai nos ataques. Aldeia sem tropa pra esse modelo não manda.</p>
+            <p><b>Pontos mín./máx.:</b> só ataca bárbaras nessa faixa de pontos.</p>
+            <p><b>Permite múltiplos ataques no mesmo alvo:</b> desligado = cada bárbara recebe só 1 ataque por ciclo (espalha mais). Ligado = várias aldeias podem mandar na mesma.</p>
+            <p><b>Pular alvos já no assistente:</b> ligado = só ataca bárbaras que <b>ainda não têm relatório</b> (as novas). É o modo "explorar". Desligado = ataca qualquer uma no raio.</p>
+            <p><b>Pular alvos com ataque a caminho:</b> não manda em bárbara que já tem ataque seu indo.</p>
+            <p><b>Pausa entre comandos:</b> tempo entre um envio e outro (ms). 250 = 4 por segundo.</p>
+            <p><b>Repetir ciclos / Intervalo:</b> repete sozinho a cada X minutos (contados do fim do ciclo).</p>
+            <p><b>Pra explorar sempre à frente:</b> Pular alvos já no assistente <b>ligado</b>, Raio 25-40, Máx. comandos/origem 20-30, Intervalo 5-15 min. O log mostra "Aldeias: X" — tem que bater com o total das suas aldeias.</p>
+          </div>
+        </details>
+
         <div class="secao-titulo">⚔️ Configuração de Farm</div>
         <div class="linha"><label>Grupo de origens</label><input type="text" id="grupo" placeholder="0"></div>
         <div class="linha"><label>Raio de ação (campos)</label><input type="number" id="raio" min="5" max="50"></div>
@@ -1051,13 +1094,16 @@
           + '&screen=overview_villages&mode=combined&group=' + encodeURIComponent(grupo);
         const origens = [];
     
+        const vistas = new Set();
         const lerDoc = (doc) => {
-          doc.querySelectorAll('#combined_table tr.row_a, #combined_table tr.row_b').forEach((row) => {
+          // antes só lia linhas "row_a"/"row_b": aldeias com outra classe de linha ficavam de fora
+          doc.querySelectorAll('#combined_table tr').forEach((row) => {
             try {
               const vn = row.querySelector('.quickedit-vn');
               if (!vn) return;
               const id = parseInt(vn.getAttribute('data-id'), 10);
-              if (!Number.isFinite(id)) return;
+              if (!Number.isFinite(id) || vistas.has(id)) return;
+              vistas.add(id);
               const rotulo = (row.querySelector('.quickedit-label') || {}).textContent || '';
               const c = rotulo.match(/(\d{1,3})\|(\d{1,3})/);
               if (!c) return;
@@ -1096,11 +1142,38 @@
           return 1;
         };
     
+        // quantas aldeias o jogo diz que tem no grupo (cabeçalho "Aldeia (337)")
+        const totalEsperado = (doc) => {
+          const th = doc.querySelector('#combined_table th');
+          const m = th && (th.textContent || '').match(/\((\d+)\)/);
+          return m ? parseInt(m[1], 10) : 0;
+        };
         try {
           const r1 = await fetch(base + '&page=-1&', { credentials: 'include' });
           const doc1 = new DOMParser().parseFromString(await r1.text(), 'text/html');
           const total = totalPaginas(doc1);
+          const esperado = totalEsperado(doc1);
           lerDoc(doc1);
+          // "todas" não trouxe tudo? passa página por página e junta (sem repetir aldeia)
+          if (esperado && origens.length < esperado) {
+            let ultima = 0;
+            doc1.querySelectorAll('a[href*="page="]').forEach((a) => {
+              const m = (a.getAttribute('href') || '').match(/[?&]page=(\d+)/);
+              if (m && +m[1] > ultima) ultima = +m[1];
+            });
+            for (let p = 0; p <= Math.max(ultima, total - 1) && p < 100 && !parar && origens.length < esperado; p++) {
+              status('📚 Carregando aldeias - página ' + (p + 1));
+              try {
+                const rp = await fetch(base + '&page=' + p + '&', { credentials: 'include' });
+                lerDoc(new DOMParser().parseFromString(await rp.text(), 'text/html'));
+              } catch (e) { console.warn('[OROCHIKING] página', p, e); }
+              await dorme(80);
+            }
+          }
+          if (esperado) {
+            det('Aldeias lidas no grupo ' + grupo + ': ' + origens.length + ' de ' + esperado);
+            if (origens.length < esperado) console.warn('[OROCHIKING] Coletor: li ' + origens.length + ' de ' + esperado + ' aldeias do grupo ' + grupo + '.');
+          }
     
           if (total > 100) {
             for (let p = 101; p < total && !parar; p++) {
@@ -1530,6 +1603,7 @@
           });
           const aptas = origens.filter((o) => o.cota > 0);
           log('✓ Aldeias: ' + origens.length + ' | Com explorador: ' + comSpy + ' | Aptas: ' + aptas.length + ' | Teto: ' + aptas.reduce((s, o) => s + o.cota, 0) + ' comandos');
+          if (aptas.length < origens.length) log('  (' + (origens.length - aptas.length) + ' aldeia(s) sem tropa suficiente pro Modelo ' + cfg.modelo.toUpperCase() + ')');
     
           if (aptas.length === 0) {
             motivoFim = 'Nenhuma aldeia com tropa para o modelo';
@@ -1784,6 +1858,8 @@
     var querRetomar = null;
     try { querRetomar = localStorage.getItem('ork_retomar_dormindo'); } catch (e) {}
     if (querRetomar !== '1') return;
+    // com o 24/7 rodando nesta aba, quem manda no Farm Hard é o 24/7 (com a velocidade/grupos salvos nele)
+    try { var c247 = JSON.parse(sessionStorage.getItem('ork_auto247') || 'null'); if (c247 && c247.ativo) { localStorage.removeItem('ork_retomar_dormindo'); return; } } catch (e) {}
     if (document.getElementById('fh-fechar')) return; // Farm Hard já está aberto, nada a fazer
     setTimeout(function () {
       try { rodarFarmDormindo(); } catch (e) { console.error('[OROCHIKING] erro ao retomar Farm Dormindo', e); }
@@ -5300,6 +5376,14 @@
       var intervaloMs = Math.max(5000, unidade === 'seg' ? valor * 1000 : valor * 60000);
       gravarConfigCunhar({ ativo: true, intervaloMs: intervaloMs });
       fechar();
+      if (!checaCunhar()) {
+        // Configurado antes de sair: vai pra Academia e a cunhagem começa sozinha
+        // quando a página carregar (sem precisar esperar/clicar em "Ativar agora").
+        try { limparPendente(); } catch (e) {}
+        console.log('[OROCHIKING] Cunhagem configurada — indo para a Academia, começa sozinha ao carregar.');
+        irParaPaginaCunhar(0);
+        return;
+      }
       mostrarStatusCunhar({ intervaloMs: intervaloMs });
       clicarCunhar();
       agendarProximoCicloCunhar(intervaloMs);
@@ -5864,7 +5948,7 @@
   }
   function autoGravarAtk(a) { try { sessionStorage.setItem(AUTO_ATK, JSON.stringify(a)); } catch (e) {} }
   function autoMs(minMin, maxMin) {
-    var a = Math.max(0.05, Number(minMin) || 0), b = Math.max(a, Number(maxMin) || a);
+    var a = Math.max(0, Number(minMin) || 0), b = Math.max(a, Number(maxMin) || a);
     return Math.floor(a * 60000 + Math.random() * ((b - a) * 60000 + 1));
   }
   function autoEntre(minMs, maxMs) { return Math.floor(minMs + Math.random() * (maxMs - minMs + 1)); }
@@ -5945,6 +6029,21 @@
 
   /* ---------- controle do Farm Hard ---------- */
   function autoFarmAberto() { return !!document.getElementById('fh-iniciar'); }
+  // Se você mudar a velocidade ou a rotação no popup do Farm Hard com o 24/7 rodando
+  // nesta aba, isso vira o novo padrão do 24/7 (vale nos próximos ciclos e depois do relogin).
+  (function autoOuvirPresetFarm() {
+    function ativo247() { var c = autoLer(); return c.ativo && c.modo !== 'player' && autoDono; }
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('.fh-vel') : null;
+      if (!b || !ativo247()) { return; }
+      var p = autoLerPreset(); p.fator = b.getAttribute('data-fator') || p.fator; autoGravarPreset(p);
+    }, true);
+    document.addEventListener('change', function (e) {
+      var r = e.target;
+      if (!r || !r.classList || !r.classList.contains('fh-opcao-input') || !r.checked || !ativo247()) { return; }
+      var p = autoLerPreset(); p.rotacao = r.value || p.rotacao; autoGravarPreset(p);
+    }, true);
+  })();
   function autoIniciarFarm() {
     var p = autoLerPreset();
     try { localStorage.removeItem('ork_retomar_dormindo'); } catch (e) {}
@@ -6369,9 +6468,10 @@
       autoIrPara(atk.url); // sempre começa com o Combinado recarregado (estado limpo)
       return;
     }
-    autoLog('iniciada — farm ' + n.farmMin + '-' + n.farmMax + ' min' +
+    function tx(a, b) { return (b < 1 ? Math.round(a * 60) + '-' + Math.round(b * 60) + ' s' : (Math.round(a * 100) / 100) + '-' + (Math.round(b * 100) / 100) + ' min'); }
+    autoLog('iniciada — farm ' + tx(n.farmMin, n.farmMax) +
       (n.cunhar ? ', cunhagem' : '') + (n.balancear ? ', balanceador (mín. ' + n.balCadaMin + ' min)' : '') +
-      ', pausa ' + n.pausaMin + '-' + n.pausaMax + ' min' +
+      ', pausa ' + tx(n.pausaMin, n.pausaMax) +
       (n.relogarCada ? ', relogar a cada ' + n.relogarCada + ' ciclo(s) em ' + n.mundo : '') + '.');
     autoIniciarFarm();
     autoAgendar(autoEntre(4000, 6000));
@@ -6444,10 +6544,14 @@
     function opcoes(lista, atual) {
       return lista.map(function (o) { return '<option value="' + o[0] + '"' + (String(o[0]) === String(atual) ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
     }
-    function faixa(idMin, idMax, vMin, vMax, passo) {
-      return '<input id="' + idMin + '" type="number" min="0.5" step="' + passo + '" value="' + vMin + '" style="width:58px;' + inp + '">' +
+    // faixa de tempo com unidade: valores guardados sempre em MINUTOS; a tela mostra em min ou seg
+    function faixa(idMin, idMax, vMin, vMax, passo, un) {
+      un = un === 'seg' ? 'seg' : 'min';
+      function mostra(v) { return un === 'seg' ? Math.round(v * 60) : Math.round(v * 100) / 100; }
+      return '<input id="' + idMin + '" type="number" min="0" step="any" value="' + mostra(vMin) + '" style="width:54px;' + inp + '">' +
         '<span style="color:#666;font-size:11px">a</span>' +
-        '<input id="' + idMax + '" type="number" min="0.5" step="' + passo + '" value="' + vMax + '" style="width:58px;' + inp + '">';
+        '<input id="' + idMax + '" type="number" min="0" step="any" value="' + mostra(vMax) + '" style="width:54px;' + inp + '">' +
+        '<select id="' + idMin + '-un" style="width:58px;' + inp + '"><option value="min"' + (un === 'min' ? ' selected' : '') + '>min</option><option value="seg"' + (un === 'seg' ? ' selected' : '') + '>seg</option></select>';
     }
     function chave(id, on) {
       return '<input id="' + id + '" type="checkbox"' + (on ? ' checked' : '') + ' style="width:16px;height:16px;margin:0;accent-color:#e8ac0a;cursor:pointer">';
@@ -6471,18 +6575,18 @@
               '<div style="' + lin + '"><span style="' + rot + '" data-dica="Velocidade e rotação que o Farm Hard vai usar dentro do ciclo. Padrão: 1.5x + Normal (1 coluna).">Velocidade / rotação' + autoInterrogacao() + '</span>' +
                 '<select id="ork-auto-fator" style="width:74px;' + inp + '">' + opcoes([['0.5', '0.5x'], ['1', '1x'], ['1.25', '1.25x'], ['1.5', '1.5x'], ['2', '2x'], ['2.5', '2.5x']], p.fator) + '</select>' +
                 '<select id="ork-auto-rot" style="width:112px;' + inp + '">' + opcoes([['1', 'Normal'], ['2', '2 grupos'], ['3', '3 grupos'], ['4', '4 grupos']], p.rotacao) + '</select></div>' +
-              '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Quanto tempo o Farm Hard fica ligado em cada ciclo. O tempo exato é sorteado dentro dessa faixa.">Farm roda por (min)' + autoInterrogacao() + '</span>' +
-                faixa('ork-auto-fmin', 'ork-auto-fmax', c.farmMin, c.farmMax, '0.5') + '</div>' +
+              '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Quanto tempo o Farm Hard fica ligado em cada ciclo, em minutos ou segundos. O tempo exato é sorteado dentro dessa faixa.">Farm roda por' + autoInterrogacao() + '</span>' +
+                faixa('ork-auto-fmin', 'ork-auto-fmax', c.farmMin, c.farmMax, '0.5', c.farmUn) + '</div>' +
             '</div>' +
             '<div style="' + card + '"><span style="' + tit + '">Depois do farm</span>' +
               '<div style="' + lin + '">' + chave('ork-auto-cunhar', c.cunhar) +
-                '<span style="' + rot + '" data-dica="Vai pra Academia e cunha moedas em todas as páginas (1.000 aldeias por página), igual à aba Cunhar.">🪙 Cunhar moedas' + autoInterrogacao() + '</span></div>' +
+                '<span style="' + rot + '" data-dica="Vai pra Academia e cunha moedas em todas as páginas (1.000 aldeias por página), igual à aba Cunhar.">💰 Cunhar moedas' + autoInterrogacao() + '</span></div>' +
               '<div style="' + lin + ';margin-bottom:0">' + chave('ork-auto-bal', c.balancear) +
                 '<span style="' + rot + '" data-dica="Equilibra os recursos entre as aldeias pelo mercado (1 a 3s entre cada envio), usando os ajustes da aba Balancear. Só balanceia se já passou o tempo mínimo desde o último balanceamento — os mercadores precisam voltar pra casa.">⚖️ Balancear recursos, no mín. a cada' + autoInterrogacao() + '</span>' +
                 '<input id="ork-auto-balmin" type="number" min="1" value="' + c.balCadaMin + '" style="width:58px;' + inp + '"><span style="font-size:11px;color:#888">min</span></div>' +
             '</div>' +
-            '<div style="' + card + '"><div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Descanso total (nada rodando) no fim de cada ciclo, antes de começar o farm de novo. Sorteado dentro da faixa.">😴 Pausa no fim do ciclo (min)' + autoInterrogacao() + '</span>' +
-              faixa('ork-auto-pmin', 'ork-auto-pmax', c.pausaMin, c.pausaMax, '0.5') + '</div></div>' +
+            '<div style="' + card + '"><div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Descanso total (nada rodando) no fim de cada ciclo, antes de começar o farm de novo — em minutos ou segundos. Sorteado dentro da faixa. 0 a 0 = sem pausa.">😴 Pausa no fim do ciclo' + autoInterrogacao() + '</span>' +
+              faixa('ork-auto-pmin', 'ork-auto-pmax', c.pausaMin, c.pausaMax, '0.5', c.pausaUn) + '</div></div>' +
           '</div>' +
 
           // ---- modo FARM PLAYER ----
@@ -6492,8 +6596,8 @@
                 (atk ? autoResumoAtk(atk) :
                   'Nenhum ataque salvo ainda.<br><span style="color:#999">Como salvar: aba <b>Ataque</b> → configure tropas, alvos, tipo de comando e marque as aldeias atacantes → clique em <b>"💾 Salvar no 24/7"</b> (caixa ♾️ no Ataque).</span>') +
               '</div></div>' +
-            '<div style="' + card + '"><div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Tempo entre uma leva e a próxima, contado a partir do fim do envio. Sorteado dentro da faixa. Dica: use um tempo em que as tropas já voltaram.">🔁 Nova leva a cada (min)' + autoInterrogacao() + '</span>' +
-              faixa('ork-auto-amin', 'ork-auto-amax', c.atkMin, c.atkMax, '0.5') + '</div></div>' +
+            '<div style="' + card + '"><div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Tempo entre uma leva e a próxima, contado a partir do fim do envio, em minutos ou segundos. Sorteado dentro da faixa. Dica: use um tempo em que as tropas já voltaram.">🔁 Nova leva a cada' + autoInterrogacao() + '</span>' +
+              faixa('ork-auto-amin', 'ork-auto-amax', c.atkMin, c.atkMax, '0.5', c.atkUn) + '</div></div>' +
           '</div>' +
 
           // ---- comum ----
@@ -6539,12 +6643,19 @@
       function num(id, def) { var v = parseFloat(document.getElementById(id).value); return isNaN(v) ? def : v; }
       var n = autoLer();
       n.modo = modo;
-      n.farmMin = Math.max(0.5, num('ork-auto-fmin', 2)); n.farmMax = Math.max(n.farmMin, num('ork-auto-fmax', 3));
-      n.pausaMin = Math.max(0, num('ork-auto-pmin', 3)); n.pausaMax = Math.max(n.pausaMin, num('ork-auto-pmax', 4));
+      function faixaMin(idMin, idMax, defMin, defMax, minimoSeg) {
+        var un = document.getElementById(idMin + '-un').value;
+        var f = un === 'seg' ? 1 / 60 : 1;
+        var a = Math.max(minimoSeg / 60, num(idMin, defMin / f) * f);
+        var b = Math.max(a, num(idMax, defMax / f) * f);
+        return [a, b, un];
+      }
+      var fx = faixaMin('ork-auto-fmin', 'ork-auto-fmax', 2, 3, 10); n.farmMin = fx[0]; n.farmMax = fx[1]; n.farmUn = fx[2];
+      var px = faixaMin('ork-auto-pmin', 'ork-auto-pmax', 3, 4, 0); n.pausaMin = px[0]; n.pausaMax = px[1]; n.pausaUn = px[2];
       n.cunhar = document.getElementById('ork-auto-cunhar').checked;
       n.balancear = document.getElementById('ork-auto-bal').checked;
       n.balCadaMin = Math.max(1, num('ork-auto-balmin', 30));
-      n.atkMin = Math.max(0.5, num('ork-auto-amin', 4)); n.atkMax = Math.max(n.atkMin, num('ork-auto-amax', 6));
+      var ax = faixaMin('ork-auto-amin', 'ork-auto-amax', 4, 6, 10); n.atkMin = ax[0]; n.atkMax = ax[1]; n.atkUn = ax[2];
       n.relogarCada = Math.max(0, Math.floor(num('ork-auto-rel', 0)));
       n.mundo = (document.getElementById('ork-auto-mundo').value || '').toLowerCase().replace(/[^a-z0-9]/g, '') || game_data.world;
       if (modo === 'player' && !autoLerAtk()) {
@@ -8076,9 +8187,10 @@
       nome: 'Ataque Mass',
       abrev: 'Ataque',
       icone: '⚔️',
-      dica: 'Ao clicar, leva para a tela Combinado; ao chegar, clique em "Ativar agora" pra abrir o planejador.',
+      dica: 'Ao clicar, leva para a tela Combinado e o planejador abre sozinho ao chegar.',
       checar: checaAtaque,
       rodar: rodarAtaque,
+      autoAoChegar: true,
       destino: 'ataque'
     },
     {
@@ -8086,9 +8198,10 @@
       nome: 'Renomeador Hard',
       abrev: 'Renomear',
       icone: '✏️',
-      dica: 'Ao clicar, leva para a tela Combinado; ao chegar, clique em "Ativar agora" pra abrir o renomeador.',
+      dica: 'Ao clicar, leva para a tela Combinado e o renomeador abre sozinho ao chegar.',
       checar: checaRename,
       rodar: rodarRename,
+      autoAoChegar: true,
       destino: 'rename'
     },
     {
@@ -8118,9 +8231,10 @@
       abrev: 'Bárbaras',
       icone: '🗺️',
       categoria: 'Coleta',
-      dica: 'Ao clicar, leva para o Mapa; ao chegar, clique em "Ativar agora" pra abrir o coletor de bárbaras.',
+      dica: 'Ao clicar, leva para o Mapa e o coletor de bárbaras abre sozinho ao chegar.',
       checar: checaBarbaras,
       rodar: rodarBarbaras,
+      autoAoChegar: true,
       destino: 'barbaras'
     },
     {
@@ -8151,9 +8265,10 @@
       nome: 'Coletor BB Padrão Farm/Assistente',
       abrev: 'BB Padrão',
       icone: '🧺',
-      dica: 'Ao clicar, leva para o Mapa; ao chegar, clique em "Ativar agora" pra abrir a lista de bárbaros próximos com os ícones de farm.',
+      dica: 'Ao clicar, leva para o Mapa e a lista de bárbaros próximos (com os ícones de farm) abre sozinha ao chegar.',
       checar: checaColetorFarm,
       rodar: rodarColetorFarm,
+      autoAoChegar: true,
       destino: 'barbaras'
     },
     {
@@ -8161,9 +8276,10 @@
       nome: 'Cunhar Moedas',
       abrev: 'Cunhar',
       icone: '🪙',
-      dica: 'Leva pra tela de Cunhagem; ao chegar, clique em "Ativar agora" e escolha o intervalo. Ele cunha sozinho e, se você tiver mais de 1.000 aldeias, passa pelas páginas todas automaticamente — numa aba só. Deixe a aba de Cunhagem aberta.',
+      dica: 'Escolha o intervalo aqui mesmo; ele vai pra Academia e começa a cunhar sozinho quando a página carregar (sem Ativar agora). Com mais de 1.000 aldeias, passa pelas páginas todas numa aba só. Deixe a aba de Cunhagem aberta.',
       checar: checaCunhar,
       rodar: rodarCunhar,
+      configurarAntes: true,
       destino: 'cunhar'
     }
 ,
@@ -8273,11 +8389,18 @@
             return;
           }
         }
+        if (f.autoAoChegar) {
+          // abre sozinha: só monta a janela da ferramenta, não envia nada nem abre popup
+          limparPendente();
+          console.log('[OROCHIKING] ' + f.nome + ' — abrindo sozinho ao chegar na tela.');
+          try { f.rodar(); } catch (err) { console.error('[OROCHIKING]', f.nome, err); mostrarBotaoConfirmar(f); }
+          return;
+        }
         mostrarBotaoConfirmar(f);
       } catch (e) {
         console.error('[OROCHIKING] erro ao preparar', f.nome, e);
       }
-    }, 500);
+    }, 150);
   })();
 
   function acharLinkExibirTodasAldeias() {
@@ -8732,6 +8855,11 @@
   document.getElementById('ork-ativar').addEventListener('click', function () {
     var f = ferramentaSelecionada;
     if (!f) return;
+
+    if (f.configurarAntes) {
+      try { f.rodar(); } catch (err) { console.error('[OROCHIKING]', f.nome, err); }
+      return;
+    }
 
     if (f.buscaPorNick) {
       abrirModalNick(f);
