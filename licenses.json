@@ -33,5 +33,10 @@
     "status": "ativo",
     "expira": "3000-01-01",
     "obs": "Vitalicio"
+  },
+  "condesewerton": {
+    "status": "ativo",
+    "expira": "2026-09-29",
+    "obs": "Teste"
   }
 }
