@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 48;
+  window.__ORK_VERSAO__ = 49;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -6968,7 +6968,10 @@
       try {
         var telaOk = false;
         try { telaOk = f.checar(); } catch (e) {}
-        if (!telaOk) return; // ainda não chegou na tela certa; não faz nada
+        if (!telaOk) { // ainda não chegou na tela certa; não faz nada
+          console.log('[OROCHIKING] ' + f.nome + ' pendente, mas esta tela não é a certa (screen=' + (window.game_data && game_data.screen) + ', mode=' + (window.game_data && game_data.mode) + ').');
+          return;
+        }
 
         if (pend.nick) {
           // acabou de chegar no perfil via busca por nick: clica "exibir todas as aldeias" antes, se existir
@@ -7083,14 +7086,17 @@
     if (document.getElementById('ork-confirmar')) return;
     var caixa = document.createElement('div');
     caixa.id = 'ork-confirmar';
-    caixa.style.cssText = 'position:fixed;bottom:20px;right:20px;background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));' +
-      'border:1px solid #3a3a3a;border-radius:12px;padding:12px 14px;z-index:9999997;width:220px;' +
-      'font-family:Verdana,Arial,sans-serif;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75)';
+    // topo central e acima de tudo: no canto inferior direito ele ficava
+    // atrás do ícone flutuante do Coletor Hard (z-index bem maior)
+    caixa.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);background:linear-gradient(165deg,rgba(26,26,26,.98),rgba(8,8,8,.99));' +
+      'border:1px solid #8a6d00;border-radius:12px;padding:12px 14px;z-index:2147483600;width:250px;' +
+      'font-family:"Segoe UI",Arial,sans-serif;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 3px rgba(232,172,10,.18)';
     caixa.innerHTML =
       '<div style="font-weight:800;color:#ffd84d;margin-bottom:8px;font-size:12.5px">' + f.icone + ' ' + f.nome + ' pronto</div>' +
       '<button id="ork-confirmar-btn" style="width:100%;background:linear-gradient(100deg,#e8ac0a,#ffdc63);' +
         'color:#141200;border:none;border-radius:7px;padding:8px 10px;cursor:pointer;font-weight:800;font-size:12px">Ativar agora</button>';
     document.body.appendChild(caixa);
+    console.log('[OROCHIKING] "Ativar agora" pronto para: ' + f.nome);
     document.getElementById('ork-confirmar-btn').addEventListener('click', function () {
       caixa.remove();
       limparPendente();
