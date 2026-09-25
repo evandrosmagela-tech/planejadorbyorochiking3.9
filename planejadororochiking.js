@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 51;
+  window.__ORK_VERSAO__ = 53;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -222,6 +222,26 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-25-gerente',
+      data: '25/09/2026',
+      titulo: 'Nova ferramenta: Gerente Hard (construir + recrutar)',
+      itens: [
+        'Nova aba Gerente: constrói sozinho pelos modelos de construção do seu Gerente de Conta, repondo a fila de cada aldeia (sem o limite de ordens do Gerente).',
+        'Você escolhe o máximo de ordens na fila por aldeia (padrão 2 — da 3ª em diante o jogo cobra custo adicional).',
+        'Recrutamento: defina quanto quer de cada tropa por aldeia; ele recruta só o que falta, com o recurso que tiver.',
+        'Botão "Simular construção" mostra o que vai ser construído antes de ativar.'
+      ]
+    },
+    {
+      id: '2026-09-25-coletor-1min',
+      data: '25/09/2026',
+      titulo: 'Coletor Hard: ciclos a partir de 1 minuto',
+      itens: [
+        'O "Intervalo entre ciclos" do Coletor Hard agora aceita a partir de 1 minuto (antes travava em 5).',
+        'Cada ciclo ganha de 2 a 4 segundos extras sorteados, pra nunca repetir o mesmo tempo exato.'
+      ]
+    },
     {
       id: '2026-09-25-farm-distancia',
       data: '25/09/2026',
@@ -864,7 +884,7 @@
         <div class="secao-titulo">⏱️ Cronograma</div>
         <div class="linha"><label>Pausa entre comandos (ms)</label><input type="number" id="pausa" min="100" max="5000"></div>
         <label class="chave"><input type="checkbox" id="repetir"> Repetir ciclos automaticamente</label>
-        <div class="linha"><label>Intervalo entre ciclos (min)</label><input type="number" id="intervalo" min="5" max="1440"></div>
+        <div class="linha"><label>Intervalo entre ciclos (min)</label><input type="number" id="intervalo" min="1" max="1440"></div>
         <label class="chave"><input type="checkbox" id="detalhado"> Log detalhado de cada comando</label>
     
         <div class="acoes">
@@ -1014,7 +1034,8 @@
       function agendarAuto() {
         cancelarAuto();
         if (!cfg.ativo || !cfg.repetir) return;
-        const ms = Math.max(1, cfg.intervalo) * 60000;
+        // intervalo configurado (mínimo 1 min) + 2 a 4s sorteados em ms, nunca o mesmo tempo
+        const ms = Math.max(1, cfg.intervalo) * 60000 + 2000 + Math.floor(Math.random() * 2001);
         timerAuto = setTimeout(() => {
           if (cfg.ativo && cfg.repetir && !rodando) executar();
         }, ms);
@@ -6720,10 +6741,10 @@
     }
   }
 
-  async function balDadosProducao() {
+  async function balDadosProducao(grupo) {
     var lista = [], farm = new Map();
     var desktop = game_data.device === 'desktop';
-    await balCarregarTodas(game_data.link_base_pure + 'overview_villages&mode=prod', function (doc) {
+    await balCarregarTodas(game_data.link_base_pure + 'overview_villages&mode=prod' + (grupo != null ? '&group=' + encodeURIComponent(grupo) : ''), function (doc) {
       if (desktop) {
         doc.querySelectorAll('.row_a, .row_b').forEach(function (tr) {
           try {
@@ -6852,10 +6873,10 @@
     } catch (e) { return 0; }
   }
 
-  async function balDadosEdificios() {
+  async function balDadosEdificios(grupo) {
     var mapa = new Map();
     var desktop = game_data.device === 'desktop';
-    await balCarregarTodas(game_data.link_base_pure + 'overview_villages&mode=buildings', function (doc) {
+    await balCarregarTodas(game_data.link_base_pure + 'overview_villages&mode=buildings' + (grupo != null ? '&group=' + encodeURIComponent(grupo) : ''), function (doc) {
       doc.querySelectorAll('.row_a, .row_b').forEach(function (tr) {
         try {
           var coord = (tr.querySelector('.nowrap').textContent || '').match(/[0-9]{3}\|[0-9]{3}/)[0];
@@ -6863,6 +6884,7 @@
           var imgs = filaEl ? Array.prototype.slice.call(filaEl.querySelectorAll(desktop ? '.queue_icon img' : 'img')) : [];
           var ult = imgs.length ? imgs[imgs.length - 1].getAttribute('title') : null;
           mapa.set(coord + '_time_queued', ult ? balTempoTermino(ult.split('-')[1] || '') : 0);
+          mapa.set(coord + '_fila', imgs.length); // quantas ordens já estão na fila de construção
           if (desktop) {
             tr.querySelectorAll('.upgrade_building').forEach(function (b) {
               mapa.set(coord + '_' + b.classList[1].replace('b_', ''), parseInt(b.textContent, 10) || 0);
@@ -7337,6 +7359,451 @@
   function checaBalanceador() { return !!(window.game_data && game_data.village && game_data.village.id); }
   function rodarBalanceador() { balAbrirModal(); }
 
+  /* ============================================================
+     GERENTE HARD (construir + recrutar)  — v53
+     Usa os MODELOS DE CONSTRUÇÃO do Gerente de Conta do próprio jogo
+     (aldeia -> modelo -> ordem dos prédios e nível alvo) e manda as
+     construções pelo mesmo pedido do botão "Construir" do Edifício
+     Principal. Sem depender da fila do Gerente: repõe a fila de cada
+     aldeia sozinho, respeitando um máximo de ordens (acima de 2 o jogo
+     cobra custo adicional por ordem).
+     Recrutamento: você define quanto quer de cada tropa por aldeia; ele
+     recruta o que falta (conta o que já existe + o que está na fila) com
+     o recurso disponível, pelo mesmo pedido do botão "Recrutar".
+     Roda por AJAX de qualquer tela, 1 a 3s aleatórios entre envios,
+     repete no intervalo, uma aba só executa, captcha: espera e continua.
+  ============================================================ */
+  var GER_CHAVE = 'ork_gerente';
+  var GER_TRAVA = 'ork_gerente_trava';
+  var GER_ABA = 'aba' + Math.random().toString(36).slice(2, 10);
+  var gerTimer = null, gerRelogio = null, gerTravaId = null, gerRodando = false;
+  var GER_TROPAS_FORA = ['militia', 'knight', 'snob'];
+
+  function gerLer() {
+    var p = { ativo: false, construir: true, maxFila: 2, recrutar: false, alvos: {}, grupo: '0', intervaloMin: 10,
+      proximoEm: 0, feitos: [], ultimo: null };
+    try { var c = JSON.parse(localStorage.getItem(GER_CHAVE) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
+    return p;
+  }
+  function gerGravar(c) { try { localStorage.setItem(GER_CHAVE, JSON.stringify(c)); } catch (e) {} }
+  function gerEsperar(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function gerEntre(a, b) { return Math.floor(a + Math.random() * (b - a + 1)); }
+  function gerLog(t) { try { console.log('[OROCHIKING] Gerente: ' + t); } catch (e) {} }
+  function gerStatus(t) { var b = document.getElementById('ork-ger-bolinha'); if (b && t) { b.title = 'Gerente Hard: ' + t + ' — clique pra parar'; } }
+  function gerNomePredio(id) {
+    var n = { main: 'Ed. Principal', barracks: 'Quartel', stable: 'Estábulo', garage: 'Oficina', church: 'Igreja', church_f: 'Primeira igreja',
+      watchtower: 'Torre de vigia', snob: 'Academia', smith: 'Ferreiro', place: 'Praça', statue: 'Estátua', market: 'Mercado',
+      wood: 'Bosque', stone: 'Poço de argila', iron: 'Mina de ferro', farm: 'Fazenda', storage: 'Armazém', hide: 'Esconderijo', wall: 'Muralha' };
+    return n[id] || id;
+  }
+  function gerTropasDoMundo() {
+    var u = (window.game_data && game_data.units) ? game_data.units : ['spear', 'sword', 'axe', 'spy', 'light', 'heavy', 'ram', 'catapult'];
+    return u.filter(function (x) { return GER_TROPAS_FORA.indexOf(x) === -1; });
+  }
+
+  /* ---------- trava entre abas ---------- */
+  function gerPegarTrava() {
+    try {
+      var t = JSON.parse(localStorage.getItem(GER_TRAVA) || 'null');
+      if (t && t.aba !== GER_ABA && Date.now() - (t.ts || 0) < 180000) { return false; }
+      localStorage.setItem(GER_TRAVA, JSON.stringify({ aba: GER_ABA, ts: Date.now() }));
+      var conf = JSON.parse(localStorage.getItem(GER_TRAVA) || 'null');
+      if (!conf || conf.aba !== GER_ABA) { return false; }
+      if (!gerTravaId) {
+        gerTravaId = setInterval(function () {
+          try { var a = JSON.parse(localStorage.getItem(GER_TRAVA) || 'null');
+            if (a && a.aba === GER_ABA) { localStorage.setItem(GER_TRAVA, JSON.stringify({ aba: GER_ABA, ts: Date.now() })); } } catch (e) {}
+        }, 5000);
+      }
+      return true;
+    } catch (e) { return true; }
+  }
+  function gerSoltarTrava() {
+    try { if (gerTravaId) { clearInterval(gerTravaId); gerTravaId = null; }
+      var t = JSON.parse(localStorage.getItem(GER_TRAVA) || 'null');
+      if (t && t.aba === GER_ABA) { localStorage.removeItem(GER_TRAVA); } } catch (e) {}
+  }
+  window.addEventListener('pagehide', gerSoltarTrava);
+
+  /* ---------- plano de construção ---------- */
+  // Para cada aldeia com modelo: próximo(s) prédio(s) do modelo, na ordem do
+  // modelo, enquanto houver vaga na fila e recurso. Conta o que já está na fila.
+  async function gerPlanoConstrucao(cfg) {
+    gerStatus('lendo aldeias');
+    var prod = await balDadosProducao(cfg.grupo);
+    gerStatus('lendo modelos do Gerente de Conta');
+    var tpl = await balModelosAM();
+    if (!tpl.map_coord_templates.size) {
+      return { plano: [], aldeias: prod.list_production.length, semModelo: prod.list_production.length, aviso: 'Nenhuma aldeia com modelo de construção no Gerente de Conta (ou Gerente/Premium desativado).' };
+    }
+    gerStatus('lendo prédios e filas');
+    var ed = await balDadosEdificios(cfg.grupo);
+    var consts = await balConstantesEdificios();
+    var maxFila = Math.max(1, Math.min(5, parseInt(cfg.maxFila, 10) || 2));
+    var plano = [], semModelo = 0, filaCheia = 0, semRecurso = 0, completas = 0;
+    prod.list_production.forEach(function (v) {
+      var nomeT = tpl.map_coord_templates.get(v.coord);
+      var lista = nomeT ? tpl.map_construction_templates.get(nomeT) : null;
+      if (!lista || !lista.length) { semModelo++; return; }
+      var fila = ed.get(v.coord + '_fila') || 0;
+      if (fila >= maxFila) { filaCheia++; return; }
+      var rec = { wood: v.wood, stone: v.stone, iron: v.iron };
+      var nivel = function (b) { return ed.get(v.coord + '_' + b) || 0; };
+      var envios = [];
+      var capFarm = (tpl.map_priortize_farm.get(nomeT) || 99) / 100;
+      var usoFarm = prod.map_farm_usage.get(v.coord) || 0;
+      var faltouRecurso = false;
+      while (fila + envios.length < maxFila) {
+        var prox = null;
+        // fazenda quase cheia: sobe a fazenda antes (igual o Gerente faz)
+        if (usoFarm >= capFarm && nivel('farm') < 30 && consts.get('farm') && !envios.some(function (e) { return e.id === 'farm'; })) {
+          prox = { id: 'farm', alvo: nivel('farm') + 1 };
+        } else {
+          for (var i = 0; i < lista.length; i++) {
+            if (nivel(lista[i].name) < lista[i].level_absolute) { prox = { id: lista[i].name, alvo: nivel(lista[i].name) + 1 }; break; }
+          }
+        }
+        if (!prox) { if (!envios.length) { completas++; } break; }
+        var c = consts.get(prox.id);
+        if (c) {
+          var custo = balCustoNivel(nivel('main') || 1, prox.alvo, c);
+          if (rec.wood < custo[1] || rec.stone < custo[2] || rec.iron < custo[3]) { faltouRecurso = true; break; }
+          rec.wood -= custo[1]; rec.stone -= custo[2]; rec.iron -= custo[3];
+        }
+        envios.push({ id: prox.id, nivel: prox.alvo });
+        ed.set(v.coord + '_' + prox.id, prox.alvo);
+      }
+      if (faltouRecurso && !envios.length) { semRecurso++; }
+      if (envios.length) { plano.push({ vid: v.id, coord: v.coord, modelo: nomeT, envios: envios }); }
+    });
+    return { plano: plano, aldeias: prod.list_production.length, semModelo: semModelo, filaCheia: filaCheia, semRecurso: semRecurso, completas: completas };
+  }
+
+  async function gerPost(url, corpo) {
+    try {
+      var r = await fetch(url, {
+        method: 'POST', credentials: 'include',
+        headers: { 'accept': 'application/json, text/javascript, */*; q=0.01', 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'tribalwars-ajax': '1', 'x-requested-with': 'XMLHttpRequest' },
+        body: corpo
+      });
+      var texto = await r.text();
+      var j = null; try { j = JSON.parse(texto); } catch (e) {}
+      if (!j) { return { ok: false, erro: 'resposta não-JSON (HTTP ' + r.status + ')' }; }
+      var erro = j.error || (j.response && j.response.error);
+      if (erro) { return { ok: false, erro: Array.isArray(erro) ? erro.join(' ') : String(erro) }; }
+      return { ok: r.status === 200, erro: r.status === 200 ? '' : 'HTTP ' + r.status };
+    } catch (e) { return { ok: false, erro: 'rede: ' + ((e && e.message) || 'falhou') }; }
+  }
+  function gerConstruir(vid, predio) {
+    var csrf = window.csrf_token || (window.game_data && game_data.csrf) || '';
+    return gerPost('/game.php?village=' + vid + '&screen=main&ajaxaction=upgrade_building&type=main',
+      'id=' + encodeURIComponent(predio) + '&force=1&destroy=0&source=' + vid + '&h=' + encodeURIComponent(csrf));
+  }
+
+  /* ---------- recrutamento ---------- */
+  function gerNum(t) { var n = parseInt(String(t == null ? '' : t).replace(/[^0-9]/g, ''), 10); return isNaN(n) ? 0 : n; }
+  // Lê a tela de recrutamento: total de cada tropa, quanto dá pra recrutar agora, e o que já está na fila.
+  function gerLerTreino(doc, unidades) {
+    var info = {}, filaOk = true;
+    unidades.forEach(function (u) {
+      var inp = doc.querySelector('input[name="' + u + '"]');
+      if (!inp) { return; }
+      var tr = inp.closest('tr');
+      if (!tr) { return; }
+      var txt = tr.textContent || '';
+      var tot = txt.match(/(\d[\d.]*)\s*\/\s*(\d[\d.]*)/);
+      var max = txt.match(/\((\d[\d.]*)\)/);
+      info[u] = { total: tot ? gerNum(tot[2]) : 0, max: max ? gerNum(max[1]) : 0, fila: 0 };
+    });
+    // fila de recrutamento (quartel, estábulo, oficina)
+    doc.querySelectorAll('[id^="trainqueue"] tr').forEach(function (tr) {
+      if (!tr.querySelector('td')) { return; }
+      var achou = null;
+      tr.querySelectorAll('[class], img').forEach(function (el) {
+        if (achou) { return; }
+        var cls = ' ' + (el.getAttribute('class') || '') + ' ';
+        var src = el.getAttribute('src') || '';
+        unidades.forEach(function (u) { if (!achou && (cls.indexOf(' ' + u + ' ') !== -1 || src.indexOf('unit_' + u + '.') !== -1 || src.indexOf('unit_' + u + '_') !== -1)) { achou = u; } });
+      });
+      var n = (tr.textContent || '').match(/(\d[\d.]*)/);
+      if (!achou || !n) {
+        // linha de fila que não consegui identificar: por segurança não recruta nesta aldeia
+        if (tr.querySelector('a[href*="cancel"], .btn-cancel')) { filaOk = false; }
+        return;
+      }
+      if (info[achou]) { info[achou].fila += gerNum(n[1]); }
+    });
+    return { info: info, filaOk: filaOk };
+  }
+  // Divide o recurso entre as tropas sem passar do que dá: soma de (qtd / máximo) <= 1.
+  function gerQuantidades(info, alvos, ordem) {
+    var sobra = 1, pedido = {};
+    ordem.forEach(function (u) {
+      var alvo = parseInt(alvos[u], 10) || 0;
+      var i = info[u];
+      if (!alvo || !i || !i.max || sobra <= 0) { return; }
+      var falta = alvo - i.total - i.fila;
+      if (falta <= 0) { return; }
+      var n = Math.min(falta, Math.floor(i.max * sobra));
+      if (n > 0) { pedido[u] = n; sobra -= n / i.max; }
+    });
+    return pedido;
+  }
+  async function gerRecrutarAldeia(vid, alvos, ordem) {
+    var r = await fetch('/game.php?village=' + vid + '&screen=train', { credentials: 'include' });
+    var doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+    var lido = gerLerTreino(doc, ordem);
+    if (!lido.filaOk) { return { ok: false, pulou: true, erro: 'não consegui ler a fila de recrutamento desta aldeia — pulei por segurança' }; }
+    var pedido = gerQuantidades(lido.info, alvos, ordem);
+    var chaves = Object.keys(pedido);
+    if (!chaves.length) { return { ok: true, nada: true }; }
+    await gerEsperar(gerEntre(600, 1300));
+    var csrf = window.csrf_token || (window.game_data && game_data.csrf) || '';
+    var corpo = chaves.map(function (u) { return encodeURIComponent('units[' + u + ']') + '=' + pedido[u]; }).join('&') + '&h=' + encodeURIComponent(csrf);
+    var res = await gerPost('/game.php?village=' + vid + '&screen=train&ajaxaction=train&mode=train', corpo);
+    res.pedido = pedido;
+    return res;
+  }
+
+  /* ---------- ciclo ---------- */
+  async function gerRodarCiclo() {
+    if (gerRodando) { return; }
+    var cfg = gerLer();
+    if (!cfg.ativo) { return; }
+    if (window.__ORK_CAPTCHA_BLOQUEADO__) { gerStatus('captcha — esperando'); setTimeout(gerRodarCiclo, gerEntre(3000, 5000)); return; }
+    if (!gerPegarTrava()) { gerStatus('rodando em outra aba'); setTimeout(gerRetomar, gerEntre(20000, 30000)); return; }
+    gerRodando = true;
+    gerMostrarBolinha();
+    var feitos = {}; (cfg.feitos || []).forEach(function (k) { feitos[k] = 1; });
+    var res = { construidos: 0, falhasC: 0, recrutadas: 0, falhasR: 0, tropas: {} };
+    function marcar(k) { feitos[k] = 1; var c = gerLer(); c.feitos = Object.keys(feitos); gerGravar(c); }
+    async function esperarCaptcha() {
+      while (window.__ORK_CAPTCHA_BLOQUEADO__) { gerStatus('captcha — esperando'); await gerEsperar(gerEntre(3000, 5000)); if (!gerLer().ativo) { return false; } }
+      return gerLer().ativo;
+    }
+    try {
+      if (cfg.construir) {
+        var p = await gerPlanoConstrucao(cfg);
+        if (p.aviso) { gerLog(p.aviso); }
+        gerLog(p.plano.length + ' aldeia(s) pra construir (' + p.aldeias + ' lidas; fila cheia: ' + (p.filaCheia || 0) + ', sem recurso: ' + (p.semRecurso || 0) + ', modelo completo: ' + (p.completas || 0) + ', sem modelo: ' + (p.semModelo || 0) + ').');
+        for (var i = 0; i < p.plano.length; i++) {
+          var a = p.plano[i];
+          for (var j = 0; j < a.envios.length; j++) {
+            var chave = 'c' + a.vid + '_' + a.envios[j].id + '_' + a.envios[j].nivel;
+            if (feitos[chave]) { continue; }
+            if (!(await esperarCaptcha())) { gerRodando = false; return; }
+            gerStatus('construindo ' + (i + 1) + '/' + p.plano.length);
+            var r = await gerConstruir(a.vid, a.envios[j].id);
+            marcar(chave);
+            if (r.ok) { res.construidos++; }
+            else { res.falhasC++; gerLog(a.coord + ' — ' + gerNomePredio(a.envios[j].id) + ' ' + a.envios[j].nivel + ': ' + String(r.erro).slice(0, 100)); await gerEsperar(gerEntre(1000, 3000)); break; }
+            await gerEsperar(gerEntre(1000, 3000)); // 1 a 3s, sorteado em ms
+          }
+        }
+      }
+      var ordem = gerTropasDoMundo().filter(function (u) { return (parseInt((cfg.alvos || {})[u], 10) || 0) > 0; });
+      if (cfg.recrutar && ordem.length) {
+        var prod = await balDadosProducao(cfg.grupo);
+        var ald = prod.list_production;
+        gerLog('recrutamento: conferindo ' + ald.length + ' aldeia(s).');
+        for (var k = 0; k < ald.length; k++) {
+          var chaveR = 'r' + ald[k].id;
+          if (feitos[chaveR]) { continue; }
+          if (!(await esperarCaptcha())) { gerRodando = false; return; }
+          gerStatus('recrutamento ' + (k + 1) + '/' + ald.length);
+          var rr = await gerRecrutarAldeia(ald[k].id, cfg.alvos, ordem);
+          marcar(chaveR);
+          if (rr.nada) { await gerEsperar(gerEntre(700, 1600)); continue; }
+          if (rr.ok) {
+            res.recrutadas++;
+            Object.keys(rr.pedido).forEach(function (u) { res.tropas[u] = (res.tropas[u] || 0) + rr.pedido[u]; });
+          } else {
+            res.falhasR++;
+            gerLog(ald[k].coord + ' — recrutamento: ' + String(rr.erro).slice(0, 100));
+          }
+          await gerEsperar(gerEntre(1000, 3000));
+        }
+      }
+    } catch (e) {
+      console.error('[OROCHIKING] Gerente: erro no ciclo', e);
+    }
+    gerRodando = false;
+    var c2 = gerLer();
+    if (!c2.ativo) { return; }
+    var espera = Math.max(1, Number(c2.intervaloMin) || 10) * 60000;
+    if (window.__ORK_FREIO__) { espera = Math.max(10 * 60000, espera * 2); }
+    espera += gerEntre(2000, 4000);
+    c2.proximoEm = Date.now() + espera;
+    c2.feitos = [];
+    c2.ultimo = { quando: Date.now(), construidos: res.construidos, falhasC: res.falhasC, recrutadas: res.recrutadas, falhasR: res.falhasR, tropas: res.tropas };
+    gerGravar(c2);
+    gerLog('ciclo concluído — ' + res.construidos + ' construção(ões)' + (res.falhasC ? ' (' + res.falhasC + ' recusada(s))' : '') +
+      ', recrutamento em ' + res.recrutadas + ' aldeia(s)' + (Object.keys(res.tropas).length ? ' (' + Object.keys(res.tropas).map(function (u) { return res.tropas[u] + ' ' + u; }).join(', ') + ')' : '') +
+      '. Próximo às ' + new Date(c2.proximoEm).toLocaleTimeString() + '.');
+    gerAgendar();
+  }
+  function gerAgendar() {
+    var c = gerLer();
+    if (!c.ativo) { return; }
+    if (gerTimer) { clearTimeout(gerTimer); }
+    gerTimer = setTimeout(function () {
+      var n = gerLer();
+      if (!n.ativo) { return; }
+      if (n.proximoEm > Date.now() + 1000) { gerAgendar(); return; }
+      gerRodarCiclo();
+    }, Math.max(0, (c.proximoEm || 0) - Date.now()));
+  }
+  function gerRetomar() {
+    var c = gerLer();
+    if (!c.ativo) { return; }
+    gerMostrarBolinha();
+    if (c.proximoEm && c.proximoEm > Date.now()) { gerAgendar(); return; }
+    gerRodarCiclo();
+  }
+  function gerParar(motivo) {
+    var c = gerLer(); c.ativo = false; c.proximoEm = 0; c.feitos = []; gerGravar(c);
+    if (gerTimer) { clearTimeout(gerTimer); gerTimer = null; }
+    if (gerRelogio) { clearInterval(gerRelogio); gerRelogio = null; }
+    gerSoltarTrava();
+    var b = document.getElementById('ork-ger-bolinha'); if (b) { b.remove(); }
+    if (motivo) { gerLog('parado (' + motivo + ').'); }
+  }
+  window.addEventListener('storage', function (ev) { if (ev.key === GER_CHAVE && !gerLer().ativo) { gerParar(); } });
+
+  function gerMostrarBolinha() {
+    if (document.getElementById('ork-ger-bolinha')) { return; }
+    var b = document.createElement('div');
+    b.id = 'ork-ger-bolinha';
+    b.style.cssText = 'position:fixed;left:276px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+      'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);' +
+      'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
+      'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
+    b.innerHTML = '<span style="font-size:18px">🏗️</span><span id="ork-ger-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">GER</span>';
+    b.addEventListener('click', function () { if (confirm('Parar o Gerente Hard?')) { gerParar('parado pelo usuário'); } });
+    document.body.appendChild(b);
+    if (gerRelogio) { clearInterval(gerRelogio); }
+    gerRelogio = setInterval(function () {
+      var c = gerLer(), el = document.getElementById('ork-ger-tempo');
+      if (!c.ativo || !el) { return; }
+      if (window.__ORK_CAPTCHA_BLOQUEADO__) { el.textContent = 'CAPTCHA'; return; }
+      if (gerRodando || !c.proximoEm) { el.textContent = 'ENV'; return; }
+      var s = Math.max(0, Math.round((c.proximoEm - Date.now()) / 1000));
+      el.textContent = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+      gerStatus('próximo ciclo em ' + el.textContent);
+    }, 1000);
+  }
+
+  /* ---------- modal ---------- */
+  function gerAbrirModal() {
+    if (document.getElementById('ork-modal-ger')) { return; }
+    var c = gerLer();
+    var unidades = gerTropasDoMundo();
+    var ov = document.createElement('div');
+    ov.id = 'ork-modal-ger';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999998;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    var inp = 'background:#111;border:1px solid rgba(255,255,255,.12);color:#ececec;padding:6px 8px;border-radius:6px;font-size:12px;box-sizing:border-box;font-family:inherit';
+    var card = 'background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:9px 10px;margin-top:8px';
+    var tit = 'font-size:9.5px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:7px';
+    var lin = 'display:flex;align-items:center;gap:8px;margin-bottom:6px';
+    var rot = 'flex:1;font-size:11.5px;color:#ccc;cursor:help';
+    var nomesU = { spear: 'Lanceiro', sword: 'Espadachim', axe: 'Bárbaro', archer: 'Arqueiro', spy: 'Explorador', light: 'Cav. leve',
+      marcher: 'Arq. a cavalo', heavy: 'Cav. pesada', ram: 'Aríete', catapult: 'Catapulta' };
+    var tropasHtml = unidades.map(function (u) {
+      var v = (c.alvos && c.alvos[u] != null) ? c.alvos[u] : 0;
+      return '<label style="display:flex;flex-direction:column;gap:3px;font-size:10px;color:#aaa">' + (nomesU[u] || u) +
+        '<input class="ork-ger-alvo" data-u="' + u + '" type="number" min="0" step="10" value="' + v + '" style="width:100%;' + inp + '"></label>';
+    }).join('');
+    var ult = c.ultimo;
+    ov.innerHTML =
+      '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:470px;max-width:calc(100vw - 20px);' +
+        'max-height:calc(100vh - 30px);overflow:auto;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12)">' +
+        '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:9px 12px;display:flex;align-items:center;gap:8px">' +
+          '<span style="font-weight:800;font-size:13px;letter-spacing:1.1px">🏗️ GERENTE HARD</span>' +
+          '<span style="flex:1;text-align:center;font-size:10px;font-weight:700;color:#3d3000">' + (c.ativo ? 'RODANDO' : 'PARADO') + '</span>' +
+          '<span id="ork-ger-x" style="cursor:pointer;font-weight:bold;font-size:15px">&times;</span></div>' +
+        '<div style="padding:10px 12px">' +
+          '<div style="font-size:11px;color:#9a9a9a">Constrói pelos modelos do seu Gerente de Conta e recruta até o alvo de cada tropa, sozinho, de tempos em tempos. 1 a 3s aleatórios entre cada envio.</div>' +
+          '<div style="' + card + '"><span style="' + tit + '"><input id="ork-ger-cons" type="checkbox"' + (c.construir ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">🏗️ Construir (modelos do Gerente)</span>' +
+            '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Quantas ordens cada aldeia pode ter na fila de construção ao mesmo tempo. Até 2 não tem custo extra; da 3ª em diante o jogo cobra um custo adicional por ordem (aparece no Edifício Principal). Máximo 5.">Máx. ordens na fila por aldeia' + autoInterrogacao() + '</span>' +
+              '<input id="ork-ger-fila" type="number" min="1" max="5" value="' + c.maxFila + '" style="width:62px;' + inp + '"></div>' +
+          '</div>' +
+          '<div style="' + card + '"><span style="' + tit + '"><input id="ork-ger-rec" type="checkbox"' + (c.recrutar ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">⚔️ Recrutar — alvo por aldeia</span>' +
+            '<div style="font-size:10px;color:#777;margin-bottom:6px" data-dica="Quanto você quer de cada tropa em CADA aldeia (conta as que existem + as que estão na fila). Ele recruta só o que falta, com o recurso disponível. 0 = não recruta essa tropa. A ordem de prioridade é a da lista.">Quanto quer de cada tropa em cada aldeia (conta as que já tem + as da fila). 0 = não recruta.' + autoInterrogacao() + '</div>' +
+            '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">' + tropasHtml + '</div>' +
+          '</div>' +
+          '<div style="' + card + '">' +
+            '<div style="' + lin + '"><span style="' + rot + '" data-dica="Número do grupo de aldeias do jogo (o mesmo usado no Coletor Hard). 0 = todas as aldeias.">Grupo de aldeias (0 = todas)' + autoInterrogacao() + '</span>' +
+              '<input id="ork-ger-grupo" type="text" value="' + (c.grupo || '0') + '" style="width:62px;' + inp + '"></div>' +
+            '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Minutos entre um ciclo e o próximo, contados do fim do ciclo (+2 a 4s aleatórios). Com o FREIO: x2, mínimo 10 min.">Repetir a cada (min)' + autoInterrogacao() + '</span>' +
+              '<input id="ork-ger-int" type="number" min="1" value="' + c.intervaloMin + '" style="width:62px;' + inp + '"></div>' +
+          '</div>' +
+          (ult ? '<div style="font-size:10.5px;color:#8a8a8a;margin-top:8px">Último ciclo: ' + new Date(ult.quando).toLocaleTimeString() + ' — ' + ult.construidos + ' construção(ões), recrutamento em ' + ult.recrutadas + ' aldeia(s)' + ((ult.falhasC || ult.falhasR) ? ', ' + ((ult.falhasC || 0) + (ult.falhasR || 0)) + ' recusa(s)' : '') + '</div>' : '') +
+          '<div id="ork-ger-prev" style="margin-top:8px"></div>' +
+          '<div style="display:flex;gap:6px;margin-top:10px">' +
+            '<button id="ork-ger-sim" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:9px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Simular construção</button>' +
+            (c.ativo ? '<button id="ork-ger-parar" style="flex:1;background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:8px;padding:9px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Parar</button>' : '') +
+            '<button id="ork-ger-ok" style="flex:1.2;background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;border:none;border-radius:8px;padding:9px 0;cursor:pointer;font-weight:800;font-size:11px;font-family:inherit">' + (c.ativo ? 'Salvar e rodar agora' : 'Ativar') + '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var balao = autoLigarDicas(ov);
+    function fechar() { try { balao.remove(); } catch (e) {} ov.remove(); }
+    function lerCampos() {
+      var n = gerLer();
+      n.construir = document.getElementById('ork-ger-cons').checked;
+      n.recrutar = document.getElementById('ork-ger-rec').checked;
+      n.maxFila = Math.max(1, Math.min(5, parseInt(document.getElementById('ork-ger-fila').value, 10) || 2));
+      n.grupo = String(document.getElementById('ork-ger-grupo').value || '0').trim() || '0';
+      n.intervaloMin = Math.max(1, parseFloat(document.getElementById('ork-ger-int').value) || 10);
+      n.alvos = {};
+      ov.querySelectorAll('.ork-ger-alvo').forEach(function (i) { n.alvos[i.getAttribute('data-u')] = Math.max(0, parseInt(i.value, 10) || 0); });
+      return n;
+    }
+    document.getElementById('ork-ger-x').addEventListener('click', fechar);
+    if (document.getElementById('ork-ger-parar')) {
+      document.getElementById('ork-ger-parar').addEventListener('click', function () { gerParar('parado pelo usuário'); fechar(); });
+    }
+    document.getElementById('ork-ger-sim').addEventListener('click', async function () {
+      var box = document.getElementById('ork-ger-prev'), btn = this;
+      btn.disabled = true; btn.textContent = 'Lendo...';
+      try {
+        var n = lerCampos(); gerGravar(n);
+        var p = await gerPlanoConstrucao(n);
+        var linhas = p.plano.slice(0, 40).map(function (a) {
+          return '<tr style="border-top:1px solid #222"><td style="padding:3px 4px;font-size:11px;color:#ddd">' + a.coord + '</td><td style="padding:3px 4px;font-size:11px;color:#999">' + a.modelo + '</td><td style="padding:3px 4px;font-size:11px;color:#ddd">' +
+            a.envios.map(function (e) { return gerNomePredio(e.id) + ' ' + e.nivel; }).join(', ') + '</td></tr>';
+        }).join('');
+        box.innerHTML = '<div style="background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:8px;font-size:11px">' +
+          (p.aviso ? '<div style="color:#ffb347;margin-bottom:6px">' + p.aviso + '</div>' : '') +
+          '<div style="color:#FFC400;font-weight:800;margin-bottom:4px">' + p.plano.length + ' aldeia(s) vão construir agora</div>' +
+          '<div style="color:#888;margin-bottom:6px">' + p.aldeias + ' lidas • fila cheia: ' + (p.filaCheia || 0) + ' • sem recurso: ' + (p.semRecurso || 0) + ' • modelo completo: ' + (p.completas || 0) + ' • sem modelo: ' + (p.semModelo || 0) + '</div>' +
+          (linhas ? '<div style="max-height:190px;overflow:auto"><table style="width:100%;border-collapse:collapse">' + linhas + '</table></div>' : '') +
+          (p.plano.length > 40 ? '<div style="color:#666;margin-top:4px">(+' + (p.plano.length - 40) + ' aldeias)</div>' : '') + '</div>';
+      } catch (e) {
+        box.innerHTML = '<div style="color:#ff6b6b;font-size:11px">Erro ao ler: ' + (e && e.message) + '</div>';
+      }
+      btn.disabled = false; btn.textContent = 'Simular construção';
+    });
+    document.getElementById('ork-ger-ok').addEventListener('click', function () {
+      var n = lerCampos();
+      if (!n.construir && !(n.recrutar && Object.keys(n.alvos).some(function (u) { return n.alvos[u] > 0; }))) {
+        document.getElementById('ork-ger-prev').innerHTML = '<div style="color:#ff8080;font-size:11px">Ligue "Construir" e/ou "Recrutar" (com pelo menos uma tropa acima de 0).</div>';
+        return;
+      }
+      n.ativo = true; n.proximoEm = 0; n.feitos = [];
+      gerGravar(n);
+      fechar();
+      gerLog('ativado — ' + (n.construir ? 'construir (fila máx. ' + n.maxFila + ')' : '') + (n.construir && n.recrutar ? ' + ' : '') + (n.recrutar ? 'recrutar' : '') + ', a cada ' + n.intervaloMin + ' min, grupo ' + n.grupo + '.');
+      gerMostrarBolinha();
+      gerRodarCiclo();
+    });
+  }
+
+  function checaGerente() { return !!(window.game_data && game_data.village && game_data.village.id); }
+  function rodarGerente() { gerAbrirModal(); }
+
   var FERRAMENTAS = [
     {
       id: 'farmar',
@@ -7485,6 +7952,16 @@
       checar: checaBalanceador,
       rodar: rodarBalanceador,
       destino: null
+    },
+    {
+      id: 'gerente',
+      nome: 'Gerente Hard',
+      abrev: 'Gerente',
+      icone: '🏗️',
+      dica: 'Constrói pelos modelos de construção do seu Gerente de Conta (repõe a fila sozinho, sem o limite do Gerente) e recruta até o alvo de cada tropa por aldeia. Roda de qualquer tela, 1 a 3s entre envios, repete no intervalo. Use "Simular construção" pra conferir antes. Bolinha 🏗️ no canto — clique pra parar.',
+      checar: checaGerente,
+      rodar: rodarGerente,
+      destino: null
     }
   ];
 
@@ -7632,6 +8109,12 @@
   /* ============================================================
      RETOMAR O BALANCEADOR HARD (qualquer tela do jogo)
   ============================================================ */
+  (function retomarGerente() {
+    if (!(window.game_data && game_data.village)) return;
+    if (!gerLer().ativo) return;
+    setTimeout(gerRetomar, gerEntre(2500, 4000));
+  })();
+
   (function retomarBalanceador() {
     if (!(window.game_data && game_data.village)) return;
     if (!balLer().ativo) return;
