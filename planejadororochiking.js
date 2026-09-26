@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 63;
+  window.__ORK_VERSAO__ = 64;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -222,6 +222,19 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-26-nobre-bb-2',
+      data: '26/09/2026',
+      titulo: 'Nobre Bárbaras: escolta livre, ciclo em segundos e pós-conquista',
+      itens: [
+        'Escolta de cada nobre: escolha qualquer tropa e a quantidade (pode somar mais de um tipo, ou nenhuma).',
+        'Ciclo em segundos ou minutos.',
+        'Espaçamento agora conta como no mapa: N campos na horizontal ou na vertical (antes a diagonal deixava ficar mais perto).',
+        'Corrigido: a pesquisa do explorador na aldeia nova não saía. Agora pesquisa, recruta os exploradores e é a PRÓPRIA aldeia nova que explora as bárbaras mais perto quando eles ficam prontos.',
+        'Novo campo "Vizinhas após (min)": quanto tempo esperar os exploradores da aldeia nova antes das suas aldeias vizinhas explorarem no lugar dela (0 = na hora).',
+        'Este aviso de atualização agora aparece em qualquer tela do jogo e só some quando você clicar em "Entendi, fechar".'
+      ]
+    },
     {
       id: '2026-09-26-nobre-bb',
       data: '26/09/2026',
@@ -430,15 +443,22 @@
     if (!ORK_NOVIDADES.length) { return null; }
     var maisRecente = ORK_NOVIDADES[0];
     var vista = false;
-    try { vista = localStorage.getItem('ork_novidade_vista_' + maisRecente.id) === '1'; } catch (e) {}
+    try { vista = localStorage.getItem(orkChaveNovidade(maisRecente)) === '1'; } catch (e) {}
     return vista ? null : maisRecente;
+  }
+  // A chave inclui uma "impressão digital" do texto: se a novidade for editada
+  // (item novo na mesma entrada), ela volta a aparecer — mesmo que o id seja o mesmo.
+  function orkChaveNovidade(n) {
+    var t = (n.titulo || '') + '|' + (n.itens || []).join('|'), h = 0;
+    for (var i = 0; i < t.length; i++) { h = ((h << 5) - h + t.charCodeAt(i)) | 0; }
+    return 'ork_novidade_vista_' + n.id + '_' + (h >>> 0).toString(36);
   }
 
   // Ao fechar, marca a atual E todas as anteriores como vistas, pra elas nunca
   // aparecerem depois (a pessoa já está vendo a versão mais nova).
   function orkMarcarTodasVistas() {
     for (var i = 0; i < ORK_NOVIDADES.length; i++) {
-      try { localStorage.setItem('ork_novidade_vista_' + ORK_NOVIDADES[i].id, '1'); } catch (e) {}
+      try { localStorage.setItem(orkChaveNovidade(ORK_NOVIDADES[i]), '1'); } catch (e) {}
     }
   }
 
@@ -484,8 +504,7 @@
     overlay.id = 'ork-novidade-overlay';
     overlay.innerHTML =
       '<div id="ork-novidade-card">' +
-        '<div id="ork-novidade-head"><span class="ork-nv-tag">✨ Nova atualização</span>' +
-        '<span id="ork-novidade-x">&times;</span></div>' +
+        '<div id="ork-novidade-head"><span class="ork-nv-tag">✨ Nova atualização</span></div>' +
         '<div id="ork-novidade-body">' +
           '<div id="ork-novidade-data">OROCHIKING • ' + n.data + '</div>' +
           '<div id="ork-novidade-titulo"></div>' +
@@ -501,10 +520,9 @@
       orkMarcarTodasVistas();
       try { overlay.remove(); estilo.remove(); } catch (e) {}
     }
-    overlay.querySelector('#ork-novidade-x').addEventListener('click', fechar);
+    // Só o botão "Entendi, fechar" fecha e marca como vista. Clicar fora não fecha
+    // (antes um clique sem querer sumia com o aviso pra sempre).
     overlay.querySelector('#ork-novidade-btn').addEventListener('click', fechar);
-    // clicar fora do card também fecha (conta como visto)
-    overlay.addEventListener('click', function (e) { if (e.target === overlay) { fechar(); } });
   }
 
   console.log('%c[OROCHIKING] Painel v' + (window.__ORK_VERSAO__ || '?') + ' carregado', 'background:#e8ac0a;color:#1a1400;font-weight:bold;padding:2px 6px;border-radius:3px');
@@ -8323,15 +8341,38 @@
   ];
   function nobChave() { return 'ork_nobre_' + ((window.game_data && game_data.world) || ''); }
   function nobLer() {
-    var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 3, escolta: 'light', nobres: 4, reforco: 2, raio: 40,
+    var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 3, escolta: 'light', escoltas: null, nobres: 4, intervaloUni: 'min', reforco: 2, raio: 40,
       maxSimult: 0, intervaloMin: 30, pontosMin: 0, pontosMax: 13000, priorizarBonus: true, soBonus: false,
-      bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10,
+      bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10, vizinhasMin: 60,
       alvos: [], explorados: [], proximoEm: 0, ultimo: null };
     try { var c = JSON.parse(localStorage.getItem(nobChave()) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     if (!Array.isArray(p.alvos)) { p.alvos = []; }
     if (!Array.isArray(p.explorados)) { p.explorados = []; }
     if (!Array.isArray(p.bonusTipos)) { p.bonusTipos = []; }
+    if (!Array.isArray(p.escoltas)) { p.escoltas = [{ u: p.escolta === 'heavy' ? 'heavy' : 'light', n: 25 }]; }
+    p.escoltas = p.escoltas.filter(function (e) { return e && e.u && e.u !== 'snob' && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
     return p;
+  }
+  function nobIntervaloMs(c) {
+    var v = Math.max(0, Number(c.intervaloMin) || 30);
+    return c.intervaloUni === 'seg' ? Math.max(10, v) * 1000 : Math.max(1, v) * 60000;
+  }
+  // espaçamento contado como no mapa: N campos na horizontal OU na vertical (a diagonal não "encurta")
+  function nobEspaco(a, b) { return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)); }
+  var NOB_NOME_UN = { spear: 'Lanceiro', sword: 'Espadachim', axe: 'Bárbaro', archer: 'Arqueiro', spy: 'Explorador', light: 'Cavalaria leve',
+    marcher: 'Arqueiro a cavalo', heavy: 'Cavalaria pesada', ram: 'Aríete', catapult: 'Catapulta', knight: 'Paladino' };
+  function nobUnidadesEscolta() {
+    var u = (window.game_data && game_data.units) ? game_data.units : ['spear', 'sword', 'axe', 'spy', 'light', 'heavy', 'ram', 'catapult'];
+    return u.filter(function (x) { return x !== 'snob' && x !== 'militia'; });
+  }
+  function nobTextoEscolta(esc) {
+    return esc.length ? esc.map(function (e) { return e.n + ' ' + (GER_NOMES_TROPA[e.u] || NOB_NOME_UN[e.u] || e.u); }).join(' + ') : 'sem escolta';
+  }
+  // quantos nobres (cada um com a escolta completa) dá pra mandar com essas tropas
+  function nobQuantosCabem(tropas, esc, max) {
+    var n = Math.min(max, tropas.snob || 0);
+    esc.forEach(function (e) { n = Math.min(n, Math.floor((tropas[e.u] || 0) / e.n)); });
+    return Math.max(0, n);
   }
   function nobGravar(c) { try { localStorage.setItem(nobChave(), JSON.stringify(c)); } catch (e) {} }
   function nobSalvarEstado(cfg) { var c = nobLer(); c.alvos = cfg.alvos; c.explorados = cfg.explorados; nobGravar(c); }
@@ -8586,25 +8627,15 @@
     return { ok: true, durMs: dur, plano: plano };
   }
   // trem de nobres: cada nobre com 25 de escolta (CL ou CP; se faltar uma, completa com a outra)
-  function nobMontarTrem(qtd, preferida) {
+  function nobMontarTrem(qtd, esc) {
     return function (cont) {
-      var n = Math.min(qtd, cont.snob || 0);
+      var n = nobQuantosCabem(cont, esc, qtd);
       if (n < 1) { return null; }
-      var outra = preferida === 'light' ? 'heavy' : 'light';
-      var tem = {}; tem[preferida] = cont[preferida] || 0; tem[outra] = cont[outra] || 0;
-      var levas = [];
-      for (var i = 0; i < n; i++) {
-        var u = tem[preferida] >= 25 ? preferida : (tem[outra] >= 25 ? outra : null);
-        if (!u) { break; }
-        tem[u] -= 25;
-        levas.push(u);
-      }
-      if (!levas.length) { return null; }
-      var zero = {};
-      Object.keys(cont).forEach(function (k) { zero[k] = 0; });
-      var principal = {}; principal[levas[0]] = 25; principal.snob = 1;
-      var trens = levas.slice(1).map(function (u) { var t = JSON.parse(JSON.stringify(zero)); t[u] = 25; t.snob = 1; return t; });
-      return { unidades: principal, trens: trens, nobres: levas.length, escolta: levas };
+      var leva = {}; esc.forEach(function (e) { leva[e.u] = (leva[e.u] || 0) + e.n; }); leva.snob = 1;
+      var zero = {}; Object.keys(cont).forEach(function (k) { zero[k] = 0; });
+      var trens = [];
+      for (var i = 1; i < n; i++) { var t = JSON.parse(JSON.stringify(zero)); Object.keys(leva).forEach(function (u) { t[u] = leva[u]; }); trens.push(t); }
+      return { unidades: JSON.parse(JSON.stringify(leva)), trens: trens, nobres: n };
     };
   }
 
@@ -8612,35 +8643,33 @@
   async function nobPesquisarExplorador(vid) {
     var r = await fetch('/game.php?village=' + vid + '&screen=smith', { credentials: 'include' });
     var html = await r.text();
-    var doc = new DOMParser().parseFromString(html, 'text/html');
+    if (!/BuildingSmith/.test(html)) { return { ok: false, erro: 'a aldeia não tem ferreiro' }; }
     var nivel = html.match(/["']spy["']\s*:\s*\{[^{}]*?["']level["']\s*:\s*["']?(\d+)/);
     if (nivel && +nivel[1] >= 1) { return { ok: true, jaTem: true }; }
-    var btn = doc.querySelector('a[onclick*="research(\'spy\')"], a[onclick*=\'research("spy")\']');
-    if (!btn) { return { ok: false, erro: nivel ? 'pesquisa do explorador ainda indisponível (falta recurso ou prédio)' : 'sem ferreiro/estábulo pra pesquisar explorador' }; }
-    if (/disabled/.test(btn.className || '')) { return { ok: false, erro: 'sem recurso pra pesquisar explorador agora' }; }
     var link = html.match(/link_research["']?\s*[:=]\s*["']([^"']+)["']/);
-    var url = link ? link[1].replace(/\\\//g, '/').replace(/&amp;/g, '&') : ('/game.php?village=' + vid + '&screen=smith&ajaxaction=research');
+    var url = link ? link[1].replace(/\\\//g, '/').replace(/\\u0026/g, '&').replace(/&amp;/g, '&') : ('/game.php?village=' + vid + '&screen=smith&ajaxaction=research');
     if (!/[?&]h=/.test(url)) { url += (url.indexOf('?') === -1 ? '?' : '&') + 'h=' + encodeURIComponent(nobCsrf()); }
     await gerEsperar(gerEntre(600, 1300));
     var res = await gerPost(url, 'tech_id=spy&source=' + vid + '&h=' + encodeURIComponent(nobCsrf()));
-    return res.ok ? { ok: true, pesquisou: true } : { ok: false, erro: res.erro };
+    return res.ok ? { ok: true, pesquisou: true } : { ok: false, erro: 'o jogo recusou a pesquisa: ' + res.erro };
   }
   async function nobTemExploradorLiberado(vid) {
     var r = await fetch('/game.php?village=' + vid + '&screen=train', { credentials: 'include' });
     var doc = new DOMParser().parseFromString(await r.text(), 'text/html');
     return !!doc.querySelector('input[name="spy"]');
   }
-  async function nobExplorarAoRedor(nova, cfg, aldeias, parar) {
+  async function nobExplorarAoRedor(nova, cfg, aldeias, parar, qtd) {
     var ja = {}; cfg.explorados.forEach(function (id) { ja[id] = 1; });
     var busca = await nobBuscarBarbaras([{ x: nova.x, y: nova.y, r: 12 }], parar);
     var alvos = busca.lista.filter(function (b) { return !ja[b.id]; })
-      .sort(function (a, b) { return nobDist(a, nova) - nobDist(b, nova); }).slice(0, Math.max(0, cfg.explorarQtd || 0));
+      .sort(function (a, b) { return nobDist(a, nova) - nobDist(b, nova); }).slice(0, Math.max(0, qtd == null ? (cfg.explorarQtd || 0) : qtd));
     var enviados = 0, falhas = 0;
+    nobExplorarAoRedor.semAlvos = !alvos.length;
     for (var i = 0; i < alvos.length; i++) {
       if (parar && parar()) { break; }
       var b = alvos[i];
       var fontes = aldeias.filter(function (a) { return (a.tropas.spy || 0) >= 1; }).sort(function (p, q) { return nobDist(p, b) - nobDist(q, b); });
-      if (!fontes.length) { nobLog('sem exploradores em casa em nenhuma aldeia pra explorar ao redor de ' + nova.coord + '.'); break; }
+      if (!fontes.length) { break; }
       while (window.__ORK_CAPTCHA_BLOQUEADO__) { await gerEsperar(gerEntre(3000, 5000)); if (parar && parar()) { return enviados; } }
       nobStatus('explorando ' + (i + 1) + '/' + alvos.length);
       var f = fontes[0];
@@ -8662,9 +8691,11 @@
     var raio = Math.max(1, Number(cfg.raio) || 40);
     if (distMax > 0) { raio = Math.min(raio, distMax); }
     var esp = Math.max(1, Number(cfg.espacamento) || 1);
+    var esc = cfg.escoltas || [];
     var tipos = {}; (cfg.bonusTipos || []).forEach(function (t) { tipos[t] = 1; });
-    var origens = aldeias.filter(function (a) { return (a.tropas.snob || 0) >= 1 && ((a.tropas.light || 0) + (a.tropas.heavy || 0)) >= 25; })
-      .map(function (a) { return { id: a.id, x: a.x, y: a.y, coord: a.coord, snob: a.tropas.snob || 0, light: a.tropas.light || 0, heavy: a.tropas.heavy || 0 }; });
+    var origens = aldeias.filter(function (a) { return nobQuantosCabem(a.tropas, esc, 1) >= 1; })
+      .map(function (a) { return { id: a.id, x: a.x, y: a.y, coord: a.coord, tropas: JSON.parse(JSON.stringify(a.tropas)) }; });
+    function gastar(o, n) { o.tropas.snob -= n; esc.forEach(function (e) { o.tropas[e.u] -= e.n * n; }); }
     // pontos que os alvos novos precisam respeitar (espaçamento): suas aldeias + alvos em andamento
     var fixos = aldeias.map(function (a) { return { x: a.x, y: a.y }; }).concat(cfg.alvos.filter(function (a) { return a.status === 'caminho' || a.status === 'reenviar'; }));
     var cand = barbs.filter(function (b) {
@@ -8686,25 +8717,23 @@
     var reenviar = cfg.alvos.filter(function (a) { return a.status === 'reenviar'; });
     reenviar.forEach(function (a) {
       var qtd = Math.max(1, cfg.reforco || 1);
-      var o = origens.filter(function (o) { return o.snob >= 1 && nobDist(o, a) <= raio && (o.light + o.heavy) >= 25; }).sort(function (p, q) { return nobDist(p, a) - nobDist(q, a); })[0];
+      var o = origens.filter(function (o) { return nobQuantosCabem(o.tropas, esc, 1) >= 1 && nobDist(o, a) <= raio; }).sort(function (p, q) { return nobDist(p, a) - nobDist(q, a); })[0];
       if (!o) { return; }
-      var n = Math.min(qtd, o.snob, Math.floor((o.light + o.heavy) / 25));
-      o.snob -= n; var u = cfg.escolta === 'heavy' ? 'heavy' : 'light';
-      for (var i = 0; i < n; i++) { if (o[u] >= 25) { o[u] -= 25; } else { o[u === 'light' ? 'heavy' : 'light'] -= 25; } }
+      var n = nobQuantosCabem(o.tropas, esc, qtd);
+      gastar(o, n);
       plano.push({ alvo: { id: a.id, x: a.x, y: a.y, pontos: a.pontos, bonus: a.bonus }, origem: o, nobres: n, dist: nobDist(o, a), reforco: true });
     });
     var precisaCap = Math.max(1, cfg.nobres || 1), capNovos = 0;
-    origens.forEach(function (o) { capNovos += Math.floor(Math.min(o.snob, Math.floor((o.light + o.heavy) / 25)) / precisaCap); });
+    origens.forEach(function (o) { capNovos += Math.floor(nobQuantosCabem(o.tropas, esc, 100000) / precisaCap); });
     capNovos = Math.min(capNovos, vagas);
     for (var i = 0; i < cand.length && plano.filter(function (p) { return !p.reforco; }).length < vagas; i++) {
       var b = cand[i];
-      if (fixos.some(function (f) { return nobDist(f, b) < esp; }) || plano.some(function (p) { return nobDist(p.alvo, b) < esp; })) { motivos.espaco++; continue; }
+      if (fixos.some(function (f) { return nobEspaco(f, b) < esp; }) || plano.some(function (p) { return nobEspaco(p.alvo, b) < esp; })) { motivos.espaco++; continue; }
       var precisa = Math.max(1, cfg.nobres || 1);
-      var o = origens.filter(function (o) { return o.snob >= precisa && (o.light + o.heavy) >= 25 * precisa && nobDist(o, b) <= raio; })
+      var o = origens.filter(function (o) { return nobQuantosCabem(o.tropas, esc, precisa) >= precisa && nobDist(o, b) <= raio; })
         .sort(function (p, q) { return nobDist(p, b) - nobDist(q, b); })[0];
       if (!o) { motivos.semOrigem++; continue; }
-      o.snob -= precisa; var u = cfg.escolta === 'heavy' ? 'heavy' : 'light';
-      for (var k = 0; k < precisa; k++) { if (o[u] >= 25) { o[u] -= 25; } else { o[u === 'light' ? 'heavy' : 'light'] -= 25; } }
+      gastar(o, precisa);
       plano.push({ alvo: b, origem: o, nobres: precisa, dist: nobDist(o, b) });
     }
     var novos = plano.filter(function (x) { return !x.reforco; }).length;
@@ -8754,28 +8783,42 @@
         for (var q = 0; q < novas.length && !parar(); q++) {
           var nv = novas[q], vila = minhas[nv.id] || { id: nv.id, x: nv.x, y: nv.y, coord: nv.x + '|' + nv.y, tropas: {} };
           while (window.__ORK_CAPTCHA_BLOQUEADO__) { await gerEsperar(gerEntre(3000, 5000)); }
-          nv.pos = nv.pos || { ciclos: 0 };
-          nv.pos.ciclos++;
-          if (cfg.explorarQtd > 0 && !nv.pos.explorou) {
-            var nEx = await nobExplorarAoRedor(vila, cfg, todas, parar);
-            res.explorados += nEx; nv.pos.explorou = true; nobSalvarEstado(cfg);
-            nobLog(vila.coord + ': ' + nEx + ' bárbara(s) ao redor exploradas.');
+          nv.pos = nv.pos || { ciclos: 0, expl: 0 };
+          nv.pos.ciclos++; nv.pos.expl = nv.pos.expl || 0;
+          var desde = Date.now() - (nv.quando || Date.now());
+          // a) explorador liberado? se não, pesquisa no Ferreiro da aldeia nova
+          var liberado = (cfg.recrutarEsp > 0 || cfg.explorarQtd > 0) ? await nobTemExploradorLiberado(nv.id) : false;
+          if (!liberado && cfg.pesquisar && !nv.pos.pesquisou) {
+            var rp = await nobPesquisarExplorador(nv.id);
+            if (rp.ok) { nv.pos.pesquisou = true; if (rp.pesquisou) { res.pesquisas++; nobLog(vila.coord + ': 🔬 pesquisa do explorador iniciada.'); } }
+            else { nobLog(vila.coord + ': pesquisa do explorador — ' + String(rp.erro).slice(0, 120) + ' (tento de novo no próximo ciclo).'); }
+            nobSalvarEstado(cfg);
           }
-          if (cfg.recrutarEsp > 0 && !nv.pos.recrutou) {
-            var liberado = await nobTemExploradorLiberado(nv.id);
-            if (!liberado && cfg.pesquisar && !nv.pos.pesquisou) {
-              var rp = await nobPesquisarExplorador(nv.id);
-              if (rp.ok) { nv.pos.pesquisou = true; nobSalvarEstado(cfg); if (rp.pesquisou) { res.pesquisas++; nobLog(vila.coord + ': pesquisa do explorador iniciada.'); } }
-              else { nobLog(vila.coord + ': ' + rp.erro + ' (tento de novo no próximo ciclo).'); }
-            } else if (liberado) {
-              var rr = await gerRecrutarAldeia(nv.id, { unidades: { spy: cfg.recrutarEsp }, buffer: [0, 0, 0, 0] });
-              if (rr.ok && !rr.nada) { res.recrutou++; nobLog(vila.coord + ': recrutando ' + (rr.pedido.spy || 0) + ' explorador(es).'); }
-              if (rr.ok) { nv.pos.recrutou = true; nobSalvarEstado(cfg); } else { nobLog(vila.coord + ': recrutamento — ' + String(rr.erro).slice(0, 100)); }
+          // b) recruta os exploradores na aldeia nova
+          if (liberado && cfg.recrutarEsp > 0 && !nv.pos.recrutou) {
+            var rr = await gerRecrutarAldeia(nv.id, { unidades: { spy: cfg.recrutarEsp }, buffer: [0, 0, 0, 0] });
+            if (rr.ok && !rr.nada) { res.recrutou++; nobLog(vila.coord + ': recrutando ' + (rr.pedido.spy || 0) + ' explorador(es).'); }
+            if (rr.ok) { nv.pos.recrutou = true; } else { nobLog(vila.coord + ': recrutamento — ' + String(rr.erro).slice(0, 100) + ' (tento de novo).'); }
+            nobSalvarEstado(cfg);
+          }
+          // c) explora as bárbaras mais perto COM os exploradores da própria aldeia nova (assim que ficarem prontos).
+          //    Se depois de 1h ainda não tiver explorador nela, usa exploradores das suas aldeias mais perto.
+          var falta = Math.max(0, (cfg.explorarQtd || 0) - nv.pos.expl);
+          if (falta > 0) {
+            var espViz = isNaN(parseFloat(cfg.vizinhasMin)) ? 60 : Math.max(0, parseFloat(cfg.vizinhasMin));
+            var fontes = ((vila.tropas.spy || 0) >= 1) ? [vila] : (desde >= espViz * 60000 ? todas.filter(function (a) { return a.id !== nv.id; }) : []);
+            if (fontes.length) {
+              var nEx = await nobExplorarAoRedor(vila, cfg, fontes, parar, falta);
+              nv.pos.expl += nEx; res.explorados += nEx;
+              if (nobExplorarAoRedor.semAlvos) { nv.pos.expl = cfg.explorarQtd; nobLog(vila.coord + ': não há mais bárbaras sem explorar perto dela.'); }
+              if (nEx) { nobLog(vila.coord + ': 🔭 ' + nEx + ' bárbara(s) ao redor exploradas' + (fontes[0] === vila ? ' com os exploradores dela' : ' com exploradores de aldeias vizinhas') + '.'); }
+              nobSalvarEstado(cfg);
             }
           }
-          if ((nv.pos.recrutou || !cfg.recrutarEsp) && (nv.pos.explorou || !cfg.explorarQtd)) { nv.status = 'pronta'; }
-          else if (nv.pos.ciclos >= 12) { nv.status = 'pronta'; nobLog(vila.coord + ': desisti de recrutar exploradores depois de 12 ciclos (sem estábulo/ferreiro?).'); }
-          var c4 = nobLer(); c4.alvos = cfg.alvos; c4.explorados = cfg.explorados; nobGravar(c4);
+          var recOk = nv.pos.recrutou || !cfg.recrutarEsp, expOk = nv.pos.expl >= (cfg.explorarQtd || 0);
+          if (recOk && expOk) { nv.status = 'pronta'; nobLog(vila.coord + ': pós-conquista concluído.'); }
+          else if (desde > 6 * 3600000) { nv.status = 'pronta'; nobLog(vila.coord + ': desisti do pós-conquista depois de 6h (sem ferreiro/estábulo ou sem recurso?).'); }
+          nobSalvarEstado(cfg);
           await gerEsperar(gerEntre(1500, 3000));
         }
       }
@@ -8797,7 +8840,7 @@
           var it = p.plano[i];
           while (window.__ORK_CAPTCHA_BLOQUEADO__) { nobStatus('captcha — esperando'); await gerEsperar(gerEntre(3000, 5000)); if (parar()) { break; } }
           nobStatus('enviando nobre ' + (i + 1) + '/' + p.plano.length);
-          var r = await nobEnviarComando(it.origem.id, it.alvo, nobMontarTrem(it.nobres, cfg.escolta === 'heavy' ? 'heavy' : 'light'));
+          var r = await nobEnviarComando(it.origem.id, it.alvo, nobMontarTrem(it.nobres, cfg.escoltas || []));
           var existente = cfg.alvos.filter(function (a) { return a.id === it.alvo.id; })[0];
           if (r.ok) {
             res.enviados++; res.nobres += r.plano.nobres;
@@ -8826,7 +8869,7 @@
     var c2 = nobLer();
     c2.alvos = cfg.alvos; c2.explorados = cfg.explorados;
     if (!c2.ativo) { nobGravar(c2); return retorno; }
-    var espera = Math.max(1, Number(c2.intervaloMin) || 30) * 60000;
+    var espera = nobIntervaloMs(c2);
     if (window.__ORK_FREIO__) { espera = Math.max(10 * 60000, espera * 2); }
     espera += gerEntre(2000, 4000);
     c2.proximoEm = Date.now() + espera;
@@ -8921,7 +8964,7 @@
         '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:7px 10px;display:flex;align-items:center;gap:7px">' +
           '<span style="font-weight:800;font-size:12px;letter-spacing:1px">👑 NOBRE BÁRBARAS</span>' +
           '<span style="font-size:8px;background:#141200;color:#FFC400;padding:2px 6px;border-radius:9px;font-weight:800" data-dica="Ferramenta nova: manda NOBRES de verdade. Use o Simular antes de ativar e acompanhe o Console (F12) nos primeiros ciclos.">BETA</span>' +
-          '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="A cada ciclo: lê suas aldeias → busca bárbaras no mapa, de perto pra longe (bônus primeiro) → manda os nobres (cada um com 25 de escolta) da aldeia mais perto que tem nobre → quando conquista, pesquisa/recruta exploradores e explora as bárbaras ao redor pra entrarem no Farm.">?</span>' +
+          '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="A cada ciclo: lê suas aldeias → busca bárbaras no mapa, de perto pra longe (bônus primeiro) → manda os nobres (cada um com a escolta escolhida) da aldeia mais perto que tem nobre → quando conquista, pesquisa o explorador, recruta e a própria aldeia nova explora as bárbaras ao redor pra entrarem no Farm.">?</span>' +
           '<span style="flex:1;text-align:right;font-size:9.5px;font-weight:800;color:#3d3000">' + (c.ativo ? '● RODANDO' : 'PARADO') + '</span>' +
           '<span id="ork-nob-x" style="cursor:pointer;font-weight:bold;font-size:15px;margin-left:4px">&times;</span></div>' +
         '<div style="padding:6px 9px 9px">' +
@@ -8929,7 +8972,7 @@
             '<div style="display:flex;gap:4px;margin-bottom:4px"><select id="ork-nob-grupo" data-dica="Só as aldeias deste grupo mandam nobres. Todas as suas aldeias contam pro espaçamento e pra saber se a conquista caiu." style="flex:1;' + inp + ';padding:4px 6px"></select>' +
               '<button type="button" id="ork-nob-lergr" title="Ler os grupos do jogo" style="background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:6px;padding:0 8px;cursor:pointer;font-weight:700;font-size:10.5px;font-family:inherit">🔄</button></div>' +
             '<div style="' + grade + '">' +
-              num('ork-nob-esp', c.espacamento, 'Distância mínima (em campos) entre cada bárbara escolhida e: suas aldeias e as outras bárbaras que já estão recebendo nobre. 1 = pode pegar coladas; quanto maior, mais espalhadas.', 'Espaçamento', 1, null) +
+              num('ork-nob-esp', c.espacamento, 'Quantos campos no mínimo entre cada bárbara escolhida e: suas aldeias e as outras bárbaras que já estão recebendo nobre. Conta como no mapa: precisa estar a pelo menos N campos na horizontal OU na vertical (a diagonal não encurta). 1 = pode pegar coladas.', 'Espaçamento', 1, null) +
               num('ork-nob-raio', c.raio, 'Distância máxima entre a aldeia que manda o nobre e a bárbara. Ele lê o mapa de perto pra longe e para quando já achou bárbaras pra todos os nobres — então um número grande não deixa mais lento. Se o mundo tiver limite de distância do nobre menor, vale o do mundo.', 'Dist. máxima', 1, null) +
               num('ork-nob-pmin', c.pontosMin, 'Pontuação mínima da bárbara. Bárbara muito pequena rende pouco.', 'Pontos mín.', 0, null) +
               num('ork-nob-pmax', c.pontosMax, 'Pontuação máxima da bárbara. Muito grande pode ter muralha/tropa.', 'Pontos máx.', 0, null) +
@@ -8944,20 +8987,25 @@
           '</div>' +
           '<div style="' + sec + '"><div style="' + stit + '">👑 Nobres</div>' +
             '<div style="' + grade + '">' +
-              num('ork-nob-qtd', c.nobres, 'Quantos nobres vão pra cada bárbara — todos saem da MESMA aldeia, no mesmo trem (cada um com 25 de escolta). 1 = cada nobre pega uma bárbara diferente (se não cair, o reforço completa). Bárbara costuma ter lealdade 100 e cada nobre tira 20 a 35.', 'Por bárbara', 1, null) +
+              num('ork-nob-qtd', c.nobres, 'Quantos nobres vão pra cada bárbara — todos saem da MESMA aldeia, no mesmo trem (cada um com a escolta escolhida abaixo). 1 = cada nobre pega uma bárbara diferente (se não cair, o reforço completa). Bárbara costuma ter lealdade 100 e cada nobre tira 20 a 35.', 'Por bárbara', 1, null) +
               num('ork-nob-ref', c.reforco, 'Se a bárbara não cair (lealdade não zerou), no próximo ciclo manda mais esta quantidade de nobres nela antes de escolher alvos novos. Desiste depois de 4 tentativas.', 'Reforço', 1, null) +
               num('ork-nob-max', c.maxSimult, '0 = sem limite: usa TODOS os nobres que estiverem em casa de uma vez (ex.: 50 nobres e 1 por bárbara = 50 bárbaras no mesmo ciclo). Outro número = máximo de bárbaras recebendo nobre ao mesmo tempo.', 'Máx. juntas (0=∞)', 0, null) +
-              num('ork-nob-int', c.intervaloMin, 'De quanto em quanto tempo o script roda de novo, em minutos (1, 5, 60...). Contado do fim do ciclo, +2 a 4s aleatórios. Com o FREIO: x2, mínimo 10 min.', 'Ciclo (min)', 1, null) +
-              '<label style="grid-column:1 / -1;display:flex;align-items:center;gap:5px;background:#111;border:1px solid #242424;border-radius:6px;padding:3px 4px 3px 7px">' +
-                '<span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="25 por nobre. Se a aldeia não tiver o suficiente da escolhida, completa com a outra.">Escolta (25 por nobre)</span>' +
-                '<select id="ork-nob-esc" style="' + inp + ';padding:3px 5px"><option value="light"' + (c.escolta !== 'heavy' ? ' selected' : '') + '>Cavalaria leve</option><option value="heavy"' + (c.escolta === 'heavy' ? ' selected' : '') + '>Cavalaria pesada</option></select></label>' +
+              '<label style="display:flex;align-items:center;gap:5px;background:#111;border:1px solid #242424;border-radius:6px;padding:3px 4px 3px 7px;min-width:0">' +
+                '<span style="flex:1;font-size:10.5px;color:#bbb;cursor:help;white-space:nowrap" data-dica="De quanto em quanto tempo o script roda de novo — escolha segundos ou minutos. Contado do fim do ciclo, +2 a 4s aleatórios. Mínimo 10 segundos. Com o FREIO: x2, mínimo 10 min.">Ciclo</span>' +
+                '<input id="ork-nob-int" type="number" min="1" value="' + c.intervaloMin + '" style="width:48px;' + inp + ';padding:3px 4px;text-align:center">' +
+                '<select id="ork-nob-uni" style="' + inp + ';padding:3px 2px"><option value="min"' + (c.intervaloUni !== 'seg' ? ' selected' : '') + '>min</option><option value="seg"' + (c.intervaloUni === 'seg' ? ' selected' : '') + '>seg</option></select></label>' +
+              '<div style="grid-column:1 / -1;background:#111;border:1px solid #242424;border-radius:6px;padding:4px 6px">' +
+                '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Tropas que vão JUNTO com CADA nobre (escolha o tipo e a quantidade). Ex.: 25 Cavalaria leve = cada nobre sai com 25 CL. Pode somar mais de um tipo. Quantidade em branco ou 0 = tira a linha. Sem nenhuma linha = nobre vai sozinho. Aldeia que não tiver a escolta completa não manda.">Escolta de cada nobre</span>' +
+                  '<button type="button" id="ork-nob-escadd" style="background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:5px;padding:1px 8px;cursor:pointer;font-weight:700;font-size:10px;font-family:inherit">+ tropa</button></div>' +
+                '<div id="ork-nob-esc"></div></div>' +
             '</div>' +
           '</div>' +
           '<div style="' + sec + '"><div style="' + stit + '">🔭 Depois da conquista</div>' +
             '<div style="' + grade + '">' +
               '<label style="grid-column:1 / -1;' + ck + '" data-dica="Se a aldeia nova não tiver o explorador pesquisado, pesquisa no Ferreiro (precisa de ferreiro, estábulo e recurso na aldeia)."><input id="ork-nob-pesq" type="checkbox"' + (c.pesquisar ? ' checked' : '') + ' style="' + chk + '">Pesquisar explorador se faltar</label>' +
               num('ork-nob-rec', c.recrutarEsp, 'Quantos exploradores recrutar na aldeia nova (0 = não recruta). Tenta por até 12 ciclos (espera a pesquisa/recurso).', 'Recrutar expl.', 0, null) +
-              num('ork-nob-exp', c.explorarQtd, 'Manda 1 explorador em cada uma das N bárbaras mais perto da aldeia nova (de qualquer aldeia sua próxima com explorador em casa), pra entrarem no Assistente de Saque. 0 = não explora.', 'Explorar ao redor', 0, 30) +
+              num('ork-nob-exp', c.explorarQtd, 'Quando os exploradores recrutados na aldeia nova ficarem prontos, ela mesma manda 1 em cada uma das N bárbaras mais perto, pra entrarem no Assistente de Saque. Se ela ainda não tiver explorador depois do tempo do campo ao lado, as suas aldeias vizinhas exploram no lugar dela. 0 = não explora.', 'Explorar ao redor', 0, 30) +
+              num('ork-nob-viz', (c.vizinhasMin == null ? 60 : c.vizinhasMin), 'Quanto tempo (em minutos, contado da conquista) esperar os exploradores da aldeia nova. Passou disso e ela ainda não tem explorador (sem estábulo/ferreiro ou sem recurso)? As suas aldeias vizinhas mandam os exploradores no lugar dela. 0 = as vizinhas exploram na hora, sem esperar.', 'Vizinhas após (min)', 0, null) +
             '</div>' +
           '</div>' +
           (andamento.length ? '<div style="' + sec + '"><div style="' + stit + '">⏳ Em andamento (' + andamento.length + ')</div><div style="max-height:90px;overflow:auto">' + andamento.map(function (a) {
@@ -8982,6 +9030,22 @@
       s.innerHTML = ops.map(function (o) { return '<option value="' + gerHtml(o[0]) + '"' + (String(o[0]) === String(c.grupo) ? ' selected' : '') + '>' + gerHtml(o[1]) + '</option>'; }).join('');
     }
     grupos();
+    var escoltas = JSON.parse(JSON.stringify(c.escoltas || []));
+    function desenharEscolta() {
+      var box = document.getElementById('ork-nob-esc'), uns = nobUnidadesEscolta();
+      box.innerHTML = escoltas.map(function (e, i) {
+        return '<div style="display:flex;gap:4px;margin-top:3px">' +
+          '<select class="ork-nob-eu" data-i="' + i + '" style="flex:1;' + inp + ';padding:3px 5px">' + uns.map(function (u) {
+            return '<option value="' + u + '"' + (u === e.u ? ' selected' : '') + '>' + (NOB_NOME_UN[u] || u) + '</option>'; }).join('') + '</select>' +
+          '<input class="ork-nob-en" data-i="' + i + '" type="number" min="0" placeholder="qtd" value="' + (e.n || '') + '" style="width:62px;' + inp + ';padding:3px 4px;text-align:center">' +
+          '<button type="button" class="ork-nob-ex" data-i="' + i + '" style="width:24px;background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:5px;cursor:pointer;font-weight:800;padding:0">×</button></div>';
+      }).join('') || '<div style="font-size:10px;color:#777">Sem escolta — o nobre vai sozinho.</div>';
+      box.querySelectorAll('.ork-nob-eu').forEach(function (s) { s.addEventListener('change', function () { escoltas[+s.getAttribute('data-i')].u = s.value; }); });
+      box.querySelectorAll('.ork-nob-en').forEach(function (s) { s.addEventListener('input', function () { escoltas[+s.getAttribute('data-i')].n = parseInt(s.value, 10) || 0; }); });
+      box.querySelectorAll('.ork-nob-ex').forEach(function (b) { b.addEventListener('click', function () { escoltas.splice(+b.getAttribute('data-i'), 1); desenharEscolta(); }); });
+    }
+    desenharEscolta();
+    document.getElementById('ork-nob-escadd').addEventListener('click', function () { escoltas.push({ u: 'light', n: 0 }); desenharEscolta(); });
     document.getElementById('ork-nob-lergr').addEventListener('click', async function () {
       var b = this; b.disabled = true; b.textContent = '...';
       try { var g = await gerLerGrupos(); cat = gerLerCatalogo() || {}; cat.grupos = g; gerGravarCatalogo(cat); } catch (e) {}
@@ -9000,12 +9064,14 @@
       n.bonusTipos = [].slice.call(ov.querySelectorAll('#ork-nob-tipos input:checked')).map(function (i) { return i.getAttribute('data-t'); });
       n.nobres = Math.max(1, parseInt(v('ork-nob-qtd').value, 10) || 1);
       n.reforco = Math.max(1, Math.min(5, parseInt(v('ork-nob-ref').value, 10) || 2));
-      n.escolta = v('ork-nob-esc').value === 'heavy' ? 'heavy' : 'light';
+      n.escoltas = escoltas.filter(function (e) { return e.u && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
       n.maxSimult = Math.max(0, parseInt(v('ork-nob-max').value, 10) || 0);
-      n.intervaloMin = Math.max(1, parseFloat(v('ork-nob-int').value) || 30);
+      n.intervaloUni = v('ork-nob-uni').value === 'seg' ? 'seg' : 'min';
+      n.intervaloMin = Math.max(n.intervaloUni === 'seg' ? 10 : 1, parseFloat(v('ork-nob-int').value) || 30);
       n.pesquisar = v('ork-nob-pesq').checked;
       n.recrutarEsp = Math.max(0, parseInt(v('ork-nob-rec').value, 10) || 0);
       n.explorarQtd = Math.max(0, Math.min(30, parseInt(v('ork-nob-exp').value, 10) || 0));
+      n.vizinhasMin = Math.max(0, parseFloat(v('ork-nob-viz').value) || 0);
       return n;
     }
     v('ork-nob-x').addEventListener('click', fechar);
@@ -9037,8 +9103,8 @@
       n.ativo = true; n.proximoEm = 0;
       nobGravar(n);
       fechar();
-      nobLog('ativado — grupo ' + (n.grupoNome || n.grupo) + ', ' + n.nobres + ' nobre(s) por bárbara com ' + (n.escolta === 'heavy' ? 'CP' : 'CL') + ', espaçamento ' + n.espacamento +
-        ', ' + (n.maxSimult > 0 ? 'até ' + n.maxSimult + ' ao mesmo tempo' : 'sem limite (todos os nobres em casa)') + ', a cada ' + n.intervaloMin + ' min.');
+      nobLog('ativado — grupo ' + (n.grupoNome || n.grupo) + ', ' + n.nobres + ' nobre(s) por bárbara, escolta de cada: ' + nobTextoEscolta(n.escoltas) + ', espaçamento ' + n.espacamento +
+        ', ' + (n.maxSimult > 0 ? 'até ' + n.maxSimult + ' ao mesmo tempo' : 'sem limite (todos os nobres em casa)') + ', a cada ' + n.intervaloMin + (n.intervaloUni === 'seg' ? ' seg.' : ' min.'));
       nobMostrarBolinha();
       nobRodarCiclo();
     });
@@ -9218,7 +9284,7 @@
       nome: 'Nobre Bárbaras (BETA TEST)',
       abrev: 'Nobre BETA',
       icone: '👑',
-      dica: 'Conquista bárbaras sozinho: busca no mapa (bônus primeiro, com espaçamento de 1 a 10 campos), manda trem de nobres (25 CL ou CP + 1 nobre cada) da aldeia mais perto que tem nobre e, quando conquista, pesquisa/recruta exploradores e explora as bárbaras ao redor pra entrarem no Farm. Repete em ciclos. Use o Simular antes.',
+      dica: 'Conquista bárbaras sozinho: lê o mapa de perto pra longe (bônus primeiro, com o espaçamento em campos que você escolher), manda os nobres (quantos quiser por bárbara, todos da mesma aldeia, cada um com a escolta que você escolher) da aldeia mais perto que tem nobre. Quando conquista, pesquisa o explorador, recruta e a própria aldeia nova explora as bárbaras ao redor pra entrarem no Farm. Repete em ciclos de segundos ou minutos. Use o Simular antes.',
       checar: checaNobre,
       rodar: rodarNobre,
       destino: null
@@ -9519,6 +9585,12 @@
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmar(); });
   }
 
+  /* aviso de atualização: aparece em QUALQUER tela do jogo até a pessoa clicar em "Entendi, fechar" */
+  try {
+    var novidadePendente = orkNovidadeNaoVista();
+    if (novidadePendente) { setTimeout(function () { orkMostrarNovidade(novidadePendente); }, 900); }
+  } catch (e) { console.warn('[OROCHIKING] novidades:', e); }
+
   /* ============================================================
      O PAINEL COMPLETO SÓ APARECE NO ASSISTENTE DE SAQUE
   ============================================================ */
@@ -9661,10 +9733,6 @@
 
   /* mostra o aviso de nova atualização, se houver uma que a pessoa ainda não viu.
      Pequeno atraso pra não competir com a montagem do painel. */
-  try {
-    var novidadePendente = orkNovidadeNaoVista();
-    if (novidadePendente) { setTimeout(function () { orkMostrarNovidade(novidadePendente); }, 600); }
-  } catch (e) { console.warn('[OROCHIKING] novidades:', e); }
 
   var ferramentaSelecionada = FERRAMENTAS[0];
 
