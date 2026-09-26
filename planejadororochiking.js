@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 57;
+  window.__ORK_VERSAO__ = 58;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -222,6 +222,16 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-25-247-relogin-player',
+      data: '25/09/2026',
+      titulo: '24/7: relogin só se cair + Farm Player completo',
+      itens: [
+        'Relogin: escolha "Só se a sessão cair" (fica logado e só entra de novo se o jogo derrubar) ou "A cada N ciclos (e se cair)".',
+        'Farm Player agora tem as mesmas opções do modo Farm: Farm Hard entre as levas (velocidade, rotação e tempo), Cunhar, Balancear e Relogin.',
+        'Entre uma leva e outra ele roda as etapas que você ligar e manda a próxima leva no horário.'
+      ]
+    },
     {
       id: '2026-09-25-247-seg-coletor',
       data: '25/09/2026',
@@ -5923,7 +5933,7 @@
       farmMin: 2, farmMax: 3, pausaMin: 3, pausaMax: 4,
       cunhar: true, balancear: false, balCadaMin: 30, balUltimo: 0, balFeitos: [],
       atkMin: 4, atkMax: 6, atkInicio: 0, atkNav: 0,
-      relogarCada: 0, mundo: '' };
+      relogarCada: 0, relModo: 'queda', mundo: '', atkFarm: false, atkProxima: 0 };
   }
   function autoLer() {
     var p = autoPadrao();
@@ -6092,7 +6102,7 @@
   function autoDepoisDoFarm(c) {
     if (c.cunhar) {
       c.fase = 'cunhar'; c.from = 0; autoGravar(c);
-      autoLog('farm encerrado, indo cunhar.');
+      autoLog((c.modo === 'player' ? 'indo cunhar antes da próxima leva.' : 'farm encerrado, indo cunhar.'));
       autoStatus('Indo para a Academia...');
       autoIrCunhagem(0);
       return;
@@ -6110,6 +6120,15 @@
     autoIrPausa(c);
   }
   function autoIrPausa(c) {
+    if (c.modo === 'player') {
+      // Farm Player: as etapas extras já rodaram; espera o horário da próxima leva
+      c.fase = 'atk-espera'; c.from = 0;
+      c.fimFase = Math.max(Date.now(), c.atkProxima || Date.now());
+      autoGravar(c);
+      autoLog('próxima leva às ' + autoHora(c.fimFase) + '.');
+      autoAgendar(c.fimFase - Date.now());
+      return;
+    }
     c.fase = 'pausa'; c.from = 0; c.ciclos = (c.ciclos || 0) + 1;
     c.fimFase = Date.now() + autoMs(c.pausaMin, c.pausaMax);
     autoGravar(c);
@@ -6228,15 +6247,22 @@
     autoLevaViva = false;
     if (!c.ativo || (c.fase !== 'atk-rodando' && c.fase !== 'atk-enviar')) { return; }
     c.ciclos = (c.ciclos || 0) + 1;
-    c.fase = 'atk-espera';
-    c.fimFase = Date.now() + autoMs(c.atkMin, c.atkMax);
-    autoGravar(c);
-    autoLog('leva ' + c.ciclos + (ok ? ' enviada' : ' encerrada') + '. Próxima às ' + autoHora(c.fimFase) + '.');
-    autoAgendar(c.fimFase - Date.now());
+    c.atkProxima = Date.now() + autoMs(c.atkMin, c.atkMax);
+    autoLog('leva ' + c.ciclos + (ok ? ' enviada' : ' encerrada') + '. Próxima leva a partir de ' + autoHora(c.atkProxima) + '.');
+    // entre as levas: Farm Hard (se ligado) -> Cunhar -> Balancear -> espera a próxima leva
+    if (c.atkFarm) {
+      c.fase = 'farm'; c.fimFase = Date.now() + autoMs(c.farmMin, c.farmMax); autoGravar(c);
+      autoLog('Farm Hard entre as levas até ' + autoHora(c.fimFase) + '.');
+      autoIniciarFarm();
+      autoAgendar(autoEntre(4000, 6000));
+      return;
+    }
+    autoDepoisDoFarm(c);
   }
 
   /* ---------- relogin programado + início de ciclo ---------- */
   function autoTentarRelogar(c) {
+    if (c.relModo === 'queda') { return false; } // só reloga se a sessão cair (isso é automático)
     if (!((c.relogarCada || 0) > 0 && c.ciclos > 0 && c.ciclos % c.relogarCada === 0)) { return false; }
     var sair = document.querySelector('a[href*="action=logout"]');
     if (!sair) { autoLog('botão Sair não encontrado — pulando o relogin deste ciclo.'); return false; }
@@ -6461,8 +6487,13 @@
     autoMostrarBolinha();
     if (n.modo === 'player') {
       var atk = autoLerAtk();
-      autoLog('Farm Player iniciado — ' + atk.nAlvos + ' alvo(s), leva a cada ' + n.atkMin + '-' + n.atkMax + ' min' +
-        (n.relogarCada ? ', relogar a cada ' + n.relogarCada + ' leva(s) em ' + n.mundo : '') + '.');
+      var extras = [];
+      if (n.atkFarm) { extras.push('Farm Hard'); }
+      if (n.cunhar) { extras.push('Cunhagem'); }
+      if (n.balancear) { extras.push('Balanceador'); }
+      autoLog('Farm Player iniciado — ' + atk.nAlvos + ' alvo(s), leva a cada ' + (Math.round(n.atkMin * 100) / 100) + '-' + (Math.round(n.atkMax * 100) / 100) + ' min' +
+        (extras.length ? ', entre as levas: ' + extras.join(' + ') : '') +
+        (n.relModo === 'ciclos' ? ', relogar a cada ' + n.relogarCada + ' leva(s)' : ', relogar só se a sessão cair') + ' (' + n.mundo + ').');
       n.atkNav = 1; autoGravar(n);
       autoStatus('Indo para o Combinado...');
       autoIrPara(atk.url); // sempre começa com o Combinado recarregado (estado limpo)
@@ -6472,7 +6503,7 @@
     autoLog('iniciada — farm ' + tx(n.farmMin, n.farmMax) +
       (n.cunhar ? ', cunhagem' : '') + (n.balancear ? ', balanceador (mín. ' + n.balCadaMin + ' min)' : '') +
       ', pausa ' + tx(n.pausaMin, n.pausaMax) +
-      (n.relogarCada ? ', relogar a cada ' + n.relogarCada + ' ciclo(s) em ' + n.mundo : '') + '.');
+      (n.relModo === 'ciclos' ? ', relogar a cada ' + n.relogarCada + ' ciclo(s)' : ', relogar só se a sessão cair') + ' (' + n.mundo + ').');
     autoIniciarFarm();
     autoAgendar(autoEntre(4000, 6000));
   }
@@ -6533,6 +6564,8 @@
     var c = autoLer(), p = autoLerPreset(), atk = autoLerAtk();
     var modo = c.modo === 'player' ? 'player' : 'farm';
     var mundoPadrao = c.mundo || (window.game_data && game_data.world) || '';
+    var relModoAtual = c.relModo === 'ciclos' || (!c.relModo && c.relogarCada > 0) ? 'ciclos' : 'queda';
+    if (c.relModo === 'queda') { relModoAtual = 'queda'; }
     var ov = document.createElement('div');
     ov.id = 'ork-modal-auto';
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
@@ -6569,41 +6602,52 @@
             '<button type="button" class="ork-auto-modo" data-modo="player" style="background:#1c1c1c;border:1px solid #333;border-radius:8px;padding:8px 4px;color:#ddd;cursor:pointer;font-weight:800;font-size:11.5px;font-family:inherit">⚔️ Farm Player<div style="font-size:9px;color:#888;font-weight:700;margin-top:2px">Ataque Mass em loop</div></button>' +
           '</div>' +
 
-          // ---- modo FARM ----
-          '<div id="ork-auto-sec-farm">' +
-            '<div style="' + card + '"><span style="' + tit + '">Farm Hard</span>' +
-              '<div style="' + lin + '"><span style="' + rot + '" data-dica="Velocidade e rotação que o Farm Hard vai usar dentro do ciclo. Padrão: 1.5x + Normal (1 coluna).">Velocidade / rotação' + autoInterrogacao() + '</span>' +
-                '<select id="ork-auto-fator" style="width:74px;' + inp + '">' + opcoes([['0.5', '0.5x'], ['1', '1x'], ['1.25', '1.25x'], ['1.5', '1.5x'], ['2', '2x'], ['2.5', '2.5x']], p.fator) + '</select>' +
-                '<select id="ork-auto-rot" style="width:112px;' + inp + '">' + opcoes([['1', 'Normal'], ['2', '2 grupos'], ['3', '3 grupos'], ['4', '4 grupos']], p.rotacao) + '</select></div>' +
-              '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Quanto tempo o Farm Hard fica ligado em cada ciclo, em minutos ou segundos. O tempo exato é sorteado dentro dessa faixa.">Farm roda por' + autoInterrogacao() + '</span>' +
-                faixa('ork-auto-fmin', 'ork-auto-fmax', c.farmMin, c.farmMax, '0.5', c.farmUn) + '</div>' +
-            '</div>' +
-            '<div style="' + card + '"><span style="' + tit + '">Depois do farm</span>' +
-              '<div style="' + lin + '">' + chave('ork-auto-cunhar', c.cunhar) +
-                '<span style="' + rot + '" data-dica="Vai pra Academia e cunha moedas em todas as páginas (1.000 aldeias por página), igual à aba Cunhar.">💰 Cunhar moedas' + autoInterrogacao() + '</span></div>' +
-              '<div style="' + lin + ';margin-bottom:0">' + chave('ork-auto-bal', c.balancear) +
-                '<span style="' + rot + '" data-dica="Equilibra os recursos entre as aldeias pelo mercado (1 a 3s entre cada envio), usando os ajustes da aba Balancear. Só balanceia se já passou o tempo mínimo desde o último balanceamento — os mercadores precisam voltar pra casa.">⚖️ Balancear recursos, no mín. a cada' + autoInterrogacao() + '</span>' +
-                '<input id="ork-auto-balmin" type="number" min="1" value="' + c.balCadaMin + '" style="width:58px;' + inp + '"><span style="font-size:11px;color:#888">min</span></div>' +
-            '</div>' +
-            '<div style="' + card + '"><div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Descanso total (nada rodando) no fim de cada ciclo, antes de começar o farm de novo — em minutos ou segundos. Sorteado dentro da faixa. 0 a 0 = sem pausa.">😴 Pausa no fim do ciclo' + autoInterrogacao() + '</span>' +
-              faixa('ork-auto-pmin', 'ork-auto-pmax', c.pausaMin, c.pausaMax, '0.5', c.pausaUn) + '</div></div>' +
-          '</div>' +
-
-          // ---- modo FARM PLAYER ----
+          // ---- só Farm Player: ataque salvo + intervalo das levas ----
           '<div id="ork-auto-sec-player">' +
             '<div style="' + card + '"><span style="' + tit + '">Ataque salvo nesta aba</span>' +
               '<div style="font-size:11.5px;color:' + (atk ? '#ddd' : '#ff8a8a') + ';line-height:1.5">' +
                 (atk ? autoResumoAtk(atk) :
                   'Nenhum ataque salvo ainda.<br><span style="color:#999">Como salvar: aba <b>Ataque</b> → configure tropas, alvos, tipo de comando e marque as aldeias atacantes → clique em <b>"💾 Salvar no 24/7"</b> (caixa ♾️ no Ataque).</span>') +
               '</div></div>' +
-            '<div style="' + card + '"><div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Tempo entre uma leva e a próxima, contado a partir do fim do envio, em minutos ou segundos. Sorteado dentro da faixa. Dica: use um tempo em que as tropas já voltaram.">🔁 Nova leva a cada' + autoInterrogacao() + '</span>' +
+            '<div style="' + card + '"><div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Tempo entre uma leva e a próxima, contado a partir do fim do envio, em minutos ou segundos. Sorteado dentro da faixa. As etapas de baixo (Farm Hard, Cunhar, Balancear) rodam nesse meio tempo. Dica: use um tempo em que as tropas já voltaram.">🔁 Nova leva a cada' + autoInterrogacao() + '</span>' +
               faixa('ork-auto-amin', 'ork-auto-amax', c.atkMin, c.atkMax, '0.5', c.atkUn) + '</div></div>' +
           '</div>' +
 
-          // ---- comum ----
+          // ---- Farm Hard (nos dois modos; no Farm Player é opcional, entre as levas) ----
+          '<div style="' + card + '" id="ork-auto-card-farm">' +
+            '<div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">' +
+              '<span id="ork-auto-atkfarm-wrap" style="display:none">' + chave('ork-auto-atkfarm', c.atkFarm) + '</span>' +
+              '<span style="' + tit + '" id="ork-auto-tit-farm">Farm Hard</span></div>' +
+            '<div id="ork-auto-farm-campos">' +
+              '<div style="' + lin + '"><span style="' + rot + '" data-dica="Velocidade e rotação que o Farm Hard vai usar dentro do ciclo. Padrão: 1.5x + Normal (1 coluna). Se você mudar direto no popup do Farm Hard, também fica salvo.">Velocidade / rotação' + autoInterrogacao() + '</span>' +
+                '<select id="ork-auto-fator" style="width:74px;' + inp + '">' + opcoes([['0.5', '0.5x'], ['1', '1x'], ['1.25', '1.25x'], ['1.5', '1.5x'], ['2', '2x'], ['2.5', '2.5x']], p.fator) + '</select>' +
+                '<select id="ork-auto-rot" style="width:112px;' + inp + '">' + opcoes([['1', 'Normal'], ['2', '2 grupos'], ['3', '3 grupos'], ['4', '4 grupos']], p.rotacao) + '</select></div>' +
+              '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Quanto tempo o Farm Hard fica ligado, em minutos ou segundos. O tempo exato é sorteado dentro dessa faixa.">Farm roda por' + autoInterrogacao() + '</span>' +
+                faixa('ork-auto-fmin', 'ork-auto-fmax', c.farmMin, c.farmMax, '0.5', c.farmUn) + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="' + card + '"><span style="' + tit + '" id="ork-auto-tit-depois">Depois do farm</span>' +
+            '<div style="' + lin + ';margin-top:6px">' + chave('ork-auto-cunhar', c.cunhar) +
+              '<span style="' + rot + '" data-dica="Vai pra Academia e cunha moedas em todas as páginas (1.000 aldeias por página), igual à aba Cunhar.">💰 Cunhar moedas' + autoInterrogacao() + '</span></div>' +
+            '<div style="' + lin + ';margin-bottom:0">' + chave('ork-auto-bal', c.balancear) +
+              '<span style="' + rot + '" data-dica="Equilibra os recursos entre as aldeias pelo mercado (1 a 3s entre cada envio), usando os ajustes da aba Balancear. Só balanceia se já passou o tempo mínimo desde o último balanceamento — os mercadores precisam voltar pra casa.">⚖️ Balancear recursos, no mín. a cada' + autoInterrogacao() + '</span>' +
+              '<input id="ork-auto-balmin" type="number" min="1" value="' + c.balCadaMin + '" style="width:58px;' + inp + '"><span style="font-size:11px;color:#888">min</span></div>' +
+          '</div>' +
+          // ---- só modo Farm: pausa no fim do ciclo ----
+          '<div id="ork-auto-sec-farm">' +
+            '<div style="' + card + '"><div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Descanso total (nada rodando) no fim de cada ciclo, antes de começar o farm de novo — em minutos ou segundos. Sorteado dentro da faixa. 0 a 0 = sem pausa.">😴 Pausa no fim do ciclo' + autoInterrogacao() + '</span>' +
+              faixa('ork-auto-pmin', 'ork-auto-pmax', c.pausaMin, c.pausaMax, '0.5', c.pausaUn) + '</div></div>' +
+          '</div>' +
+
+          // ---- comum: relogin ----
           '<div style="' + card + '"><span style="' + tit + '">Relogin</span>' +
-            '<div style="' + lin + '"><span style="' + rot + '" data-dica="Desloga e entra de novo sozinho a cada N ciclos (ou levas). 0 = só reloga se a sessão cair. Precisa do script OROCHIKING Relogin no Tampermonkey.">Deslogar/relogar a cada' + autoInterrogacao() + '</span>' +
-              '<input id="ork-auto-rel" type="number" min="0" step="1" value="' + (c.relogarCada || 0) + '" style="width:58px;' + inp + '"><span id="ork-auto-rel-un" style="font-size:11px;color:#888;width:34px">ciclos</span></div>' +
+            '<div style="' + lin + ';margin-top:6px"><span style="' + rot + '" data-dica="Só se a sessão cair: ele fica logado o tempo todo e só entra de novo se o jogo derrubar a sessão. A cada N ciclos: além disso, ele mesmo desloga e entra de novo de tempos em tempos. Nos dois casos precisa do script OROCHIKING Relogin no Tampermonkey.">Quando relogar' + autoInterrogacao() + '</span>' +
+              '<select id="ork-auto-relmodo" style="width:200px;' + inp + '">' +
+                '<option value="queda"' + (relModoAtual === 'queda' ? ' selected' : '') + '>Só se a sessão cair</option>' +
+                '<option value="ciclos"' + (relModoAtual === 'ciclos' ? ' selected' : '') + '>A cada N ciclos (e se cair)</option>' +
+              '</select></div>' +
+            '<div id="ork-auto-rel-linha" style="' + lin + '"><span style="' + rot + '" data-dica="De quantos em quantos ciclos (modo Farm) ou levas (Farm Player) ele desloga e entra de novo.">Deslogar/relogar a cada' + autoInterrogacao() + '</span>' +
+              '<input id="ork-auto-rel" type="number" min="1" step="1" value="' + Math.max(1, c.relogarCada || 1) + '" style="width:58px;' + inp + '"><span id="ork-auto-rel-un" style="font-size:11px;color:#888;width:34px">ciclos</span></div>' +
             '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Mundo em que ele entra de novo: normal br + número (br144), clássico brc + número (brc1), speed brs + número (brs1).">Mundo' + autoInterrogacao() + '</span>' +
               '<input id="ork-auto-mundo" type="text" value="' + mundoPadrao + '" placeholder="br144, brc1, brs1" style="width:124px;' + inp + '"></div>' +
           '</div>' +
@@ -6626,9 +6670,19 @@
       });
       document.getElementById('ork-auto-sec-farm').style.display = modo === 'farm' ? 'block' : 'none';
       document.getElementById('ork-auto-sec-player').style.display = modo === 'player' ? 'block' : 'none';
+      document.getElementById('ork-auto-atkfarm-wrap').style.display = modo === 'player' ? 'inline' : 'none';
+      document.getElementById('ork-auto-tit-farm').textContent = modo === 'player' ? 'Farm Hard entre as levas' : 'Farm Hard';
+      document.getElementById('ork-auto-tit-depois').textContent = modo === 'player' ? 'Depois de cada leva (e do Farm Hard)' : 'Depois do farm';
+      var campos = document.getElementById('ork-auto-farm-campos');
+      var farmOn = modo === 'farm' || document.getElementById('ork-auto-atkfarm').checked;
+      campos.style.opacity = farmOn ? '1' : '.4';
+      campos.querySelectorAll('input,select').forEach(function (el) { el.disabled = !farmOn; });
+      document.getElementById('ork-auto-rel-linha').style.display = document.getElementById('ork-auto-relmodo').value === 'ciclos' ? 'flex' : 'none';
       document.getElementById('ork-auto-erro').textContent = '';
       var un = document.getElementById('ork-auto-rel-un'); if (un) { un.textContent = modo === 'player' ? 'levas' : 'ciclos'; }
     }
+    document.getElementById('ork-auto-atkfarm').addEventListener('change', function () { mostrarModo(); });
+    document.getElementById('ork-auto-relmodo').addEventListener('change', function () { mostrarModo(); });
     ov.querySelectorAll('.ork-auto-modo').forEach(function (b) {
       b.addEventListener('click', function () { modo = b.getAttribute('data-modo'); mostrarModo(); });
     });
@@ -6656,7 +6710,9 @@
       n.balancear = document.getElementById('ork-auto-bal').checked;
       n.balCadaMin = Math.max(1, num('ork-auto-balmin', 30));
       var ax = faixaMin('ork-auto-amin', 'ork-auto-amax', 4, 6, 10); n.atkMin = ax[0]; n.atkMax = ax[1]; n.atkUn = ax[2];
-      n.relogarCada = Math.max(0, Math.floor(num('ork-auto-rel', 0)));
+      n.atkFarm = document.getElementById('ork-auto-atkfarm').checked;
+      n.relModo = document.getElementById('ork-auto-relmodo').value === 'ciclos' ? 'ciclos' : 'queda';
+      n.relogarCada = n.relModo === 'ciclos' ? Math.max(1, Math.floor(num('ork-auto-rel', 1))) : 0;
       n.mundo = (document.getElementById('ork-auto-mundo').value || '').toLowerCase().replace(/[^a-z0-9]/g, '') || game_data.world;
       if (modo === 'player' && !autoLerAtk()) {
         document.getElementById('ork-auto-erro').textContent = 'Salve um ataque primeiro: aba Ataque → caixa ♾️ → "💾 Salvar no 24/7".';
@@ -6713,7 +6769,7 @@
       'border-radius:10px;font-family:"Segoe UI",Arial,sans-serif;color:#ddd';
     caixa.innerHTML =
       '<div style="font-weight:800;color:#ffd84d;font-size:12px;margin-bottom:4px">♾️ 24/7 Farm Player</div>' +
-      '<div style="font-size:10.5px;color:#999;margin-bottom:6px">Salva este ataque (tropas, alvos, comando, prédio e as aldeias marcadas na tabela — nenhuma marcada = todas da lista) e repete sozinho, até se a sessão cair. Relogin programado e mais opções: painel → aba 24/7.</div>' +
+      '<div style="font-size:10.5px;color:#999;margin-bottom:6px">Salva este ataque (tropas, alvos, comando, prédio e as aldeias marcadas na tabela — nenhuma marcada = todas da lista) e repete sozinho, até se a sessão cair. Farm Hard / Cunhar / Balancear entre as levas e relogin: painel → aba 24/7.</div>' +
       '<div id="ork-auto-atk-status" style="font-size:11px;line-height:1.5;margin-bottom:6px"></div>' +
       '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:#bbb">Nova leva a cada ' +
         '<input id="ork-auto-atk-min" type="number" min="0.5" step="0.5" value="' + c.atkMin + '" style="' + inp + '"> a ' +
@@ -6755,7 +6811,10 @@
       if (!salvar()) { return; }
       if (atual.ativo && !confirm('A Automatização 24/7 (modo Farm) está rodando nesta aba. Trocar para o Farm Player?')) { return; }
       if (atual.ativo) { autoParar(false); }
+      var jaConfigurado = false;
+      try { jaConfigurado = !!sessionStorage.getItem(AUTO_CHAVE); } catch (e) {}
       var n = salvarFaixa();
+      if (!jaConfigurado) { n.cunhar = false; n.balancear = false; n.atkFarm = false; }
       n.modo = 'player';
       n.mundo = n.mundo || game_data.world;
       msg('Iniciando... a tela vai recarregar e a primeira leva sai em seguida.', '#ffd84d');
