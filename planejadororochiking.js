@@ -205,7 +205,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 61;
+  window.__ORK_VERSAO__ = 62;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -227,8 +227,9 @@
       data: '26/09/2026',
       titulo: 'Novo: 👑 Nobre Bárbaras (BETA TEST)',
       itens: [
-        'Conquista bárbaras sozinho em ciclos: busca no mapa (bônus primeiro), escolhe com espaçamento de 1 a 10 campos e manda trem de nobres (25 CL ou CP + 1 nobre cada) da aldeia mais perto.',
-        'Se a bárbara não cair, manda reforço no próximo ciclo. Limite de quantas bárbaras recebendo nobre ao mesmo tempo.',
+        'Conquista bárbaras sozinho em ciclos: busca no mapa (bônus primeiro), escolhe com o espaçamento que você quiser e manda os nobres (25 CL ou CP + 1 nobre cada) da aldeia mais perto.',
+        'Você escolhe quantos nobres por bárbara (todos da mesma aldeia) e de quanto em quanto tempo roda. Com limite 0, usa todos os nobres em casa de uma vez (50 nobres x 1 por bárbara = 50 bárbaras).',
+        'Se a bárbara não cair, manda reforço no próximo ciclo.',
         'Depois da conquista: pesquisa o explorador no Ferreiro se faltar, recruta exploradores e explora as bárbaras ao redor pra entrarem no Farm.',
         'Tem botão Simular (mostra o plano sem mandar nada). Para no captcha e respeita o FREIO.'
       ]
@@ -8321,7 +8322,7 @@
   function nobChave() { return 'ork_nobre_' + ((window.game_data && game_data.world) || ''); }
   function nobLer() {
     var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 3, escolta: 'light', nobres: 4, reforco: 2, raio: 40,
-      maxSimult: 3, intervaloMin: 30, pontosMin: 0, pontosMax: 13000, priorizarBonus: true, soBonus: false,
+      maxSimult: 0, intervaloMin: 30, pontosMin: 0, pontosMax: 13000, priorizarBonus: true, soBonus: false,
       bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10,
       alvos: [], explorados: [], proximoEm: 0, ultimo: null };
     try { var c = JSON.parse(localStorage.getItem(nobChave()) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
@@ -8606,10 +8607,10 @@
     var ocupadas = {};
     cfg.alvos.forEach(function (a) { if (a.status === 'caminho' || a.status === 'reenviar') { ocupadas[a.id] = 1; } });
     var emCaminho = cfg.alvos.filter(function (a) { return a.status === 'caminho' || a.status === 'reenviar'; }).length;
-    var vagas = Math.max(0, (cfg.maxSimult || 1) - emCaminho);
+    var vagas = (+cfg.maxSimult > 0) ? Math.max(0, cfg.maxSimult - emCaminho) : 100000;
     var raio = Math.max(1, Number(cfg.raio) || 40);
     if (distMax > 0) { raio = Math.min(raio, distMax); }
-    var esp = Math.max(1, Math.min(10, Number(cfg.espacamento) || 1));
+    var esp = Math.max(1, Number(cfg.espacamento) || 1);
     var tipos = {}; (cfg.bonusTipos || []).forEach(function (t) { tipos[t] = 1; });
     var origens = aldeias.filter(function (a) { return (a.tropas.snob || 0) >= 1 && ((a.tropas.light || 0) + (a.tropas.heavy || 0)) >= 25; })
       .map(function (a) { return { id: a.id, x: a.x, y: a.y, coord: a.coord, snob: a.tropas.snob || 0, light: a.tropas.light || 0, heavy: a.tropas.heavy || 0 }; });
@@ -8858,7 +8859,7 @@
             '<div style="' + lin + '"><span style="' + rot + '" data-dica="Só as aldeias deste grupo mandam nobres. Todas as suas aldeias continuam contando pro espaçamento e pra saber se a conquista caiu.">Grupo que manda os nobres' + autoInterrogacao() + '</span>' +
               '<select id="ork-nob-grupo" style="width:190px;' + inp + '"></select>' +
               '<button type="button" id="ork-nob-lergr" title="Ler os grupos do jogo" style="background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:6px;padding:4px 8px;cursor:pointer;font-weight:700;font-size:10.5px;font-family:inherit">🔄</button></div>' +
-            num('ork-nob-esp', c.espacamento, 'Distância mínima (em campos) entre cada bárbara escolhida e: suas aldeias e as outras bárbaras que já estão recebendo nobre. 1 = pode pegar coladas; 10 = bem espalhadas.', 'Espaçamento mínimo (1 a 10 campos)', 1, 10) +
+            num('ork-nob-esp', c.espacamento, 'Distância mínima (em campos) entre cada bárbara escolhida e: suas aldeias e as outras bárbaras que já estão recebendo nobre. 1 = pode pegar coladas; quanto maior, mais espalhadas.', 'Espaçamento mínimo (campos)', 1, null) +
             num('ork-nob-raio', c.raio, 'Distância máxima entre a aldeia que manda o nobre e a bárbara. Se o mundo tiver limite de distância do nobre menor, vale o do mundo.', 'Distância máxima do nobre (campos)', 1, 200) +
             '<div style="' + lin + '"><span style="' + rot + '" data-dica="Pontuação da bárbara. Bárbara muito pequena rende pouco; muito grande pode ter muralha/tropa.">Pontos da bárbara (mín. / máx.)' + autoInterrogacao() + '</span>' +
               '<input id="ork-nob-pmin" type="number" min="0" value="' + c.pontosMin + '" style="width:70px;' + inp + '"><input id="ork-nob-pmax" type="number" min="0" value="' + c.pontosMax + '" style="width:70px;' + inp + '"></div>' +
@@ -8870,12 +8871,12 @@
             }).join('') + '</div>' +
           '</div>' +
           '<div style="' + card + '"><div style="' + tit + '">Nobres</div>' +
-            num('ork-nob-qtd', c.nobres, 'Quantos nobres vão no trem pra cada bárbara (cada um com 25 de escolta). Bárbara costuma começar com lealdade 100 e cada nobre tira 20 a 35 — 4 nobres quase sempre conquistam; 3 às vezes não.', 'Nobres por bárbara', 1, 10) +
+            num('ork-nob-qtd', c.nobres, 'Quantos nobres vão pra cada bárbara — todos saem da MESMA aldeia, no mesmo trem (cada um com 25 de escolta). 1 = cada nobre pega uma bárbara diferente (se não cair, o reforço completa). Bárbara costuma ter lealdade 100 e cada nobre tira 20 a 35.', 'Nobres por bárbara', 1, null) +
             num('ork-nob-ref', c.reforco, 'Se a bárbara não cair (lealdade não zerou), no próximo ciclo manda mais esta quantidade de nobres nela antes de escolher alvos novos. Desiste depois de 4 tentativas.', 'Reforço se não cair', 1, 5) +
             '<div style="' + lin + '"><span style="' + rot + '" data-dica="Escolta de 25 por nobre. Se a aldeia não tiver o suficiente da escolhida, completa com a outra.">Escolta (25 por nobre)' + autoInterrogacao() + '</span>' +
               '<select id="ork-nob-esc" style="width:150px;' + inp + '"><option value="light"' + (c.escolta !== 'heavy' ? ' selected' : '') + '>Cavalaria leve (CL)</option><option value="heavy"' + (c.escolta === 'heavy' ? ' selected' : '') + '>Cavalaria pesada (CP)</option></select></div>' +
-            num('ork-nob-max', c.maxSimult, 'Máximo de bárbaras recebendo nobre ao mesmo tempo (a caminho). Quando uma cai, abre vaga pra outra no próximo ciclo.', 'Máx. bárbaras com nobre a caminho', 1, 50) +
-            num('ork-nob-int', c.intervaloMin, 'Minutos entre um ciclo e o próximo, contados do fim do ciclo (+2 a 4s aleatórios). Com o FREIO: x2, mínimo 10 min.', 'Repetir a cada (min)', 1, 600) +
+            num('ork-nob-max', c.maxSimult, '0 = sem limite: usa TODOS os nobres que estiverem em casa de uma vez (ex.: 50 nobres e 1 por bárbara = 50 bárbaras no mesmo ciclo). Outro número = máximo de bárbaras recebendo nobre ao mesmo tempo.', 'Máx. bárbaras ao mesmo tempo (0 = sem limite)', 0, null) +
+            num('ork-nob-int', c.intervaloMin, 'De quanto em quanto tempo o script roda de novo (você escolhe: 1, 5, 60, 120...). Contado do fim do ciclo, +2 a 4s aleatórios. Com o FREIO: x2, mínimo 10 min.', 'Rodar de novo a cada (minutos)', 1, null) +
           '</div>' +
           '<div style="' + card + '"><div style="' + tit + '">Depois da conquista</div>' +
             '<div style="' + lin + '"><input id="ork-nob-pesq" type="checkbox"' + (c.pesquisar ? ' checked' : '') + ' style="' + chk + '"><span style="' + rot + '" data-dica="Se a aldeia nova não tiver o explorador pesquisado, pesquisa no Ferreiro (precisa de ferreiro e estábulo na aldeia e recurso).">Pesquisar explorador se faltar' + autoInterrogacao() + '</span></div>' +
@@ -8914,16 +8915,16 @@
     function lerCampos() {
       var n = nobLer(), s = v('ork-nob-grupo');
       n.grupo = s.value || '0'; n.grupoNome = s.options[s.selectedIndex] ? s.options[s.selectedIndex].textContent.replace(/ \(salvo\)$/, '') : '';
-      n.espacamento = Math.max(1, Math.min(10, parseInt(v('ork-nob-esp').value, 10) || 3));
+      n.espacamento = Math.max(1, parseInt(v('ork-nob-esp').value, 10) || 1);
       n.raio = Math.max(1, parseFloat(v('ork-nob-raio').value) || 40);
       n.pontosMin = Math.max(0, parseInt(v('ork-nob-pmin').value, 10) || 0);
       n.pontosMax = Math.max(n.pontosMin, parseInt(v('ork-nob-pmax').value, 10) || 13000);
       n.priorizarBonus = v('ork-nob-prbon').checked; n.soBonus = v('ork-nob-sobon').checked;
       n.bonusTipos = [].slice.call(ov.querySelectorAll('#ork-nob-tipos input:checked')).map(function (i) { return i.getAttribute('data-t'); });
-      n.nobres = Math.max(1, Math.min(10, parseInt(v('ork-nob-qtd').value, 10) || 4));
+      n.nobres = Math.max(1, parseInt(v('ork-nob-qtd').value, 10) || 1);
       n.reforco = Math.max(1, Math.min(5, parseInt(v('ork-nob-ref').value, 10) || 2));
       n.escolta = v('ork-nob-esc').value === 'heavy' ? 'heavy' : 'light';
-      n.maxSimult = Math.max(1, parseInt(v('ork-nob-max').value, 10) || 3);
+      n.maxSimult = Math.max(0, parseInt(v('ork-nob-max').value, 10) || 0);
       n.intervaloMin = Math.max(1, parseFloat(v('ork-nob-int').value) || 30);
       n.pesquisar = v('ork-nob-pesq').checked;
       n.recrutarEsp = Math.max(0, parseInt(v('ork-nob-rec').value, 10) || 0);
@@ -8948,10 +8949,10 @@
       }).join('');
       box.innerHTML = '<div style="background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:8px;font-size:11px">' +
         '<div style="color:#888;margin-bottom:6px">' + r.aldeias + ' aldeia(s) suas • ' + p.origens + ' com nobre + escolta no grupo • ' + r.busca.lista.length + ' bárbara(s) em ' + r.busca.setores + ' setor(es) do mapa' +
-          (r.busca.falhas ? ' (' + r.busca.falhas + ' pacote(s) falharam)' : '') + ' • ' + p.candidatas + ' dentro do filtro/raio (' + p.raio + ' campos' + (r.distMax ? ', limite do mundo ' + r.distMax : '') + ') • vagas agora: ' + p.vagas + '</div>' +
+          (r.busca.falhas ? ' (' + r.busca.falhas + ' pacote(s) falharam)' : '') + ' • ' + p.candidatas + ' dentro do filtro/raio (' + p.raio + ' campos' + (r.distMax ? ', limite do mundo ' + r.distMax : '') + ') • vagas agora: ' + (p.vagas >= 100000 ? 'sem limite' : p.vagas) + '</div>' +
         '<div style="color:#FFC400;font-weight:800;margin-bottom:4px">👑 ' + p.plano.length + ' envio(s) no próximo ciclo</div>' +
         (linhas ? '<div style="max-height:190px;overflow:auto"><table style="width:100%;border-collapse:collapse">' + linhas + '</table></div>' :
-          '<div style="color:#777">' + (p.vagas === 0 ? 'Sem vaga: já tem o máximo de bárbaras com nobre a caminho.' : (!p.origens ? 'Nenhuma aldeia do grupo tem nobre + 25 de escolta em casa.' : 'Nenhuma bárbara serviu (espaçamento: ' + p.motivos.espaco + ', sem aldeia com nobres suficientes perto: ' + p.motivos.semOrigem + ').')) + '</div>') +
+          '<div style="color:#777">' + (p.vagas === 0 ? 'Sem vaga: já tem o máximo de bárbaras com nobre a caminho (0 = sem limite).' : (!p.origens ? 'Nenhuma aldeia do grupo tem nobre + 25 de escolta em casa.' : 'Nenhuma bárbara serviu (espaçamento: ' + p.motivos.espaco + ', sem aldeia com nobres suficientes perto: ' + p.motivos.semOrigem + ').')) + '</div>') +
         '</div>';
     });
     v('ork-nob-ok').addEventListener('click', function () {
@@ -8960,7 +8961,7 @@
       nobGravar(n);
       fechar();
       nobLog('ativado — grupo ' + (n.grupoNome || n.grupo) + ', ' + n.nobres + ' nobre(s) por bárbara com ' + (n.escolta === 'heavy' ? 'CP' : 'CL') + ', espaçamento ' + n.espacamento +
-        ', até ' + n.maxSimult + ' ao mesmo tempo, a cada ' + n.intervaloMin + ' min.');
+        ', ' + (n.maxSimult > 0 ? 'até ' + n.maxSimult + ' ao mesmo tempo' : 'sem limite (todos os nobres em casa)') + ', a cada ' + n.intervaloMin + ' min.');
       nobMostrarBolinha();
       nobRodarCiclo();
     });
