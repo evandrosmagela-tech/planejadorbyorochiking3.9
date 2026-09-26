@@ -38,5 +38,10 @@
     "status": "ativo",
     "expira": "2026-09-29",
     "obs": "Teste"
+  },
+  "aoshi": {
+    "status": "ativo",
+    "expira": "2026-10-26",
+    "obs": "Mensal"
   }
 }
