@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 72;
+  window.__ORK_VERSAO__ = 74;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -225,6 +225,24 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-26-coletor-raio',
+      data: '26/09/2026',
+      titulo: 'Coletor Hard: raio sem limite',
+      itens: [
+        'O "Raio de ação (campos)" do Coletor Hard não trava mais em 50 — coloque o quanto quiser.'
+      ]
+    },
+    {
+      id: '2026-09-26-nobre-produzir',
+      data: '26/09/2026',
+      titulo: 'Nobre Bárbaras: produzir nobres na Academia',
+      itens: [
+        'Nova opção 🏛️ "Produzir nobres na Academia" (vem desligada): a cada ciclo manda formar nobre nas aldeias do grupo que têm Academia, até o máximo por aldeia que você escolher.',
+        'Só forma quando o jogo libera o botão Formar (moedas + recurso + fazenda); sem isso, pula a aldeia. Respeita o limite de nobres da conta.',
+        'Os nobres formados entram sozinhos nos envios dos próximos ciclos.'
+      ]
+    },
     {
       id: '2026-09-26-barbaras-rapido',
       data: '26/09/2026',
@@ -1030,7 +1048,7 @@
 
         <div class="secao-titulo">⚔️ Configuração de Farm</div>
         <div class="linha"><label>Grupo de origens</label><input type="text" id="grupo" placeholder="0"></div>
-        <div class="linha"><label>Raio de ação (campos)</label><input type="number" id="raio" min="5" max="50"></div>
+        <div class="linha"><label>Raio de ação (campos)</label><input type="number" id="raio" min="1"></div>
         <div class="linha"><label>Máx. comandos/origem</label><input type="number" id="maxPorOrigem" min="1" max="100"></div>
         <div class="linha"><label>Template do assistente</label>
           <select id="modelo"><option value="a">Modelo A</option><option value="b">Modelo B</option></select></div>
@@ -1369,9 +1387,9 @@
         const setores = new Map();
         origens.forEach((o) => {
           const x0 = Math.floor((o.x - cfg.raio) / SETOR) * SETOR;
-          const x1 = Math.floor((o.x + cfg.raio) / SETOR) * SETOR;
+          const x1 = Math.min(999, Math.floor((o.x + cfg.raio) / SETOR) * SETOR); // não pede setor fora do mundo
           const y0 = Math.floor((o.y - cfg.raio) / SETOR) * SETOR;
-          const y1 = Math.floor((o.y + cfg.raio) / SETOR) * SETOR;
+          const y1 = Math.min(999, Math.floor((o.y + cfg.raio) / SETOR) * SETOR);
           for (let sx = x0; sx <= x1; sx += SETOR) {
             for (let sy = y0; sy <= y1; sy += SETOR) {
               if (sx < 0 || sy < 0) continue;
@@ -8562,7 +8580,7 @@
   function nobLer() {
     var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 3, escolta: 'light', escoltas: null, nobres: 4, intervaloUni: 'min', reforco: 2, raio: 40,
       maxSimult: 0, intervaloMin: 30, pontosMin: 0, pontosMax: 13000, priorizarBonus: true, soBonus: false,
-      bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10, vizinhasMin: 60, envioMin: 2, envioMax: 4,
+      bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10, vizinhasMin: 60, envioMin: 2, envioMax: 4, produzir: false, produzirMax: 1,
       alvos: [], explorados: [], proximoEm: 0, ultimo: null };
     try { var c = JSON.parse(localStorage.getItem(nobChave()) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     if (!Array.isArray(p.alvos)) { p.alvos = []; }
@@ -8909,6 +8927,66 @@
     return enviados;
   }
 
+  /* ---------- produzir nobres na Academia ----------
+     O jogo forma o nobre por um link simples (GET): screen=snob&action=train&h=...
+     Só aparece o botão quando a aldeia pode formar agora (moedas + recurso + fazenda). */
+  function nobLerAcademia(doc) {
+    var r = { link: null, total: 0, fila: 0, restantes: null, temAcademia: !!doc.querySelector('a[href*="screen=snob"], form[action*="screen=snob"]') };
+    var a = doc.querySelector('a.btn-recruit[href*="action=train"], a[href*="screen=snob"][href*="action=train"]');
+    if (a) { r.link = a.getAttribute('href'); }
+    doc.querySelectorAll('table').forEach(function (t) {
+      var cab = (t.querySelector('tr') || {}).textContent || '';
+      if (/Treinamento|Training/i.test(cab)) {
+        t.querySelectorAll('tr').forEach(function (tr, i) { if (!i) { return; } var m = (tr.textContent || '').match(/(\d+)\s*Nobre/i); if (m) { r.fila += +m[1]; } });
+      } else if (/Na Aldeia|Total/i.test(cab)) {
+        t.querySelectorAll('tr').forEach(function (tr) { if (!/Nobre/i.test(tr.textContent || '')) { return; }
+          tr.querySelectorAll('td').forEach(function (td) { var m = (td.textContent || '').trim().match(/^(\d+)\s*\/\s*(\d+)$/); if (m) { r.total = +m[2]; } }); });
+      }
+    });
+    var txt = (doc.body && doc.body.textContent || '').replace(/\s+/g, ' ');
+    var mr = txt.match(/Ainda podem ser produzidos:?\s*(\d+)/i);
+    if (mr) { r.restantes = +mr[1]; }
+    return r;
+  }
+  async function nobProduzirNobres(cfg, aldeias, parar) {
+    var out = { formados: 0, conferidas: 0, semBotao: 0, cheias: 0 };
+    var max = Math.max(1, parseInt(cfg.produzirMax, 10) || 1);
+    nobStatus('procurando academias');
+    var ed = await balDadosEdificios(cfg.grupo || '0');
+    var cands = aldeias.filter(function (a) { return (ed.get(a.coord + '_snob') || 0) >= 1; });
+    if (!cands.length) { nobLog('produzir nobres: nenhuma aldeia do grupo com Academia.'); return out; }
+    // quem tem menos nobre em casa primeiro
+    cands.sort(function (a, b) { return (a.tropas.snob || 0) - (b.tropas.snob || 0); });
+    var restantes = null;
+    for (var i = 0; i < cands.length && !parar(); i++) {
+      if (restantes === 0) { nobLog('produzir nobres: o limite de nobres da conta acabou (precisa cunhar mais moedas).'); break; }
+      var a = cands[i];
+      if ((a.tropas.snob || 0) >= max) { out.cheias++; continue; } // já tem nobre em casa suficiente, nem abre a página
+      while (window.__ORK_CAPTCHA_BLOQUEADO__) { nobStatus('captcha — esperando'); await gerEsperar(gerEntre(3000, 5000)); if (parar()) { return out; } }
+      nobStatus('academia ' + (i + 1) + '/' + cands.length);
+      var d = await balGetDoc('/game.php?village=' + a.id + '&screen=snob');
+      var ac = nobLerAcademia(d); out.conferidas++;
+      if (ac.restantes != null) { restantes = ac.restantes; }
+      var tem = ac.total + ac.fila;
+      for (var k = tem; k < max && !parar(); k++) {
+        if (!ac.link) { out.semBotao++; break; }
+        if (restantes === 0) { break; }
+        await gerEsperar(gerEntre(700, 1500));
+        var url = ac.link.replace(/&amp;/g, '&');
+        if (!/[?&]h=/.test(url)) { url += '&h=' + encodeURIComponent(nobCsrf()); }
+        var r = await fetch(url, { credentials: 'include' });
+        var d2 = new DOMParser().parseFromString(await r.text(), 'text/html');
+        var ac2 = nobLerAcademia(d2);
+        if (ac2.fila > ac.fila) { out.formados++; if (restantes != null) { restantes--; } nobLog('🏛️ ' + a.coord + ': formando 1 nobre (fila ' + ac2.fila + ').'); }
+        else { nobLog('🏛️ ' + a.coord + ': o jogo não aceitou formar nobre (moedas/recurso/fazenda?).'); break; }
+        ac = ac2;
+      }
+      if (tem >= max) { out.cheias++; }
+      await gerEsperar(gerEntre(600, 1300));
+    }
+    return out;
+  }
+
   /* ---------- plano: quem manda nobre pra onde ---------- */
   function nobPlanejar(cfg, aldeias, barbs, distMax, raioLido) {
     var ocupadas = {};
@@ -9044,6 +9122,14 @@
           var c3 = nobLer(); c3.alvos = cfg.alvos; c3.explorados = cfg.explorados; nobGravar(c3);
           if (i < p.plano.length - 1) { await gerEsperar(nobEntreEnvios(cfg)); }
         }
+      }
+      // 2b) produzir nobres na Academia (opcional) — ficam prontos pros próximos ciclos
+      if (!simular && cfg.produzir && !parar()) {
+        try {
+          var pr = await nobProduzirNobres(cfg, origensBase, parar);
+          res.produzidos = pr.formados;
+          nobLog('produzir nobres: ' + pr.formados + ' mandado(s) formar, ' + pr.conferidas + ' academia(s) conferida(s)' + (pr.semBotao ? ', ' + pr.semBotao + ' sem poder formar agora' : '') + (pr.cheias ? ', ' + pr.cheias + ' já no máximo' : '') + '.');
+        } catch (e) { nobLog('produzir nobres: erro — ' + (e && e.message)); }
       }
       // 3) pós-conquista (depois dos nobres, pra explorar não atrasar os envios): pesquisa, recruta e explora
       if (!simular) {
@@ -9236,6 +9322,10 @@
                 '<span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Pausa entre um envio de nobre (ou trem) e o próximo, sorteada em milissegundos entre o mínimo e o máximo. Padrão 2 a 4s = seguro. Pode baixar até 0,5s pra mandar mais rápido — quanto menor, maior o risco de captcha (se aparecer, o script para e espera você resolver).">Entre envios de nobre (seg)</span>' +
                 '<input id="ork-nob-emin" type="number" min="0.5" step="0.1" value="' + (c.envioMin == null ? 2 : c.envioMin) + '" style="width:52px;' + inp + ';padding:3px 4px;text-align:center"><span style="font-size:10px;color:#777">a</span>' +
                 '<input id="ork-nob-emax" type="number" min="0.5" step="0.1" value="' + (c.envioMax == null ? 4 : c.envioMax) + '" style="width:52px;' + inp + ';padding:3px 4px;text-align:center"></label>' +
+              '<label style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;background:#111;border:1px solid #242424;border-radius:6px;padding:3px 4px 3px 7px">' +
+                '<input id="ork-nob-prod" type="checkbox"' + (c.produzir ? ' checked' : '') + ' style="' + chk + '">' +
+                '<span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="A cada ciclo, depois de mandar os nobres, confere as aldeias do grupo que têm Academia e manda formar nobre até o máximo por aldeia (contando os que estão em casa, fora e na fila). Só forma quando o próprio jogo libera o botão Formar (moedas de ouro + recurso + fazenda). Os nobres novos entram nos envios dos próximos ciclos. Sem moeda/recurso: só pula a aldeia.">🏛️ Produzir nobres na Academia — máx. por aldeia</span>' +
+                '<input id="ork-nob-pmaxal" type="number" min="1" value="' + (c.produzirMax || 1) + '" style="width:52px;' + inp + ';padding:3px 4px;text-align:center"></label>' +
             '</div>' +
           '</div>' +
           '<div style="' + sec + '"><div style="' + stit + '">🔭 Depois da conquista</div>' +
@@ -9304,6 +9394,8 @@
       n.reforco = Math.max(1, Math.min(5, parseInt(v('ork-nob-ref').value, 10) || 2));
       n.escoltas = escoltas.filter(function (e) { return e.u && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
       n.maxSimult = Math.max(0, parseInt(v('ork-nob-max').value, 10) || 0);
+      n.produzir = v('ork-nob-prod').checked;
+      n.produzirMax = Math.max(1, parseInt(v('ork-nob-pmaxal').value, 10) || 1);
       n.envioMin = Math.max(0.5, parseFloat(v('ork-nob-emin').value) || 2);
       n.envioMax = Math.max(n.envioMin, parseFloat(v('ork-nob-emax').value) || 4);
       n.intervaloUni = v('ork-nob-uni').value === 'seg' ? 'seg' : 'min';
@@ -9525,7 +9617,7 @@
       nome: 'Nobre Bárbaras (BETA TEST)',
       abrev: 'Nobre BETA',
       icone: '👑',
-      dica: 'Conquista bárbaras sozinho: lê o mapa de perto pra longe (bônus primeiro, com o espaçamento em campos que você escolher), manda os nobres (quantos quiser por bárbara, todos da mesma aldeia, cada um com a escolta que você escolher) da aldeia mais perto que tem nobre. Quando conquista, pesquisa o explorador, recruta e a própria aldeia nova explora as bárbaras ao redor pra entrarem no Farm. Repete em ciclos de segundos ou minutos. Use o Simular antes.',
+      dica: 'Conquista bárbaras sozinho: lê o mapa de perto pra longe (bônus primeiro, com o espaçamento em campos que você escolher), manda os nobres (quantos quiser por bárbara, todos da mesma aldeia, cada um com a escolta que você escolher) da aldeia mais perto que tem nobre. Opcional: forma nobres na Academia das aldeias sozinho. Quando conquista, pesquisa o explorador, recruta e a própria aldeia nova explora as bárbaras ao redor pra entrarem no Farm. Repete em ciclos de segundos ou minutos. Use o Simular antes.',
       checar: checaNobre,
       rodar: rodarNobre,
       destino: null
