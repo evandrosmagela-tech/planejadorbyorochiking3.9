@@ -108,6 +108,9 @@
 // ==/UserScript==
 
 (function () {
+  /* Janela escondida que o próprio painel abre só pra LER uma página do jogo
+     (ex.: modelos de tropas do Gerente): aqui o painel não roda nada. */
+  try { if (window.name === 'ork-ler-pagina') { return; } } catch (e) {}
 
   /* ============================================================
      DISFARCE DE FUNÇÕES NATIVAS
@@ -205,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 64;
+  window.__ORK_VERSAO__ = 65;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -222,6 +225,16 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-26-gerente-modelos-tropas',
+      data: '26/09/2026',
+      titulo: 'Gerente Hard (BETA): modelos de tropas encontrados',
+      itens: [
+        'Corrigido: o Gerente dizia "Nenhum modelo de tropas encontrado" mesmo tendo modelos (ex.: farmar).',
+        'Agora ele lê os modelos direto da caixa "Copiar do modelo" da aba Tropas do Gerente de Conta — tropas e reserva de população/recursos — sem salvar nada lá.',
+        'Clique em 🔄 Ler grupos e modelos do jogo pra aparecerem na lista.'
+      ]
+    },
     {
       id: '2026-09-26-nobre-bb-2',
       data: '26/09/2026',
@@ -7809,7 +7822,65 @@
     });
     return modelos;
   }
+  // Os modelos de tropas do Gerente de Conta não ficam numa tabela: só aparecem na caixa
+  // "Copiar do modelo" da aba Tropas, e as quantidades vêm do JavaScript da página.
+  // Então abrimos essa aba numa janela escondida, escolhemos cada modelo na caixa
+  // (igual você faria) e lemos os campos que o jogo preenche. Nada é salvo.
+  function gerLerModelosPelaCaixa() {
+    return new Promise(function (resolver) {
+      var fr = document.createElement('iframe'), acabou = false;
+      fr.name = 'ork-ler-pagina';
+      fr.style.cssText = 'position:fixed;left:-3000px;top:0;width:1000px;height:700px;visibility:hidden;border:0';
+      function fim(lista) { if (acabou) { return; } acabou = true; try { fr.remove(); } catch (e) {} resolver(lista || []); }
+      var limite = setTimeout(function () { gerLog('modelos de tropas: a aba Tropas demorou demais pra abrir.'); fim([]); }, 20000);
+      fr.onload = function () {
+        setTimeout(async function () {
+          var lista = [];
+          try {
+            var w = fr.contentWindow, d = fr.contentDocument;
+            var sel = [].slice.call(d.querySelectorAll('select')).filter(function (s) {
+              return [].slice.call(s.options).some(function (o) { return /vazio|empty/i.test(o.text); });
+            })[0] || d.querySelector('select[name*="template"]');
+            if (!sel) { gerLog('modelos de tropas: não achei a caixa "Copiar do modelo" na aba Tropas.'); clearTimeout(limite); fim([]); return; }
+            var form = sel.form || d;
+            var unidades = gerTropasDoMundo().concat(['snob']);
+            var ops = [].slice.call(sel.options).filter(function (o) { return o.value !== '' && !/vazio|empty/i.test(o.text); });
+            for (var i = 0; i < ops.length; i++) {
+              sel.value = ops[i].value;
+              try { if (w.jQuery) { w.jQuery(sel).trigger('change'); } else { sel.dispatchEvent(new w.Event('change', { bubbles: true })); } } catch (e) {}
+              await gerEsperar(350);
+              var alvo = {}, buffer = [0, 0, 0, 0];
+              unidades.forEach(function (u) {
+                var inp = form.querySelector('input[name="' + u + '"]');
+                var n = inp ? gerNum(inp.value) : 0;
+                if (n > 0) { alvo[u] = n; }
+              });
+              form.querySelectorAll('input[name^="buffer"]').forEach(function (inp) {
+                var nm = inp.getAttribute('name') || '', n = gerNum(inp.value);
+                if (/wood/.test(nm)) { buffer[0] = n; } else if (/stone|clay/.test(nm)) { buffer[1] = n; }
+                else if (/iron/.test(nm)) { buffer[2] = n; } else if (/pop/.test(nm)) { buffer[3] = n; }
+              });
+              if (Object.keys(alvo).length) { lista.push({ nome: (ops[i].text || '').trim(), unidades: alvo, buffer: buffer }); }
+            }
+          } catch (e) { gerLog('modelos de tropas: erro lendo a caixa — ' + (e && e.message)); }
+          clearTimeout(limite);
+          fim(lista);
+        }, 700);
+      };
+      fr.src = game_data.link_base_pure + 'am_troops';
+      document.body.appendChild(fr);
+    });
+  }
+  var gerCacheTropas = null;
   async function gerLerModelosTropas() {
+    if (gerCacheTropas && Date.now() - gerCacheTropas.t < 10 * 60000) { return gerCacheTropas.m; }
+    var m = [];
+    try { m = await gerLerModelosPelaCaixa(); } catch (e) {}
+    if (!m.length) { m = await gerLerModelosTropasTabela(); }
+    if (m.length) { gerCacheTropas = { t: Date.now(), m: m }; }
+    return m;
+  }
+  async function gerLerModelosTropasTabela() {
     var chaveUrl = 'ork_gerente_url_tropas_' + game_data.world;
     var tentativas = [];
     try { var salvo = localStorage.getItem(chaveUrl); if (salvo) { tentativas.push(salvo); } } catch (e) {}
@@ -8218,7 +8289,7 @@
       var el = document.getElementById('ork-ger-cat');
       if (!cat.quando) { el.innerHTML = '<span style="color:#ffb347">Ainda não li os grupos e modelos deste mundo — clique em 🔄.</span>'; return; }
       el.textContent = 'Lido às ' + new Date(cat.quando).toLocaleTimeString() + ': ' + cat.grupos.length + ' grupo(s), ' + cat.construcao.length +
-        ' modelo(s) de construção, ' + cat.tropas.length + ' modelo(s) de tropas.' + (cat.tropas.length ? '' : ' (Nenhum modelo de tropas encontrado.)');
+        ' modelo(s) de construção, ' + cat.tropas.length + ' modelo(s) de tropas.' + (cat.tropas.length ? '' : ' (Nenhum modelo de tropas encontrado — crie em Gerente de Conta → Tropas → Gerenciar modelos e clique em 🔄.)');
     }
     function opcoes(lista, atual, rotuloAtual) {
       var achou = lista.some(function (o) { return String(o[0]) === String(atual); });
@@ -8250,7 +8321,8 @@
     async function lerDoJogo() {
       var btn = document.getElementById('ork-ger-ler');
       btn.disabled = true; btn.textContent = 'Lendo...';
-      try { cat = await gerAtualizarCatalogo(); }
+      gerCacheTropas = null;
+    try { cat = await gerAtualizarCatalogo(); }
       catch (e) { document.getElementById('ork-ger-cat').innerHTML = '<span style="color:#ff8080">Erro ao ler: ' + gerHtml(e && e.message) + '</span>'; }
       btn.disabled = false; btn.textContent = '🔄 Ler grupos e modelos do jogo';
       mostrarCatalogo(); desenharRegras();
