@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 66;
+  window.__ORK_VERSAO__ = 67;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -225,6 +225,17 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-26-painel-v67',
+      data: '26/09/2026',
+      titulo: 'Painel novo, mais organizado',
+      itens: [
+        'Ferramentas separadas por seção: Farm, Ataque e nobres, Coleta, Conta e Automação — com bolinha verde nas que estão rodando.',
+        'A versão aparece no topo do painel (ex.: Versão 67).',
+        'Nomes corrigidos: Coletar Bárbaras, Coletor BB Assistente e Ocultar Perfil.',
+        'Janela do Coletar Bárbaras com o visual novo, nas mesmas cores do painel.'
+      ]
+    },
     {
       id: '2026-09-26-dormindo-nomes',
       data: '26/09/2026',
@@ -4590,10 +4601,10 @@
       }
       var achadas = [], vistos = {}, lote = 8, feitos = 0, falhas = 0;
       window.__orkBarbScan = true;
-      $(`#${o}_scan`).prop("disabled", true).val("Buscando...");
+      $(`#${o}_scan`).prop("disabled", true).text("⏳ Buscando...");
       function fim(msg) {
         window.__orkBarbScan = false;
-        $(`#${o}_scan`).prop("disabled", false).val("Scan");
+        $(`#${o}_scan`).prop("disabled", false).text("🔍 Scan");
         if (!$(`#${o}_popup_container`).length) return;
         achadas.sort(function (a, b) { return a.distance - b.distance; });
         u(achadas);
@@ -4629,7 +4640,83 @@
           .then(function () { feitos++; setTimeout(function () { proximo(i + lote); }, 90 + Math.floor(Math.random() * 90)); });
       }
       proximo(0);
-    }function u(n){r=n,_()}function g(n){let e=function(n){let e=n.bonus??n.bonus_id??n.bonusId??null;if(null==e)return null;let o=Array.isArray(e)?e:[e];for(let n of o)if(l[n])return l[n];return null}(n),o=e?s.indexOf(e):-1;return-1===o?s.length:o}function _(){i=function(e){if("spaced"===n.strategy){let o=Math.max(0,parseFloat(n.spacing)||0),a=[],G={},T=Math.max(1,Math.ceil(o)),K=(x,y)=>Math.floor(x/T)+"_"+Math.floor(y/T);return e.forEach(n=>{let gx=Math.floor(n.x/T),gy=Math.floor(n.y/T),ok=!0;for(let ix=gx-1;ix<=gx+1&&ok;ix++)for(let iy=gy-1;iy<=gy+1&&ok;iy++){let L=G[ix+"_"+iy];if(L)for(let e of L)if(Math.sqrt((e.x-n.x)**2+(e.y-n.y)**2)<o){ok=!1;break}}ok&&(a.push(n),(G[K(n.x,n.y)]=G[K(n.x,n.y)]||[]).push(n))}),a}return e}(r),n.prioritizeBonus&&(i=i.slice().sort((n,e)=>g(n)-g(e))),$(`#${o}_count`).text(i.length),x()}function x(){let e=n.format,a=i.map(n=>"coords_comma"==e?`${n.x}|${n.y},`:"link"==e?`[village]${n.x}|${n.y}[/village]`:`${n.x}|${n.y}`);$(`#${o}_textarea`).val(a.join(" "))}function b(){let n=document.getElementById(`${o}_textarea`);n.select(),n.setSelectionRange(0,999999),navigator.clipboard.writeText(n.value).then(()=>{UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)}).catch(()=>{document.execCommand("copy"),UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)})}!function(){if($(`#${o}_popup_container`).length)return void UI.ErrorMessage("Script já foi carregado, recarregue a página antes de chamá-lo novamente");let i=window.location.search.match(/t=\d+/g);if(i&&(t=i),-1==window.location.href.indexOf(`${a}`))return UI.ErrorMessage("Script precisa ser executado no mapa"),void(window.location.href=window.location.pathname+`?${t?t+"&":""}${a}`);!function(){let e=window.localStorage.getItem(`${o}_Settings`);n=e?JSON.parse(e):{mode:"loaded",radius:30,format:"coords",strategy:"cluster",spacing:5,prioritizeBonus:!0}}(),function(){let a=`\n    <div id="${o}_popup_container" class="ork_popup_container">\n        <div>\n            <a class="popup_box_close tooltip-delayed ork_close" id="${o}_popup_cross" href="javascript:void(0)">✕</a>\n            <div id="${o}_popup_content" class="ork_popup_content">\n                <h3 class="ork_centered">${e}</h3>\n\n                <div style="padding:5px;">\n                    <label class="ork_label">Fonte de dados</label>\n                    <select id="${o}_mode" class="ork_select">\n                        <option value="loaded">Mapa carregado atualmente</option>\n                        <option value="radius">Scan ao vivo: dentro do raio</option>\n                    </select>\n\n                    <div id="${o}_radiusRow" class="ork_row" style="display:none;">\n                        <span>Raio (campos): </span>\n                        <input type="text" id="${o}_radius" class="ork_input" value="${n.radius}" size="4">\n                    </div>\n\n                    <br>\n                    <label class="ork_label">Estratégia de nobre</label>\n                    <select id="${o}_strategy" class="ork_select">\n                        <option value="cluster">Cluster (aldeias coladas)</option>\n                        <option value="spaced">Espaçada (com farm ao redor)</option>\n                    </select>\n\n                    <div id="${o}_spacingRow" class="ork_row" style="display:none;">\n                        <span>Espaçamento mínimo (campos): </span>\n                        <input type="text" id="${o}_spacing" class="ork_input" value="${n.spacing}" size="4">\n                    </div>\n\n                    <br>\n                    <label class="ork_label">Preferência de aldeia bônus</label>\n                    <div class="ork_row">\n                        <label class="ork_checkbox_label">\n                            <input type="checkbox" id="${o}_prioritizeBonus" ${n.prioritizeBonus?"checked":""}>\n                            Priorizar aldeias bônus\n                        </label>\n                        <div class="ork_hint">Prioriza: Quartel &gt; Estábulo &gt; Fazenda &gt; Recursos (se não achar, pega outras aldeias normalmente)</div>\n                    </div>\n\n                    <br>\n                    <input type="submit" class="ork_btn" id="${o}_scan" value="Scan">\n                    <br><br>\n                    <span><b id="${o}_count" class="ork_gold">0</b> aldeias bárbaras encontradas</span>\n                    <br><br>\n                    <textarea id="${o}_textarea" rows="8" cols="20" class="ork_textarea" readonly></textarea>\n                    <br><br>\n                    <select id="${o}_format" class="ork_select">\n                        <option value="coords">x|y</option>\n                        <option value="coords_comma">x|y,</option>\n                        <option value="link">BB link</option>\n                    </select>\n                    <input type="submit" class="ork_btn" id="${o}_copy" value="Copiar">\n                </div>\n            </div>\n        </div>\n    </div>\n    <style>\n        .ork_popup_container {\n            border: 1px solid rgba(255,196,0,.16);\n            border-radius: 16px;\n            display: block;\n            position: fixed;\n            top: 8%;\n            left: 65%;\n            z-index: 14000;\n            background: linear-gradient(165deg, rgba(26,26,26,.97), rgba(8,8,8,.98));\n            box-shadow: 0 24px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.4);\n            font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;\n        }\n        .ork_popup_content {\n            min-width: 250px;\n            padding: 8px 10px 12px 10px;\n            color: #ffdc63;\n        }\n        .ork_centered {\n            text-align: center;\n            color: #e8ac0a;\n            text-shadow: 0 0 6px rgba(212,175,55,0.5);\n            letter-spacing: 1px;\n            margin: 4px 0 10px 0;\n            padding-right: 26px;\n            box-sizing: border-box;\n            font-size: 14px;\n            white-space: nowrap;\n            border-bottom: 1px solid #e8ac0a;\n            padding-bottom: 6px;\n        }\n        .ork_close {\n            position: absolute;\n            top: 6px;\n            right: 8px;\n            width: 16px;\n            height: 16px;\n            line-height: 16px;\n            text-align: center;\n            color: #e8ac0a;\n            font-weight: bold;\n            font-size: 13px;\n            cursor: pointer;\n            text-decoration: none;\n            z-index: 1;\n        }\n        .ork_label {\n            display: block;\n            font-size: 11px;\n            color: #c9a227;\n            margin-top: 6px;\n            margin-bottom: 2px;\n            text-transform: uppercase;\n        }\n        .ork_select, .ork_input, .ork_textarea {\n            background: #111111;\n            color: #ffdc63;\n            border: 1px solid #e8ac0a;\n            border-radius: 4px;\n            padding: 3px 5px;\n        }\n        .ork_select { width: 100%; }\n        .ork_textarea { width: 100%; box-sizing: border-box; resize: vertical; }\n        .ork_row { margin-top: 4px; }\n        .ork_checkbox_label {\n            display: flex;\n            align-items: center;\n            gap: 6px;\n            font-size: 12px;\n            cursor: pointer;\n        }\n        .ork_hint {\n            font-size: 10px;\n            color: #8a7327;\n            font-style: italic;\n            margin-top: 2px;\n        }\n        .ork_gold { color: #e8ac0a; }\n        .ork_btn {\n            background: #e8ac0a;\n            color: #0c0c0c;\n            font-weight: bold;\n            border: none;\n            border-radius: 4px;\n            padding: 5px 12px;\n            margin-top: 6px;\n            cursor: pointer;\n        }\n        .ork_btn:hover { background: #ffdc63; }\n    </style>`;$("body").append(a),$(`#${o}_popup_container`).draggable(),$(`#${o}_popup_cross`).click(()=>$(`#${o}_popup_container`).remove()),$(`#${o}_mode`).val(n.mode),$(`#${o}_strategy`).val(n.strategy),$(`#${o}_format`).val(n.format),$(`#${o}_radiusRow`).toggle("radius"===n.mode),$(`#${o}_spacingRow`).toggle("spaced"===n.strategy),$(`#${o}_prioritizeBonus`).prop("checked",n.prioritizeBonus),$(`#${o}_mode`).on("change",function(){n.mode=this.value,c(),$(`#${o}_radiusRow`).toggle("radius"===this.value)}),$(`#${o}_strategy`).on("change",function(){n.strategy=this.value,c(),$(`#${o}_spacingRow`).toggle("spaced"===this.value),_()}),$(`#${o}_radius`).click(function(){this.focus(),this.select()}),$(`#${o}_radius`).on("change",function(){n.radius=parseFloat(this.value)||n.radius,c()}),$(`#${o}_spacing`).click(function(){this.focus(),this.select()}),$(`#${o}_spacing`).on("change",function(){n.spacing=parseFloat(this.value)||n.spacing,c(),_()}),$(`#${o}_prioritizeBonus`).on("change",function(){n.prioritizeBonus=this.checked,c(),_()}),$(`#${o}_format`).on("change",function(){n.format=this.value,c(),x()}),$(`#${o}_copy`).click(b),$(`#${o}_scan`).click(function(){"loaded"===n.mode?p():"radius"===n.mode&&d(n.radius)}),"radius"===n.mode?$(`#${o}_textarea`).val("Modo raio ("+n.radius+" campos): clique em Scan para buscar."):p()}()}()}()
+    }function u(n){r=n,_()}function g(n){let e=function(n){let e=n.bonus??n.bonus_id??n.bonusId??null;if(null==e)return null;let o=Array.isArray(e)?e:[e];for(let n of o)if(l[n])return l[n];return null}(n),o=e?s.indexOf(e):-1;return-1===o?s.length:o}function _(){i=function(e){if("spaced"===n.strategy){let o=Math.max(0,parseFloat(n.spacing)||0),a=[],G={},T=Math.max(1,Math.ceil(o)),K=(x,y)=>Math.floor(x/T)+"_"+Math.floor(y/T);return e.forEach(n=>{let gx=Math.floor(n.x/T),gy=Math.floor(n.y/T),ok=!0;for(let ix=gx-1;ix<=gx+1&&ok;ix++)for(let iy=gy-1;iy<=gy+1&&ok;iy++){let L=G[ix+"_"+iy];if(L)for(let e of L)if(Math.sqrt((e.x-n.x)**2+(e.y-n.y)**2)<o){ok=!1;break}}ok&&(a.push(n),(G[K(n.x,n.y)]=G[K(n.x,n.y)]||[]).push(n))}),a}return e}(r),n.prioritizeBonus&&(i=i.slice().sort((n,e)=>g(n)-g(e))),$(`#${o}_count`).text(i.length),x()}function x(){let e=n.format,a=i.map(n=>"coords_comma"==e?`${n.x}|${n.y},`:"link"==e?`[village]${n.x}|${n.y}[/village]`:`${n.x}|${n.y}`);$(`#${o}_textarea`).val(a.join(" "))}function b(){let n=document.getElementById(`${o}_textarea`);n.select(),n.setSelectionRange(0,999999),navigator.clipboard.writeText(n.value).then(()=>{UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)}).catch(()=>{document.execCommand("copy"),UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)})}!function(){if($(`#${o}_popup_container`).length)return void UI.ErrorMessage("Script já foi carregado, recarregue a página antes de chamá-lo novamente");let i=window.location.search.match(/t=\d+/g);if(i&&(t=i),-1==window.location.href.indexOf(`${a}`))return UI.ErrorMessage("Script precisa ser executado no mapa"),void(window.location.href=window.location.pathname+`?${t?t+"&":""}${a}`);!function(){let e=window.localStorage.getItem(`${o}_Settings`);n=e?JSON.parse(e):{mode:"loaded",radius:30,format:"coords",strategy:"cluster",spacing:5,prioritizeBonus:!0}}(),function(){let a=`
+    <div id="${o}_popup_container" class="ork_popup_container">
+      <div class="ork_bf_head">
+        <span class="ork_bf_title">🗺️ COLETAR BÁRBARAS</span>
+        <span class="ork_bf_sub">Barb Finder</span>
+        <a class="ork_close" id="${o}_popup_cross" href="javascript:void(0)" title="Fechar">✕</a>
+      </div>
+      <div id="${o}_popup_content" class="ork_popup_content">
+        <div class="ork_card">
+          <div class="ork_label">📡 Fonte de dados</div>
+          <select id="${o}_mode" class="ork_select">
+            <option value="loaded">Mapa carregado atualmente</option>
+            <option value="radius">Scan ao vivo: dentro do raio</option>
+          </select>
+          <div id="${o}_radiusRow" style="display:none;"><div class="ork_field"><span>Raio (campos)</span><input type="text" id="${o}_radius" class="ork_input" value="${n.radius}" size="4"></div></div>
+        </div>
+        <div class="ork_card">
+          <div class="ork_label">👑 Estratégia de nobre</div>
+          <select id="${o}_strategy" class="ork_select">
+            <option value="cluster">Cluster (aldeias coladas)</option>
+            <option value="spaced">Espaçada (com farm ao redor)</option>
+          </select>
+          <div id="${o}_spacingRow" style="display:none;"><div class="ork_field"><span>Espaçamento mínimo (campos)</span><input type="text" id="${o}_spacing" class="ork_input" value="${n.spacing}" size="4"></div></div>
+          <label class="ork_checkbox_label"><input type="checkbox" id="${o}_prioritizeBonus" ${n.prioritizeBonus?"checked":""}> Priorizar aldeias bônus</label>
+          <div class="ork_hint">Quartel › Estábulo › Fazenda › Recursos — se não achar, pega as outras normalmente.</div>
+        </div>
+        <button type="button" class="ork_btn ork_btn_big" id="${o}_scan">🔍 Scan</button>
+        <div class="ork_card">
+          <div class="ork_result"><b id="${o}_count" class="ork_gold">0</b><span>aldeias bárbaras encontradas</span></div>
+          <textarea id="${o}_textarea" rows="7" cols="20" class="ork_textarea" readonly></textarea>
+          <div class="ork_copyrow">
+            <select id="${o}_format" class="ork_select">
+              <option value="coords">x|y</option>
+              <option value="coords_comma">x|y,</option>
+              <option value="link">BB link</option>
+            </select>
+            <button type="button" class="ork_btn" id="${o}_copy">📋 Copiar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <style>
+      .ork_popup_container{position:fixed;top:8%;left:62%;z-index:14000;width:360px;max-width:calc(100vw - 20px);
+        background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));border:1px solid rgba(255,196,0,.16);border-radius:16px;
+        box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.4);overflow:hidden;color:#ececec;
+        font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif}
+      .ork_bf_head{background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;padding:11px 14px;display:flex;align-items:center;gap:8px;cursor:move;
+        box-shadow:0 1px 0 rgba(255,255,255,.35) inset}
+      .ork_bf_title{font-weight:800;font-size:13px;letter-spacing:1px}
+      .ork_bf_sub{font-size:9px;font-weight:800;background:#1a1400;color:#ffcf3d;padding:2px 8px;border-radius:20px;letter-spacing:.4px}
+      .ork_close{margin-left:auto;width:22px;height:22px;line-height:22px;text-align:center;border-radius:50%;background:rgba(0,0,0,.1);
+        color:#1a1400!important;font-weight:800;font-size:12px;text-decoration:none!important;cursor:pointer}
+      .ork_close:hover{background:rgba(0,0,0,.25)}
+      .ork_popup_content{padding:10px 12px 12px}
+      .ork_card{background:#141414;border:1px solid #262626;border-radius:10px;padding:9px 10px;margin-bottom:8px}
+      .ork_label{font-size:9.5px;color:#8a8a8a;font-weight:800;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+      .ork_select,.ork_input,.ork_textarea{background:#0e0e0e;color:#ececec;border:1px solid rgba(255,255,255,.12);border-radius:7px;
+        padding:6px 8px;font-size:11.5px;font-family:inherit;box-sizing:border-box;outline:none}
+      .ork_select:focus,.ork_input:focus,.ork_textarea:focus{border-color:rgba(255,196,0,.5)}
+      .ork_select{width:100%}
+      .ork_input{width:70px;text-align:center}
+      .ork_field{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:11.5px;color:#bbb}
+      .ork_field span{flex:1}
+      .ork_checkbox_label{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#ccc;cursor:pointer;margin-top:9px}
+      .ork_checkbox_label input{accent-color:#e8ac0a;width:14px;height:14px;margin:0}
+      .ork_hint{font-size:10px;color:#777;margin-top:4px;line-height:1.4}
+      .ork_gold{color:#ffd84d;font-size:18px;font-weight:800}
+      .ork_result{display:flex;align-items:baseline;gap:7px;font-size:11.5px;color:#aaa;margin-bottom:7px}
+      .ork_textarea{width:100%;resize:vertical;font-family:Consolas,monospace;color:#ffdc63;line-height:1.45}
+      .ork_copyrow{display:flex;gap:6px;margin-top:7px}
+      .ork_copyrow .ork_select{flex:1}
+      .ork_btn{background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#1a1400;font-weight:800;border:none;border-radius:8px;padding:7px 14px;
+        cursor:pointer;font-size:11.5px;font-family:inherit;box-shadow:0 4px 12px rgba(232,172,10,.25);transition:transform .12s,box-shadow .12s}
+      .ork_btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(232,172,10,.4)}
+      .ork_btn:disabled{opacity:.6;cursor:wait;transform:none}
+      .ork_btn_big{width:100%;padding:10px 0;font-size:12.5px;margin-bottom:8px;letter-spacing:.3px}
+    </style>`;$("body").append(a),$(`#${o}_popup_container`).draggable(),$(`#${o}_popup_cross`).click(()=>$(`#${o}_popup_container`).remove()),$(`#${o}_mode`).val(n.mode),$(`#${o}_strategy`).val(n.strategy),$(`#${o}_format`).val(n.format),$(`#${o}_radiusRow`).toggle("radius"===n.mode),$(`#${o}_spacingRow`).toggle("spaced"===n.strategy),$(`#${o}_prioritizeBonus`).prop("checked",n.prioritizeBonus),$(`#${o}_mode`).on("change",function(){n.mode=this.value,c(),$(`#${o}_radiusRow`).toggle("radius"===this.value)}),$(`#${o}_strategy`).on("change",function(){n.strategy=this.value,c(),$(`#${o}_spacingRow`).toggle("spaced"===this.value),_()}),$(`#${o}_radius`).click(function(){this.focus(),this.select()}),$(`#${o}_radius`).on("change",function(){n.radius=parseFloat(this.value)||n.radius,c()}),$(`#${o}_spacing`).click(function(){this.focus(),this.select()}),$(`#${o}_spacing`).on("change",function(){n.spacing=parseFloat(this.value)||n.spacing,c(),_()}),$(`#${o}_prioritizeBonus`).on("change",function(){n.prioritizeBonus=this.checked,c(),_()}),$(`#${o}_format`).on("change",function(){n.format=this.value,c(),x()}),$(`#${o}_copy`).click(b),$(`#${o}_scan`).click(function(){"loaded"===n.mode?p():"radius"===n.mode&&d(n.radius)}),"radius"===n.mode?$(`#${o}_textarea`).val("Modo raio ("+n.radius+" campos): clique em Scan para buscar."):p()}()}()}()
   }
 
   function checaPerfil() {
@@ -9314,8 +9401,8 @@
     },
     {
       id: 'barbaras',
-      nome: 'Coletar Barbaras Mapa',
-      abrev: 'Bárbaras',
+      nome: 'Coletar Bárbaras',
+      abrev: 'Coletar Bárbaras',
       icone: '🗺️',
       categoria: 'Coleta',
       dica: 'Ao clicar, leva para o Mapa e o coletor de bárbaras abre sozinho ao chegar.',
@@ -9338,8 +9425,8 @@
     },
     {
       id: 'ocultar',
-      nome: 'Ocultar Atacadas Perfil',
-      abrev: 'Ocultar',
+      nome: 'Ocultar Perfil',
+      abrev: 'Ocultar Perfil',
       icone: '🙈',
       dica: 'Digite o nick do jogador — o painel busca no ranking, abre o perfil e exibe todas as aldeias dele. Depois é só clicar em "Ativar agora".',
       checar: checaOcultar,
@@ -9349,8 +9436,8 @@
     },
     {
       id: 'coletorfarm',
-      nome: 'Coletar BB no Mapa',
-      abrev: 'Coletar BB no Mapa',
+      nome: 'Coletor BB Assistente',
+      abrev: 'Coletor BB Assistente',
       icone: '🧺',
       dica: 'Ao clicar, leva para o Mapa e a lista de bárbaros próximos (com os ícones de farm) abre sozinha ao chegar.',
       checar: checaColetorFarm,
@@ -9424,6 +9511,13 @@
     }
   ];
 
+  var ORK_SECOES = [
+    ['🌾 Farm', ['farmar', 'farmdormindo', 'keypress', 'coletorfarm']],
+    ['⚔️ Ataque e nobres', ['ataque', 'nobrebb', 'defender']],
+    ['🗺️ Coleta', ['barbaras', 'perfil', 'ocultar']],
+    ['🏰 Conta', ['gerente', 'balanceador', 'cunhar', 'rename', 'cancelar']],
+    ['♾️ Automação', ['auto247']]
+  ];
   var FERRAMENTAS_POR_ID = {};
   FERRAMENTAS.forEach(function (f) { FERRAMENTAS_POR_ID[f.id] = f; });
 
@@ -9770,7 +9864,7 @@
      ESTILO
   ============================================================ */
   var css = `
-    #ork-painel{position:fixed;top:60px;right:16px;width:368px;
+    #ork-painel{position:fixed;top:60px;right:16px;width:384px;max-width:calc(100vw - 24px);
       background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));
       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
       border:1px solid rgba(255,196,0,.16);border-radius:18px;
@@ -9788,20 +9882,32 @@
     #ork-header button{cursor:pointer;border:none;background:rgba(0,0,0,.08);color:#1a1400;font-weight:800;font-size:14px;
       width:22px;height:22px;line-height:22px;border-radius:50%;transition:background .15s ease,transform .15s ease}
     #ork-header button:hover{background:rgba(0,0,0,.22);transform:scale(1.08)}
-    #ork-tabs{display:flex;flex-wrap:wrap;gap:5px;padding:10px 10px 8px;border-bottom:1px solid rgba(255,255,255,.06);
-      background:rgba(0,0,0,.22)}
-    .ork-tab{flex:1 1 auto;min-width:76px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);
-      color:#a8a8a8;font-size:10.5px;font-weight:600;padding:7px 5px;border-radius:9px;cursor:pointer;
-      text-align:center;white-space:nowrap;transition:all .16s ease}
-    .ork-tab:hover{border-color:rgba(255,196,0,.35);color:#f2f2f2;background:rgba(255,255,255,.06)}
+    #ork-header .ork-ver{background:rgba(26,20,0,.14);color:#1a1400;font-size:9.5px;font-weight:800;padding:3px 8px;border-radius:20px;
+      letter-spacing:.3px;text-transform:none;border:1px solid rgba(26,20,0,.18)}
+    #ork-tabs{padding:8px 10px 10px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.22);
+      max-height:calc(100vh - 360px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#3a3a3a transparent}
+    .ork-sec{margin-top:6px}
+    .ork-sec-tit{font-size:9px;font-weight:800;color:#8a7327;text-transform:uppercase;letter-spacing:.9px;margin:0 2px 5px;
+      display:flex;align-items:center;gap:6px}
+    .ork-sec-tit:after{content:'';flex:1;height:1px;background:linear-gradient(90deg,rgba(255,196,0,.22),transparent)}
+    .ork-sec-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+    .ork-tab{position:relative;display:flex;align-items:center;gap:6px;min-width:0;background:rgba(255,255,255,.035);
+      border:1px solid rgba(255,255,255,.07);color:#b5b5b5;font-size:10.5px;font-weight:600;padding:7px 8px;border-radius:9px;
+      cursor:pointer;text-align:left;transition:all .16s ease;font-family:inherit;line-height:1.2}
+    .ork-tab-ic{font-size:12px;flex:0 0 auto}
+    .ork-tab-txt{flex:1;min-width:0;overflow-wrap:anywhere}
+    .ork-tab-on{display:none;flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 2px rgba(74,222,128,.2),0 0 8px #4ade80}
+    .ork-tab.ork-rodando .ork-tab-on{display:inline-block}
+    .ork-tab:hover{border-color:rgba(255,196,0,.35);color:#f2f2f2;background:rgba(255,255,255,.06);transform:translateY(-1px)}
     .ork-tab.ork-tab-ativa{background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#1a1400;border-color:transparent;
       box-shadow:0 4px 14px rgba(232,172,10,.35);font-weight:800}
-    #ork-body{padding:16px}
+    #ork-body{padding:14px 16px 16px}
     #ork-content-titulo{font-size:15px;font-weight:800;color:#ffd84d;margin-bottom:8px;display:flex;align-items:center;gap:8px;
       letter-spacing:.2px}
     .ork-tag-tipo{font-size:9px;font-weight:800;color:#1a1400;background:linear-gradient(100deg,#ffc400,#ffe27a);
       padding:2px 8px;border-radius:9px;letter-spacing:.3px}
-    #ork-content-dica{font-size:11.5px;color:#9b9b9b;line-height:1.55;margin-bottom:14px;min-height:34px}
+    #ork-content-dica{font-size:11.5px;color:#9b9b9b;line-height:1.55;margin-bottom:14px;min-height:34px;
+      background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:9px 11px}
     .ork-btn-grande{width:100%;background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#1a1400;border:none;
       border-radius:10px;font-weight:800;font-size:13px;padding:11px 12px;cursor:pointer;letter-spacing:.3px;
       box-shadow:0 6px 16px rgba(232,172,10,.25);transition:transform .12s ease,box-shadow .12s ease}
@@ -9827,15 +9933,24 @@
   /* ============================================================
      HTML DO PAINEL
   ============================================================ */
-  var tabsHtml = FERRAMENTAS.map(function (f) {
-    return '<button class="ork-tab" data-id="' + f.id + '">' + f.icone + ' ' + (f.abrev || f.nome.split(' ')[0]) + '</button>';
+  function orkBotaoAba(f) {
+    return '<button class="ork-tab" data-id="' + f.id + '" title="' + String(f.nome).replace(/"/g, '&quot;') + '"><span class="ork-tab-ic">' + f.icone + '</span>' +
+      '<span class="ork-tab-txt">' + (f.abrev || f.nome.split(' ')[0]) + '</span><i class="ork-tab-on" title="Rodando"></i></button>';
+  }
+  var orkUsadas = {};
+  var tabsHtml = ORK_SECOES.map(function (s) {
+    var fs = s[1].map(function (id) { return FERRAMENTAS_POR_ID[id]; }).filter(Boolean);
+    fs.forEach(function (f) { orkUsadas[f.id] = 1; });
+    return fs.length ? '<div class="ork-sec"><div class="ork-sec-tit">' + s[0] + '</div><div class="ork-sec-grid">' + fs.map(orkBotaoAba).join('') + '</div></div>' : '';
   }).join('');
+  var orkSobras = FERRAMENTAS.filter(function (f) { return !orkUsadas[f.id]; });
+  if (orkSobras.length) { tabsHtml += '<div class="ork-sec"><div class="ork-sec-tit">✨ Outras</div><div class="ork-sec-grid">' + orkSobras.map(orkBotaoAba).join('') + '</div></div>'; }
 
   var painel = document.createElement('div');
   painel.id = 'ork-painel';
   painel.innerHTML =
     '<div id="ork-header">' +
-      '<div class="ork-title">PAINEL <span class="ork-badge">OROCHIKING</span></div>' +
+      '<div class="ork-title">PAINEL <span class="ork-badge">OROCHIKING</span><span class="ork-ver">Versão ' + (window.__ORK_VERSAO__ || '?') + '</span></div>' +
       '<div class="ork-btns">' +
         '<button id="ork-min" title="Minimizar">–</button>' +
         '<button id="ork-close" title="Fechar">&times;</button>' +
@@ -9860,7 +9975,7 @@
     '<div id="ork-footer">' +
       (window.__ORK_DUPLICADO__ ? '<span style="color:#ff9d5c">⚠ Há outra cópia do painel instalada no Tampermonkey — desative a antiga.</span><br>' : '') +
       (textoLicenca() ? '🔑 ' + textoLicenca() + '<br>' : '') +
-      'v' + (window.__ORK_VERSAO__ || '?') + ' · Escolha a aba e clique em Ativar — o script já abre no lugar certo.' +
+      '<b style="color:#8a7327">Versão ' + (window.__ORK_VERSAO__ || '?') + '</b> · Escolha a ferramenta e clique em Ativar — o script já abre no lugar certo.' +
     '</div>';
   document.body.appendChild(painel);
 
@@ -9868,6 +9983,20 @@
      Pequeno atraso pra não competir com a montagem do painel. */
 
   var ferramentaSelecionada = FERRAMENTAS[0];
+
+  /* bolinha verde nas abas das ferramentas que estão rodando */
+  function orkMarcarRodando() {
+    var on = {};
+    try { on.gerente = gerLer().ativo; } catch (e) {}
+    try { on.nobrebb = nobLer().ativo; } catch (e) {}
+    try { on.balanceador = balLer().ativo; } catch (e) {}
+    try { on.auto247 = autoLer().ativo; } catch (e) {}
+    try { on.farmar = !!document.getElementById('fh-fechar') && localStorage.getItem('ork_retomar_dormindo') !== '1'; } catch (e) {}
+    try { on.farmdormindo = !!document.getElementById('fh-fechar') && localStorage.getItem('ork_retomar_dormindo') === '1'; } catch (e) {}
+    document.querySelectorAll('#ork-tabs .ork-tab').forEach(function (t) { t.classList.toggle('ork-rodando', !!on[t.getAttribute('data-id')]); });
+  }
+  orkMarcarRodando();
+  setInterval(orkMarcarRodando, 3000);
 
   function selecionarFerramenta(id) {
     var f = FERRAMENTAS_POR_ID[id];
