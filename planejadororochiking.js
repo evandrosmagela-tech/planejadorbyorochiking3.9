@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 74;
+  window.__ORK_VERSAO__ = 76;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -225,6 +225,36 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-27-247-sequencia',
+      data: '27/09/2026',
+      titulo: '24/7: sequência de ações que você escolhe',
+      itens: [
+        'Nova "Sequência do ciclo" no 24/7: marque as ações e use ▲▼ pra ordenar — Farm Hard, Cunhar, Balancear, 👑 Noblar bárbaras, 🏗️ Construir/recrutar (Gerente) e 🧺 Coletor Hard.',
+        'Noblar, Gerente e Coletor usam a configuração salva na aba de cada um (não precisa deixar eles ligados — o 24/7 roda 1 ciclo de cada na vez dele).',
+        'No Farm Player a sequência roda entre as levas. Continua tudo por aba, com relogin e espera de captcha.'
+      ]
+    },
+    {
+      id: '2026-09-27-nobre-pronto',
+      data: '27/09/2026',
+      titulo: 'Nobre Bárbaras: nobre formado sai mais rápido',
+      itens: [
+        'Com "Produzir nobres na Academia" ligado: o script lê quanto falta pro nobre ficar pronto e adianta o próximo ciclo pra mandar ele assim que sair da Academia — sem esperar o intervalo inteiro.',
+        'Não faz pedido a mais (só muda a hora do próximo ciclo) e nunca roda ciclos com menos de 15s entre eles. Com o FREIO ligado, não adianta.',
+        'Produzir nobres agora escolhe onde formar: primeiro as academias com MAIS bárbaras perto (campo "raio", padrão 10) — o nobre sai perto dos alvos e a região fica cheia de farm. Academia sem bárbara no raio não forma.'
+      ]
+    },
+    {
+      id: '2026-09-27-barbaras-espaco',
+      data: '27/09/2026',
+      titulo: 'Coletar Bárbaras: espaçamento corrigido',
+      itens: [
+        'Estratégia Espaçada: o espaçamento agora conta como no mapa — pelo menos N campos na horizontal ou na vertical (antes a diagonal deixava bárbaras mais perto).',
+        'Também respeita o espaçamento das SUAS aldeias (não pega bárbara colada nelas).',
+        'Com "Priorizar aldeias bônus", as bônus são escolhidas primeiro já no espaçamento (antes podiam ser barradas por uma comum mais perto).'
+      ]
+    },
     {
       id: '2026-09-26-coletor-raio',
       data: '26/09/2026',
@@ -1686,8 +1716,8 @@
       // ============================================================
       // EXECUCAO PRINCIPAL
       // ============================================================
-      async function executar() {
-        if (!cfg.ativo) {
+      async function executar(forcar) {
+        if (!cfg.ativo && !forcar) {
           status('🔴 Ative o interruptor primeiro.');
           return;
         }
@@ -1855,7 +1885,7 @@
     
           for (let i = 0; i < plano.length; i++) {
             if (parar) { motivoFim = 'parado por você'; break; }
-            if (!cfg.ativo) { motivoFim = 'interruptor desligado'; break; }
+            if (!cfg.ativo && !forcar) { motivoFim = 'interruptor desligado'; break; }
             const p = plano[i];
             if (esgotadas.has(p.origem.id)) { puladosPorOrigem++; continue; }
     
@@ -1922,6 +1952,8 @@
       // API de console/teste
       window.__OROCHIKING__ = {
         iniciar: executar,
+        rodarUmaVez: () => (rodando ? Promise.resolve(false) : executar(true).then(() => true)), // usado pelo 24/7
+        rodando: () => rodando,
         parar: () => { parar = true; cancelarAuto(); },
         cfg: () => cfg,
         motivo: () => motivoFim,
@@ -4625,8 +4657,17 @@
   function checaBarbaras() {
     return window.game_data && window.game_data.screen === 'map';
   }
+  // suas aldeias (pra o espaçamento do Coletar Bárbaras não pegar bárbara colada nelas) — guardadas 10 min
+  function orkMinhasVilasCarregar() {
+    var c = window.__orkMinhasVilasTs && Date.now() - window.__orkMinhasVilasTs < 600000;
+    if (c) { return Promise.resolve(window.__orkMinhasVilas); }
+    return nobAldeias('0').then(function (l) {
+      window.__orkMinhasVilas = l.map(function (a) { return { x: a.x, y: a.y }; }); window.__orkMinhasVilasTs = Date.now();
+      return window.__orkMinhasVilas;
+    }).catch(function () { return window.__orkMinhasVilas || []; });
+  }
   function rodarBarbaras() {
-    !function(){var n,e="OROCHIKING - Barb Finder",o="orkBarbList",a="screen=map",t="",i=[],r=[],s=["barracks","stable","farm","resources"],l={barracks:"barracks",stable:"stable",farm:"farm",wood:"resources",stone:"resources",iron:"resources",all:"resources",storage:"resources"};function c(){window.localStorage.setItem(`${o}_Settings`,JSON.stringify(n))}function p(){let n=$.grep(Object.values(TWMap.villages),n=>"0"==n.owner&&n.points),[e,o]=[game_data.village.x,game_data.village.y];n.forEach(n=>{n.x=Math.floor(n.xy/1e3),n.y=n.xy%1e3,n.distance=Math.sqrt((n.x-e)**2+(n.y-o)**2)}),n.sort((n,e)=>n.distance-e.distance),u(n)}function d(n){
+    !function(){var n,e="OROCHIKING - Barb Finder",o="orkBarbList",a="screen=map",t="",i=[],r=[],s=["barracks","stable","farm","resources"],l={barracks:"barracks",stable:"stable",farm:"farm",wood:"resources",stone:"resources",iron:"resources",all:"resources",storage:"resources"};function c(){window.localStorage.setItem(`${o}_Settings`,JSON.stringify(n))}function p(){let n=$.grep(Object.values(TWMap.villages),n=>"0"==n.owner&&n.points),[e,o]=[game_data.village.x,game_data.village.y];n.forEach(n=>{n.x=Math.floor(n.xy/1e3),n.y=n.xy%1e3,n.distance=Math.sqrt((n.x-e)**2+(n.y-o)**2)}),n.sort((n,e)=>n.distance-e.distance),orkMinhasVilasCarregar().then(()=>u(n))}function d(n){
       /* v60: antes fazia TWMap.resize(2*raio+2) — o jogo tentava DESENHAR um mapa gigante e a tela congelava.
          Agora busca só os DADOS dos setores no servidor (map.php), em pacotes pequenos, sem desenhar nada. */
       if (window.__orkBarbScan) { UI.InfoMessage("Busca já em andamento..."); return; }
@@ -4650,14 +4691,14 @@
           achadas.push({ id: b.id, x: b.x, y: b.y, points: b.pontos, distance: dist, bonusTipo: b.bonus });
         });
         achadas.sort(function (a, b) { return a.distance - b.distance; });
-        u(achadas);
+        orkMinhasVilasCarregar().then(function () { u(achadas); });
         if (res.falhas) UI.InfoMessage(res.falhas + " pacote(s) falharam — clique em Scan de novo (o que já foi lido fica guardado).");
       }).catch(function (err) {
         window.__orkBarbScan = false;
         $(`#${o}_scan`).prop("disabled", false).text("🔍 Scan");
         $(`#${o}_textarea`).val("Erro ao ler o mapa: " + (err && err.message));
       });
-    }function u(n){r=n,_()}function g(n){let e=function(n){let t=n.bonusTipo||nobTipoBonus(n.bonus);return t&&l[t]?l[t]:null}(n),o=e?s.indexOf(e):-1;return-1===o?s.length:o}function _(){i=function(e){if("spaced"===n.strategy){let o=Math.max(0,parseFloat(n.spacing)||0),a=[],G={},T=Math.max(1,Math.ceil(o)),K=(x,y)=>Math.floor(x/T)+"_"+Math.floor(y/T);return e.forEach(n=>{let gx=Math.floor(n.x/T),gy=Math.floor(n.y/T),ok=!0;for(let ix=gx-1;ix<=gx+1&&ok;ix++)for(let iy=gy-1;iy<=gy+1&&ok;iy++){let L=G[ix+"_"+iy];if(L)for(let e of L)if(Math.sqrt((e.x-n.x)**2+(e.y-n.y)**2)<o){ok=!1;break}}ok&&(a.push(n),(G[K(n.x,n.y)]=G[K(n.x,n.y)]||[]).push(n))}),a}return e}(r),n.prioritizeBonus&&(i=i.slice().sort((n,e)=>g(n)-g(e))),$(`#${o}_count`).text(i.length),x()}function x(){let e=n.format,a=i.map(n=>"coords_comma"==e?`${n.x}|${n.y},`:"link"==e?`[village]${n.x}|${n.y}[/village]`:`${n.x}|${n.y}`);$(`#${o}_textarea`).val(a.join(" "))}function b(){let n=document.getElementById(`${o}_textarea`);n.select(),n.setSelectionRange(0,999999),navigator.clipboard.writeText(n.value).then(()=>{UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)}).catch(()=>{document.execCommand("copy"),UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)})}!function(){if($(`#${o}_popup_container`).length)return void UI.ErrorMessage("Script já foi carregado, recarregue a página antes de chamá-lo novamente");let i=window.location.search.match(/t=\d+/g);if(i&&(t=i),-1==window.location.href.indexOf(`${a}`))return UI.ErrorMessage("Script precisa ser executado no mapa"),void(window.location.href=window.location.pathname+`?${t?t+"&":""}${a}`);!function(){let e=window.localStorage.getItem(`${o}_Settings`);n=e?JSON.parse(e):{mode:"loaded",radius:30,format:"coords",strategy:"cluster",spacing:5,prioritizeBonus:!0}}(),function(){let a=`
+    }function u(n){r=n,_()}function g(n){let e=function(n){let t=n.bonusTipo||nobTipoBonus(n.bonus);return t&&l[t]?l[t]:null}(n),o=e?s.indexOf(e):-1;return-1===o?s.length:o}function _(){i=function(e){if("spaced"===n.strategy){let o=Math.max(0,parseFloat(n.spacing)||0),a=[],G={},T=Math.max(1,Math.ceil(o)),K=(x,y)=>Math.floor(x/T)+"_"+Math.floor(y/T);(window.__orkMinhasVilas||[]).forEach(v=>{(G[K(v.x,v.y)]=G[K(v.x,v.y)]||[]).push(v)});return e.forEach(n=>{let gx=Math.floor(n.x/T),gy=Math.floor(n.y/T),ok=!0;for(let ix=gx-1;ix<=gx+1&&ok;ix++)for(let iy=gy-1;iy<=gy+1&&ok;iy++){let L=G[ix+"_"+iy];if(L)for(let e of L)if(Math.max(Math.abs(e.x-n.x),Math.abs(e.y-n.y))<o){ok=!1;break}}ok&&(a.push(n),(G[K(n.x,n.y)]=G[K(n.x,n.y)]||[]).push(n))}),a}return e}(n.prioritizeBonus?r.slice().sort((a,b)=>g(a)-g(b)||a.distance-b.distance):r),n.prioritizeBonus&&(i=i.slice().sort((n,e)=>g(n)-g(e))),$(`#${o}_count`).text(i.length),x()}function x(){let e=n.format,a=i.map(n=>"coords_comma"==e?`${n.x}|${n.y},`:"link"==e?`[village]${n.x}|${n.y}[/village]`:`${n.x}|${n.y}`);$(`#${o}_textarea`).val(a.join(" "))}function b(){let n=document.getElementById(`${o}_textarea`);n.select(),n.setSelectionRange(0,999999),navigator.clipboard.writeText(n.value).then(()=>{UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)}).catch(()=>{document.execCommand("copy"),UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)})}!function(){if($(`#${o}_popup_container`).length)return void UI.ErrorMessage("Script já foi carregado, recarregue a página antes de chamá-lo novamente");let i=window.location.search.match(/t=\d+/g);if(i&&(t=i),-1==window.location.href.indexOf(`${a}`))return UI.ErrorMessage("Script precisa ser executado no mapa"),void(window.location.href=window.location.pathname+`?${t?t+"&":""}${a}`);!function(){let e=window.localStorage.getItem(`${o}_Settings`);n=e?JSON.parse(e):{mode:"loaded",radius:30,format:"coords",strategy:"cluster",spacing:5,prioritizeBonus:!0}}(),function(){let a=`
     <div id="${o}_popup_container" class="ork_popup_container">
       <div class="ork_bf_head">
         <span class="ork_bf_title">🗺️ COLETAR BÁRBARAS</span>
@@ -4679,7 +4720,7 @@
             <option value="cluster">Cluster (aldeias coladas)</option>
             <option value="spaced">Espaçada (com farm ao redor)</option>
           </select>
-          <div id="${o}_spacingRow" style="display:none;"><div class="ork_field"><span>Espaçamento mínimo (campos)</span><input type="text" id="${o}_spacing" class="ork_input" value="${n.spacing}" size="4"></div></div>
+          <div id="${o}_spacingRow" style="display:none;"><div class="ork_field"><span>Espaçamento mínimo (campos)</span><input type="text" id="${o}_spacing" class="ork_input" value="${n.spacing}" size="4"></div><div class="ork_hint">Conta como no mapa: pelo menos N campos na horizontal ou na vertical — entre as bárbaras escolhidas e também das suas aldeias.</div></div>
           <label class="ork_checkbox_label"><input type="checkbox" id="${o}_prioritizeBonus" ${n.prioritizeBonus?"checked":""}> Priorizar aldeias bônus</label>
           <div class="ork_hint">Quartel › Estábulo › Fazenda › Recursos — se não achar, pega as outras normalmente.</div>
         </div>
@@ -6217,7 +6258,51 @@
       farmMin: 2, farmMax: 3, pausaMin: 3, pausaMax: 4,
       cunhar: true, balancear: false, balCadaMin: 30, balUltimo: 0, balFeitos: [],
       atkMin: 4, atkMax: 6, atkInicio: 0, atkNav: 0,
-      relogarCada: 0, relModo: 'queda', mundo: '', atkFarm: false, atkProxima: 0 };
+      relogarCada: 0, relModo: 'queda', mundo: '', atkFarm: false, atkProxima: 0, seq: null, seqIdx: 0, acaoId: '' };
+  }
+  /* ---------- sequência de ações do ciclo (você escolhe quais e a ordem) ---------- */
+  var AUTO_ACOES = {
+    farm: { nome: '🌾 Farm Hard', dica: 'Liga o Farm Hard pelo tempo do campo "Farm roda por" (velocidade e rotação do quadro acima).' },
+    cunhar: { nome: '🪙 Cunhar moedas', dica: 'Vai pra Academia e cunha moedas em todas as páginas (1.000 aldeias por página).' },
+    balancear: { nome: '⚖️ Balancear recursos', dica: 'Equilibra os recursos pelo mercado com os ajustes da aba Balancear. Só roda se já passou o tempo mínimo desde o último balanceamento.' },
+    nobre: { nome: '👑 Noblar bárbaras', dica: 'Roda 1 ciclo do Nobre BETA com a configuração salva na aba Nobre BETA (alvos, escolta, produzir nobres, pós-conquista...).' },
+    gerente: { nome: '🏗️ Construir/recrutar (Gerente)', dica: 'Roda 1 ciclo do Gerente de Conta com as regras salvas na aba Gerente de Conta.' },
+    coletor: { nome: '🧺 Coletor Hard (farm assistente)', dica: 'Roda 1 vez o Coletor Hard (ícone dourado flutuante) com a configuração salva nele.' }
+  };
+  function autoSeqCompleta(c) {
+    var s = Array.isArray(c.seq) ? c.seq.filter(function (x) { return x && AUTO_ACOES[x.id]; }) : null;
+    if (!s || !s.length) {
+      // primeira vez: monta a partir das opções antigas
+      s = [{ id: 'farm', on: c.modo === 'player' ? !!c.atkFarm : true }, { id: 'cunhar', on: c.cunhar !== false }, { id: 'balancear', on: !!c.balancear },
+        { id: 'nobre', on: false }, { id: 'gerente', on: false }, { id: 'coletor', on: false }];
+    }
+    Object.keys(AUTO_ACOES).forEach(function (id) { if (!s.some(function (x) { return x.id === id; })) { s.push({ id: id, on: false }); } });
+    return s;
+  }
+  function autoSeqAtiva(c) { return autoSeqCompleta(c).filter(function (x) { return x.on; }).map(function (x) { return x.id; }); }
+  function autoProximoSeq(c) {
+    c.seqIdx = (c.seqIdx || 0) + 1; c.fase = 'seq'; autoGravar(c);
+    autoAgendar(autoEntre(1500, 3000));
+  }
+  async function autoRodarAcao(id) {
+    try {
+      if (id === 'nobre') {
+        autoStatus('Noblando bárbaras...');
+        autoLog('👑 rodando 1 ciclo do Nobre BETA.');
+        await nobRodarCiclo(false, true);
+      } else if (id === 'gerente') {
+        autoStatus('Gerente: construindo/recrutando...');
+        autoLog('🏗️ rodando 1 ciclo do Gerente de Conta.');
+        await gerRodarCiclo(true);
+      } else if (id === 'coletor') {
+        var api = window.__OROCHIKING__;
+        if (!api || !api.rodarUmaVez) { autoLog('Coletor Hard não está disponível nesta tela — pulei.'); return; }
+        autoStatus('Coletor Hard rodando...');
+        autoLog('🧺 rodando o Coletor Hard 1 vez.');
+        var vigia = setInterval(function () { if (!autoLer().ativo) { try { api.parar(); } catch (e) {} } }, 2000);
+        try { await api.rodarUmaVez(); } finally { clearInterval(vigia); }
+      }
+    } catch (e) { console.error('[OROCHIKING] 24/7: erro na ação ' + id, e); }
   }
   function autoLer() {
     var p = autoPadrao();
@@ -6533,15 +6618,9 @@
     c.ciclos = (c.ciclos || 0) + 1;
     c.atkProxima = Date.now() + autoMs(c.atkMin, c.atkMax);
     autoLog('leva ' + c.ciclos + (ok ? ' enviada' : ' encerrada') + '. Próxima leva a partir de ' + autoHora(c.atkProxima) + '.');
-    // entre as levas: Farm Hard (se ligado) -> Cunhar -> Balancear -> espera a próxima leva
-    if (c.atkFarm) {
-      c.fase = 'farm'; c.fimFase = Date.now() + autoMs(c.farmMin, c.farmMax); autoGravar(c);
-      autoLog('Farm Hard entre as levas até ' + autoHora(c.fimFase) + '.');
-      autoIniciarFarm();
-      autoAgendar(autoEntre(4000, 6000));
-      return;
-    }
-    autoDepoisDoFarm(c);
+    // entre as levas: a sequência de ações escolhida, na ordem -> espera a próxima leva
+    c.fase = 'seq'; c.seqIdx = 0; autoGravar(c);
+    autoAgendar(autoEntre(1500, 3000));
   }
 
   /* ---------- relogin programado + início de ciclo ---------- */
@@ -6562,9 +6641,8 @@
       autoPasso2();
       return;
     }
-    c.fase = 'farm'; c.fimFase = Date.now() + autoMs(c.farmMin, c.farmMax); autoGravar(c);
-    autoIniciarFarm();
-    autoAgendar(autoEntre(4000, 6000));
+    c.fase = 'seq'; c.seqIdx = 0; autoGravar(c);
+    autoPasso2();
   }
 
   /* ---------- máquina de fases ---------- */
@@ -6587,7 +6665,8 @@
         return;
       }
       autoPararFarm();
-      autoDepoisDoFarm(c);
+      autoLog('farm encerrado.');
+      autoProximoSeq(c);
       return;
     }
 
@@ -6613,7 +6692,7 @@
           } else {
             c2.from = 0;
             autoLog('cunhagem concluída.');
-            autoDepoisDaCunhagem(c2);
+            autoProximoSeq(c2);
           }
         }, autoEntre(6000, 12000));
       }, autoEntre(2000, 4000));
@@ -6628,7 +6707,52 @@
         var c3 = autoLer();
         if (!c3.ativo || c3.fase !== 'balancear') { return; }
         c3.balUltimo = Date.now(); c3.balFeitos = [];
-        autoIrPausa(c3);
+        autoProximoSeq(c3);
+      });
+      return;
+    }
+
+    if (c.fase === 'seq') {
+      var lista = autoSeqAtiva(c), idx = c.seqIdx || 0;
+      if (idx >= lista.length) { autoIrPausa(c); return; }
+      var acao = lista[idx];
+      if (acao === 'farm') {
+        c.fase = 'farm'; c.fimFase = agora + autoMs(c.farmMin, c.farmMax); autoGravar(c);
+        autoLog('Farm Hard até ' + autoHora(c.fimFase) + '.');
+        autoIniciarFarm();
+        autoAgendar(autoEntre(4000, 6000));
+        return;
+      }
+      if (acao === 'cunhar') {
+        c.fase = 'cunhar'; c.from = 0; autoGravar(c);
+        autoStatus('Indo para a Academia...');
+        autoIrCunhagem(0);
+        return;
+      }
+      if (acao === 'balancear') {
+        if (autoBalancearDevido(c)) {
+          c.fase = 'balancear'; c.balFeitos = []; autoGravar(c);
+          autoLog('hora de balancear os recursos.');
+          autoAgendar(autoEntre(1500, 3000));
+        } else {
+          autoLog('balanceador: ainda não deu o intervalo mínimo, fica pro próximo ciclo.');
+          autoProximoSeq(c);
+        }
+        return;
+      }
+      c.fase = 'acao'; c.acaoId = acao; autoGravar(c);
+      autoAgendar(autoEntre(1000, 2000));
+      return;
+    }
+
+    if (c.fase === 'acao') {
+      if (autoPasso) { return; }
+      autoPasso = true;
+      autoRodarAcao(c.acaoId).then(function () {
+        autoPasso = false;
+        var c4 = autoLer();
+        if (!c4.ativo || c4.fase !== 'acao') { return; }
+        autoProximoSeq(c4);
       });
       return;
     }
@@ -6754,15 +6878,15 @@
   function autoIniciar(n) {
     n.ativo = true;
     n.id = Math.random().toString(36).slice(2, 10);
-    n.ciclos = 0; n.from = 0; n.balFeitos = []; n.atkNav = 0;
-    if (n.modo !== 'player') {
-      if (n.cunhar) { try { pararCunharPorSeguranca(); } catch (e) {} } // a Cunhagem avulsa não briga com a do 24/7
-      if (n.balancear) { try { balParar(); } catch (e) {} }             // nem o Balanceador avulso
-      n.fase = 'farm';
-      n.fimFase = Date.now() + autoMs(n.farmMin, n.farmMax);
-    } else {
-      n.fase = 'atk-enviar';
-    }
+    n.ciclos = 0; n.from = 0; n.balFeitos = []; n.atkNav = 0; n.seqIdx = 0;
+    var seqOn = autoSeqAtiva(n);
+    // as ferramentas avulsas que estão na sequência param sozinhas (quem comanda agora é o 24/7)
+    if (seqOn.indexOf('cunhar') !== -1) { try { pararCunharPorSeguranca(); } catch (e) {} }
+    if (seqOn.indexOf('balancear') !== -1) { try { balParar(); } catch (e) {} }
+    if (seqOn.indexOf('nobre') !== -1) { try { if (nobLer().ativo) { nobParar('assumido pelo 24/7'); } } catch (e) {} }
+    if (seqOn.indexOf('gerente') !== -1) { try { if (gerLer().ativo) { gerParar('assumido pelo 24/7'); } } catch (e) {} }
+    if (seqOn.indexOf('coletor') !== -1) { try { window.__OROCHIKING__.parar(); } catch (e) {} }
+    n.fase = n.modo !== 'player' ? 'seq' : 'atk-enviar';
     autoGravar(n);
     autoDono = true;
     try { window.name = autoToken(n); } catch (e) {}
@@ -6771,10 +6895,7 @@
     autoMostrarBolinha();
     if (n.modo === 'player') {
       var atk = autoLerAtk();
-      var extras = [];
-      if (n.atkFarm) { extras.push('Farm Hard'); }
-      if (n.cunhar) { extras.push('Cunhagem'); }
-      if (n.balancear) { extras.push('Balanceador'); }
+      var extras = seqOn.map(function (id) { return AUTO_ACOES[id].nome; });
       autoLog('Farm Player iniciado — ' + atk.nAlvos + ' alvo(s), leva a cada ' + (Math.round(n.atkMin * 100) / 100) + '-' + (Math.round(n.atkMax * 100) / 100) + ' min' +
         (extras.length ? ', entre as levas: ' + extras.join(' + ') : '') +
         (n.relModo === 'ciclos' ? ', relogar a cada ' + n.relogarCada + ' leva(s)' : ', relogar só se a sessão cair') + ' (' + n.mundo + ').');
@@ -6784,12 +6905,10 @@
       return;
     }
     function tx(a, b) { return (b < 1 ? Math.round(a * 60) + '-' + Math.round(b * 60) + ' s' : (Math.round(a * 100) / 100) + '-' + (Math.round(b * 100) / 100) + ' min'); }
-    autoLog('iniciada — farm ' + tx(n.farmMin, n.farmMax) +
-      (n.cunhar ? ', cunhagem' : '') + (n.balancear ? ', balanceador (mín. ' + n.balCadaMin + ' min)' : '') +
+    autoLog('iniciada — sequência: ' + (seqOn.map(function (id) { return AUTO_ACOES[id].nome + (id === 'farm' ? ' (' + tx(n.farmMin, n.farmMax) + ')' : ''); }).join(' → ') || 'nenhuma ação') +
       ', pausa ' + tx(n.pausaMin, n.pausaMax) +
       (n.relModo === 'ciclos' ? ', relogar a cada ' + n.relogarCada + ' ciclo(s)' : ', relogar só se a sessão cair') + ' (' + n.mundo + ').');
-    autoIniciarFarm();
-    autoAgendar(autoEntre(4000, 6000));
+    autoAgendar(autoEntre(800, 1500));
   }
   // Confere outra aba rodando antes de iniciar; se tiver, pergunta se assume.
   function autoIniciarComChecagem(n) {
@@ -6819,13 +6938,14 @@
       balao.style.top = Math.max(8, top) + 'px';
       balao.style.left = Math.max(8, Math.min(r.left, window.innerWidth - balao.offsetWidth - 8)) + 'px';
     }
-    raiz.querySelectorAll('[data-dica]').forEach(function (el) {
-      el.addEventListener('mouseenter', function () { mostrar(el); });
-      el.addEventListener('mouseleave', function () { balao.style.display = 'none'; });
-      el.addEventListener('click', function (e) {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') { return; }
-        if (balao.style.display === 'block') { balao.style.display = 'none'; } else { mostrar(el); }
-      });
+    // delegado na raiz: vale também pra itens que são redesenhados depois (ex.: sequência do 24/7)
+    function alvo(e) { var el = e.target && e.target.closest ? e.target.closest('[data-dica]') : null; return el && raiz.contains(el) ? el : null; }
+    raiz.addEventListener('mouseover', function (e) { var el = alvo(e); if (el) { mostrar(el); } });
+    raiz.addEventListener('mouseout', function (e) { var el = alvo(e); if (el && !(e.relatedTarget && el.contains(e.relatedTarget))) { balao.style.display = 'none'; } });
+    raiz.addEventListener('click', function (e) {
+      var el = alvo(e); if (!el) { return; }
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') { return; }
+      if (balao.style.display === 'block') { balao.style.display = 'none'; } else { mostrar(el); }
     });
     return balao;
   }
@@ -6882,7 +7002,7 @@
           '<span id="ork-auto-x" style="cursor:pointer;font-weight:bold;font-size:15px">&times;</span></div>' +
         '<div style="padding:10px 12px">' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">' +
-            '<button type="button" class="ork-auto-modo" data-modo="farm" style="background:#1c1c1c;border:1px solid #333;border-radius:8px;padding:8px 4px;color:#ddd;cursor:pointer;font-weight:800;font-size:11.5px;font-family:inherit">🌾 Farm + Cunhagem<div style="font-size:9px;color:#888;font-weight:700;margin-top:2px">+ Balanceador</div></button>' +
+            '<button type="button" class="ork-auto-modo" data-modo="farm" style="background:#1c1c1c;border:1px solid #333;border-radius:8px;padding:8px 4px;color:#ddd;cursor:pointer;font-weight:800;font-size:11.5px;font-family:inherit">🌾 Ciclo de ações<div style="font-size:9px;color:#888;font-weight:700;margin-top:2px">Farm, cunhar, noblar, gerente...</div></button>' +
             '<button type="button" class="ork-auto-modo" data-modo="player" style="background:#1c1c1c;border:1px solid #333;border-radius:8px;padding:8px 4px;color:#ddd;cursor:pointer;font-weight:800;font-size:11.5px;font-family:inherit">⚔️ Farm Player<div style="font-size:9px;color:#888;font-weight:700;margin-top:2px">Ataque Mass em loop</div></button>' +
           '</div>' +
 
@@ -6910,12 +7030,9 @@
                 faixa('ork-auto-fmin', 'ork-auto-fmax', c.farmMin, c.farmMax, '0.5', c.farmUn) + '</div>' +
             '</div>' +
           '</div>' +
-          '<div style="' + card + '"><span style="' + tit + '" id="ork-auto-tit-depois">Depois do farm</span>' +
-            '<div style="' + lin + ';margin-top:6px">' + chave('ork-auto-cunhar', c.cunhar) +
-              '<span style="' + rot + '" data-dica="Vai pra Academia e cunha moedas em todas as páginas (1.000 aldeias por página), igual à aba Cunhar.">💰 Cunhar moedas' + autoInterrogacao() + '</span></div>' +
-            '<div style="' + lin + ';margin-bottom:0">' + chave('ork-auto-bal', c.balancear) +
-              '<span style="' + rot + '" data-dica="Equilibra os recursos entre as aldeias pelo mercado (1 a 3s entre cada envio), usando os ajustes da aba Balancear. Só balanceia se já passou o tempo mínimo desde o último balanceamento — os mercadores precisam voltar pra casa.">⚖️ Balancear recursos, no mín. a cada' + autoInterrogacao() + '</span>' +
-              '<input id="ork-auto-balmin" type="number" min="1" value="' + c.balCadaMin + '" style="width:58px;' + inp + '"><span style="font-size:11px;color:#888">min</span></div>' +
+          '<div style="' + card + '"><div style="display:flex;align-items:center;gap:6px"><span style="' + tit + ';margin-bottom:0;flex:1" id="ork-auto-tit-depois">Sequência do ciclo</span>' +
+            '<span style="font-size:9.5px;color:#777;cursor:help" data-dica="Marque o que o 24/7 faz em cada ciclo e use ▲▼ pra mudar a ordem. Ele faz uma ação depois da outra, nessa ordem, e no fim vem a pausa (no Farm Player: espera a próxima leva). As ações Noblar, Gerente e Coletor usam a configuração que você salvou na aba de cada uma.">como funciona?' + autoInterrogacao() + '</span></div>' +
+            '<div id="ork-auto-seq" style="margin-top:6px"></div>' +
           '</div>' +
           // ---- só modo Farm: pausa no fim do ciclo ----
           '<div id="ork-auto-sec-farm">' +
@@ -6954,18 +7071,38 @@
       });
       document.getElementById('ork-auto-sec-farm').style.display = modo === 'farm' ? 'block' : 'none';
       document.getElementById('ork-auto-sec-player').style.display = modo === 'player' ? 'block' : 'none';
-      document.getElementById('ork-auto-atkfarm-wrap').style.display = modo === 'player' ? 'inline' : 'none';
-      document.getElementById('ork-auto-tit-farm').textContent = modo === 'player' ? 'Farm Hard entre as levas' : 'Farm Hard';
-      document.getElementById('ork-auto-tit-depois').textContent = modo === 'player' ? 'Depois de cada leva (e do Farm Hard)' : 'Depois do farm';
+      document.getElementById('ork-auto-atkfarm-wrap').style.display = 'none';
+      document.getElementById('ork-auto-tit-farm').textContent = 'Farm Hard (quando estiver na sequência)';
+      document.getElementById('ork-auto-tit-depois').textContent = modo === 'player' ? 'Sequência entre as levas' : 'Sequência do ciclo';
       var campos = document.getElementById('ork-auto-farm-campos');
-      var farmOn = modo === 'farm' || document.getElementById('ork-auto-atkfarm').checked;
+      var farmOn = seqUI.some(function (x) { return x.id === 'farm' && x.on; });
       campos.style.opacity = farmOn ? '1' : '.4';
       campos.querySelectorAll('input,select').forEach(function (el) { el.disabled = !farmOn; });
       document.getElementById('ork-auto-rel-linha').style.display = document.getElementById('ork-auto-relmodo').value === 'ciclos' ? 'flex' : 'none';
       document.getElementById('ork-auto-erro').textContent = '';
       var un = document.getElementById('ork-auto-rel-un'); if (un) { un.textContent = modo === 'player' ? 'levas' : 'ciclos'; }
     }
-    document.getElementById('ork-auto-atkfarm').addEventListener('change', function () { mostrarModo(); });
+    var seqUI = JSON.parse(JSON.stringify(autoSeqCompleta(c)));
+    var balMinUI = c.balCadaMin;
+    function desenharSeq() {
+      var box = document.getElementById('ork-auto-seq');
+      var btn = 'width:22px;height:22px;padding:0;background:#1c1c1c;color:#FFC400;border:1px solid #333;border-radius:5px;cursor:pointer;font-size:10px;font-family:inherit';
+      box.innerHTML = seqUI.map(function (x, i) {
+        var a = AUTO_ACOES[x.id];
+        return '<div style="display:flex;align-items:center;gap:6px;padding:4px 6px;margin-bottom:3px;border-radius:7px;background:' + (x.on ? '#1d1a0c' : '#111') + ';border:1px solid ' + (x.on ? 'rgba(255,196,0,.28)' : '#232323') + '">' +
+          '<span style="width:14px;font-size:10px;color:#8a7327;font-weight:800;text-align:center">' + (x.on ? (seqUI.filter(function (y, k) { return y.on && k <= i; }).length) : '') + '</span>' +
+          '<input type="checkbox" class="ork-auto-seq-on" data-i="' + i + '"' + (x.on ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a;cursor:pointer">' +
+          '<span style="flex:1;font-size:11.5px;color:' + (x.on ? '#eee' : '#888') + ';cursor:help" data-dica="' + a.dica.replace(/"/g, '&quot;') + '">' + a.nome + '</span>' +
+          (x.id === 'balancear' ? '<span style="font-size:10px;color:#888">mín.</span><input id="ork-auto-balmin" type="number" min="1" value="' + balMinUI + '" style="width:48px;' + inp + ';padding:3px 5px"><span style="font-size:10px;color:#888">min</span>' : '') +
+          '<button type="button" class="ork-auto-seq-up" data-i="' + i + '" style="' + btn + '"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
+          '<button type="button" class="ork-auto-seq-dn" data-i="' + i + '" style="' + btn + '"' + (i === seqUI.length - 1 ? ' disabled' : '') + '>▼</button></div>';
+      }).join('');
+      box.querySelectorAll('.ork-auto-seq-on').forEach(function (el) { el.addEventListener('change', function () { seqUI[+el.getAttribute('data-i')].on = el.checked; desenharSeq(); mostrarModo(); }); });
+      box.querySelectorAll('.ork-auto-seq-up').forEach(function (el) { el.addEventListener('click', function () { var i = +el.getAttribute('data-i'); var t = seqUI[i - 1]; seqUI[i - 1] = seqUI[i]; seqUI[i] = t; desenharSeq(); }); });
+      box.querySelectorAll('.ork-auto-seq-dn').forEach(function (el) { el.addEventListener('click', function () { var i = +el.getAttribute('data-i'); var t = seqUI[i + 1]; seqUI[i + 1] = seqUI[i]; seqUI[i] = t; desenharSeq(); }); });
+      var bm = document.getElementById('ork-auto-balmin'); if (bm) { bm.addEventListener('input', function () { balMinUI = bm.value; }); }
+    }
+    desenharSeq();
     document.getElementById('ork-auto-relmodo').addEventListener('change', function () { mostrarModo(); });
     ov.querySelectorAll('.ork-auto-modo').forEach(function (b) {
       b.addEventListener('click', function () { modo = b.getAttribute('data-modo'); mostrarModo(); });
@@ -6990,11 +7127,17 @@
       }
       var fx = faixaMin('ork-auto-fmin', 'ork-auto-fmax', 2, 3, 10); n.farmMin = fx[0]; n.farmMax = fx[1]; n.farmUn = fx[2];
       var px = faixaMin('ork-auto-pmin', 'ork-auto-pmax', 3, 4, 0); n.pausaMin = px[0]; n.pausaMax = px[1]; n.pausaUn = px[2];
-      n.cunhar = document.getElementById('ork-auto-cunhar').checked;
-      n.balancear = document.getElementById('ork-auto-bal').checked;
-      n.balCadaMin = Math.max(1, num('ork-auto-balmin', 30));
+      n.seq = seqUI.map(function (x) { return { id: x.id, on: !!x.on }; });
+      function ligado(id) { return n.seq.some(function (x) { return x.id === id && x.on; }); }
+      n.cunhar = ligado('cunhar');
+      n.balancear = ligado('balancear');
+      n.balCadaMin = Math.max(1, parseFloat(balMinUI) || 30);
       var ax = faixaMin('ork-auto-amin', 'ork-auto-amax', 4, 6, 10); n.atkMin = ax[0]; n.atkMax = ax[1]; n.atkUn = ax[2];
-      n.atkFarm = document.getElementById('ork-auto-atkfarm').checked;
+      n.atkFarm = ligado('farm');
+      if (!n.seq.some(function (x) { return x.on; }) && modo === 'farm') {
+        document.getElementById('ork-auto-erro').textContent = 'Marque pelo menos uma ação na Sequência do ciclo.';
+        return;
+      }
       n.relModo = document.getElementById('ork-auto-relmodo').value === 'ciclos' ? 'ciclos' : 'queda';
       n.relogarCada = n.relModo === 'ciclos' ? Math.max(1, Math.floor(num('ork-auto-rel', 1))) : 0;
       n.mundo = (document.getElementById('ork-auto-mundo').value || '').toLowerCase().replace(/[^a-z0-9]/g, '') || game_data.world;
@@ -8268,20 +8411,23 @@
   }
 
   /* ---------- ciclo ---------- */
-  async function gerRodarCiclo() {
+  // externo = chamado pelo 24/7 (roda 1 ciclo com a configuração salva, mesmo com o Gerente desligado, e não agenda o próximo)
+  async function gerRodarCiclo(externo) {
     if (gerRodando) { return; }
     var cfg = gerLer();
-    if (!cfg.ativo) { return; }
-    if (window.__ORK_CAPTCHA_BLOQUEADO__) { gerStatus('captcha — esperando'); setTimeout(gerRodarCiclo, gerEntre(3000, 5000)); return; }
-    if (!gerPegarTrava()) { gerStatus('rodando em outra aba'); setTimeout(gerRetomar, gerEntre(20000, 30000)); return; }
+    if (!cfg.ativo && !externo) { return; }
+    var vivo = function () { return externo ? autoLer().ativo : gerLer().ativo; };
+    if (!externo && window.__ORK_CAPTCHA_BLOQUEADO__) { gerStatus('captcha — esperando'); setTimeout(gerRodarCiclo, gerEntre(3000, 5000)); return; }
+    if (!externo && !gerPegarTrava()) { gerStatus('rodando em outra aba'); setTimeout(gerRetomar, gerEntre(20000, 30000)); return; }
+    if (externo && !(cfg.regras || []).length && !cfg.semRegraUsaAldeia) { gerLog('24/7: o Gerente de Conta não tem regras salvas — pulei.'); return; }
     gerRodando = true;
-    gerMostrarBolinha();
+    if (!externo) { gerMostrarBolinha(); }
     var feitos = {}; (cfg.feitos || []).forEach(function (k) { feitos[k] = 1; });
     var res = { construidos: 0, falhasC: 0, recrutadas: 0, falhasR: 0, tropas: {} };
     function marcar(k) { feitos[k] = 1; var c = gerLer(); c.feitos = Object.keys(feitos); gerGravar(c); }
     async function esperarCaptcha() {
-      while (window.__ORK_CAPTCHA_BLOQUEADO__) { gerStatus('captcha — esperando'); await gerEsperar(gerEntre(3000, 5000)); if (!gerLer().ativo) { return false; } }
-      return gerLer().ativo;
+      while (window.__ORK_CAPTCHA_BLOQUEADO__) { gerStatus('captcha — esperando'); await gerEsperar(gerEntre(3000, 5000)); if (!vivo()) { return false; } }
+      return vivo();
     }
     try {
       var precisaTropas = (cfg.regras || []).some(function (r) { return r.trop; });
@@ -8580,7 +8726,7 @@
   function nobLer() {
     var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 3, escolta: 'light', escoltas: null, nobres: 4, intervaloUni: 'min', reforco: 2, raio: 40,
       maxSimult: 0, intervaloMin: 30, pontosMin: 0, pontosMax: 13000, priorizarBonus: true, soBonus: false,
-      bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10, vizinhasMin: 60, envioMin: 2, envioMax: 4, produzir: false, produzirMax: 1,
+      bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10, vizinhasMin: 60, envioMin: 2, envioMax: 4, produzir: false, produzirMax: 1, produzirRaio: 10,
       alvos: [], explorados: [], proximoEm: 0, ultimo: null };
     try { var c = JSON.parse(localStorage.getItem(nobChave()) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     if (!Array.isArray(p.alvos)) { p.alvos = []; }
@@ -8931,13 +9077,20 @@
      O jogo forma o nobre por um link simples (GET): screen=snob&action=train&h=...
      Só aparece o botão quando a aldeia pode formar agora (moedas + recurso + fazenda). */
   function nobLerAcademia(doc) {
-    var r = { link: null, total: 0, fila: 0, restantes: null, temAcademia: !!doc.querySelector('a[href*="screen=snob"], form[action*="screen=snob"]') };
+    var r = { link: null, total: 0, fila: 0, restantes: null, prontoEm: null, temAcademia: !!doc.querySelector('a[href*="screen=snob"], form[action*="screen=snob"]') };
     var a = doc.querySelector('a.btn-recruit[href*="action=train"], a[href*="screen=snob"][href*="action=train"]');
     if (a) { r.link = a.getAttribute('href'); }
     doc.querySelectorAll('table').forEach(function (t) {
       var cab = (t.querySelector('tr') || {}).textContent || '';
       if (/Treinamento|Training/i.test(cab)) {
-        t.querySelectorAll('tr').forEach(function (tr, i) { if (!i) { return; } var m = (tr.textContent || '').match(/(\d+)\s*Nobre/i); if (m) { r.fila += +m[1]; } });
+        t.querySelectorAll('tr').forEach(function (tr, i) {
+          if (!i) { return; }
+          var m = (tr.textContent || '').match(/(\d+)\s*Nobre/i);
+          if (!m) { return; }
+          r.fila += +m[1];
+          // o 1º da fila é o que está sendo formado agora: a "Duração" dele é o tempo que falta
+          if (r.prontoEm === null) { var d = (tr.textContent || '').match(/(\d+):(\d{2}):(\d{2})/); if (d) { r.prontoEm = ((+d[1]) * 3600 + (+d[2]) * 60 + (+d[3])) * 1000; } }
+        });
       } else if (/Na Aldeia|Total/i.test(cab)) {
         t.querySelectorAll('tr').forEach(function (tr) { if (!/Nobre/i.test(tr.textContent || '')) { return; }
           tr.querySelectorAll('td').forEach(function (td) { var m = (td.textContent || '').trim().match(/^(\d+)\s*\/\s*(\d+)$/); if (m) { r.total = +m[2]; } }); });
@@ -8949,14 +9102,35 @@
     return r;
   }
   async function nobProduzirNobres(cfg, aldeias, parar) {
-    var out = { formados: 0, conferidas: 0, semBotao: 0, cheias: 0 };
+    var out = { formados: 0, conferidas: 0, semBotao: 0, cheias: 0, proximoPronto: 0 };
+    function anotar(ac) { if (ac && ac.prontoEm !== null) { var t = Date.now() + ac.prontoEm; if (!out.proximoPronto || t < out.proximoPronto) { out.proximoPronto = t; } } }
     var max = Math.max(1, parseInt(cfg.produzirMax, 10) || 1);
     nobStatus('procurando academias');
     var ed = await balDadosEdificios(cfg.grupo || '0');
     var cands = aldeias.filter(function (a) { return (ed.get(a.coord + '_snob') || 0) >= 1; });
     if (!cands.length) { nobLog('produzir nobres: nenhuma aldeia do grupo com Academia.'); return out; }
-    // quem tem menos nobre em casa primeiro
-    cands.sort(function (a, b) { return (a.tropas.snob || 0) - (b.tropas.snob || 0); });
+    // Prioridade: a aldeia com MAIS bárbaras perto (dentro do raio) forma primeiro — o nobre sai perto do alvo,
+    // chega rápido, e a região fica cheia de farm. Empate: a que tem a bárbara mais perto.
+    var rP = Math.max(1, parseInt(cfg.produzirRaio, 10) || 10);
+    nobStatus('mapeando bárbaras perto das academias');
+    var bb = (await nobBuscarBarbaras(cands.map(function (a) { return { x: a.x, y: a.y, r: rP }; }), parar)).lista
+      .filter(function (b) { return b.pontos >= (cfg.pontosMin || 0) && b.pontos <= (cfg.pontosMax || 99999); });
+    var grade = {};
+    bb.forEach(function (b) { var k = Math.floor(b.x / 20) + '_' + Math.floor(b.y / 20); (grade[k] = grade[k] || []).push(b); });
+    cands.forEach(function (a) {
+      a._nb = 0; a._dmin = Infinity;
+      var gx = Math.floor(a.x / 20), gy = Math.floor(a.y / 20), alc = Math.ceil(rP / 20);
+      for (var ix = gx - alc; ix <= gx + alc; ix++) {
+        for (var iy = gy - alc; iy <= gy + alc; iy++) {
+          (grade[ix + '_' + iy] || []).forEach(function (b) { var d = nobDist(a, b); if (d <= rP) { a._nb++; if (d < a._dmin) { a._dmin = d; } } });
+        }
+      }
+    });
+    var semBarb = cands.filter(function (a) { return !a._nb; }).length;
+    cands = cands.filter(function (a) { return a._nb > 0; });
+    cands.sort(function (a, b) { return (b._nb - a._nb) || (a._dmin - b._dmin); });
+    if (semBarb) { nobLog('produzir nobres: ' + semBarb + ' academia(s) sem bárbara a até ' + rP + ' campos — não formam nobre.'); }
+    if (cands.length) { nobLog('produzir nobres: ordem por bárbaras perto (' + rP + ' campos) — ' + cands.slice(0, 5).map(function (a) { return a.coord + ' (' + a._nb + ')'; }).join(', ') + (cands.length > 5 ? '...' : '') + '.'); }
     var restantes = null;
     for (var i = 0; i < cands.length && !parar(); i++) {
       if (restantes === 0) { nobLog('produzir nobres: o limite de nobres da conta acabou (precisa cunhar mais moedas).'); break; }
@@ -8981,6 +9155,7 @@
         else { nobLog('🏛️ ' + a.coord + ': o jogo não aceitou formar nobre (moedas/recurso/fazenda?).'); break; }
         ac = ac2;
       }
+      anotar(ac);
       if (tem >= max) { out.cheias++; }
       await gerEsperar(gerEntre(600, 1300));
     }
@@ -9046,15 +9221,16 @@
   }
 
   /* ---------- ciclo ---------- */
-  async function nobRodarCiclo(simular) {
+  // externo = chamado pelo 24/7: roda 1 ciclo com a configuração salva (mesmo com o Nobre desligado) e não agenda o próximo
+  async function nobRodarCiclo(simular, externo) {
     if (nobRodando) { return null; }
     var cfg = nobLer();
-    if (!simular && !cfg.ativo) { return null; }
-    if (!simular && window.__ORK_CAPTCHA_BLOQUEADO__) { nobStatus('captcha — esperando'); setTimeout(nobRodarCiclo, gerEntre(3000, 5000)); return null; }
-    if (!simular && !nobPegarTrava()) { nobStatus('rodando em outra aba'); setTimeout(nobRetomar, gerEntre(20000, 30000)); return null; }
+    if (!simular && !externo && !cfg.ativo) { return null; }
+    if (!simular && !externo && window.__ORK_CAPTCHA_BLOQUEADO__) { nobStatus('captcha — esperando'); setTimeout(nobRodarCiclo, gerEntre(3000, 5000)); return null; }
+    if (!simular && !externo && !nobPegarTrava()) { nobStatus('rodando em outra aba'); setTimeout(nobRetomar, gerEntre(20000, 30000)); return null; }
     nobRodando = true;
-    if (!simular) { nobMostrarBolinha(); }
-    var parar = function () { return !simular && !nobLer().ativo; };
+    if (!simular && !externo) { nobMostrarBolinha(); }
+    var parar = function () { return !simular && (externo ? !autoLer().ativo : !nobLer().ativo); };
     var res = { enviados: 0, nobres: 0, conquistas: 0, pesquisas: 0, recrutou: 0, explorados: 0, falhas: 0 }, retorno = null;
     try {
       nobStatus('lendo suas aldeias');
@@ -9127,7 +9303,7 @@
       if (!simular && cfg.produzir && !parar()) {
         try {
           var pr = await nobProduzirNobres(cfg, origensBase, parar);
-          res.produzidos = pr.formados;
+          res.produzidos = pr.formados; res.proximoPronto = pr.proximoPronto;
           nobLog('produzir nobres: ' + pr.formados + ' mandado(s) formar, ' + pr.conferidas + ' academia(s) conferida(s)' + (pr.semBotao ? ', ' + pr.semBotao + ' sem poder formar agora' : '') + (pr.cheias ? ', ' + pr.cheias + ' já no máximo' : '') + '.');
         } catch (e) { nobLog('produzir nobres: erro — ' + (e && e.message)); }
       }
@@ -9191,6 +9367,12 @@
     var espera = nobIntervaloMs(c2);
     if (window.__ORK_FREIO__) { espera = Math.max(10 * 60000, espera * 2); }
     espera += gerEntre(2000, 4000);
+    // nobre ficando pronto na Academia antes do próximo ciclo? adianta o ciclo pra mandar ele logo
+    // (sem pedido a mais: só muda a hora do próximo ciclo; mínimo 15s entre ciclos)
+    if (res.proximoPronto && !window.__ORK_FREIO__) {
+      var falta = res.proximoPronto - Date.now() + gerEntre(3000, 8000);
+      if (falta < espera) { espera = Math.max(15000, falta); nobLog('nobre ficando pronto na Academia — próximo ciclo adiantado pra mandar ele.'); }
+    }
     c2.proximoEm = Date.now() + espera;
     c2.ultimo = { quando: Date.now(), enviados: res.enviados, nobres: res.nobres, conquistas: res.conquistas, explorados: res.explorados, pesquisas: res.pesquisas, recrutou: res.recrutou, falhas: res.falhas };
     nobGravar(c2);
@@ -9324,8 +9506,9 @@
                 '<input id="ork-nob-emax" type="number" min="0.5" step="0.1" value="' + (c.envioMax == null ? 4 : c.envioMax) + '" style="width:52px;' + inp + ';padding:3px 4px;text-align:center"></label>' +
               '<label style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;background:#111;border:1px solid #242424;border-radius:6px;padding:3px 4px 3px 7px">' +
                 '<input id="ork-nob-prod" type="checkbox"' + (c.produzir ? ' checked' : '') + ' style="' + chk + '">' +
-                '<span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="A cada ciclo, depois de mandar os nobres, confere as aldeias do grupo que têm Academia e manda formar nobre até o máximo por aldeia (contando os que estão em casa, fora e na fila). Só forma quando o próprio jogo libera o botão Formar (moedas de ouro + recurso + fazenda). Os nobres novos entram nos envios dos próximos ciclos. Sem moeda/recurso: só pula a aldeia.">🏛️ Produzir nobres na Academia — máx. por aldeia</span>' +
-                '<input id="ork-nob-pmaxal" type="number" min="1" value="' + (c.produzirMax || 1) + '" style="width:52px;' + inp + ';padding:3px 4px;text-align:center"></label>' +
+                '<span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="A cada ciclo, depois de mandar os nobres, manda formar nobre nas aldeias do grupo que têm Academia, até o máximo por aldeia (contando os em casa, fora e na fila). PRIORIDADE: forma primeiro nas aldeias com MAIS bárbaras dentro do raio (e, no empate, a com a bárbara mais perto) — o nobre nasce perto dos alvos, chega rápido e a região fica cheia de farm. Academia sem nenhuma bárbara no raio não forma. Só forma quando o jogo libera o botão Formar (moedas + recurso + fazenda); sem isso, pula a aldeia.">🏛️ Produzir nobres na Academia</span>' +
+                '<span style="font-size:10px;color:#888">máx.</span><input id="ork-nob-pmaxal" type="number" min="1" value="' + (c.produzirMax || 1) + '" style="width:44px;' + inp + ';padding:3px 4px;text-align:center">' +
+                '<span style="font-size:10px;color:#888;cursor:help" data-dica="Raio (em campos) usado pra contar as bárbaras em volta de cada academia. Padrão 10.">raio</span><input id="ork-nob-praio" type="number" min="1" value="' + (c.produzirRaio || 10) + '" style="width:44px;' + inp + ';padding:3px 4px;text-align:center"></label>' +
             '</div>' +
           '</div>' +
           '<div style="' + sec + '"><div style="' + stit + '">🔭 Depois da conquista</div>' +
@@ -9396,6 +9579,7 @@
       n.maxSimult = Math.max(0, parseInt(v('ork-nob-max').value, 10) || 0);
       n.produzir = v('ork-nob-prod').checked;
       n.produzirMax = Math.max(1, parseInt(v('ork-nob-pmaxal').value, 10) || 1);
+      n.produzirRaio = Math.max(1, parseInt(v('ork-nob-praio').value, 10) || 10);
       n.envioMin = Math.max(0.5, parseFloat(v('ork-nob-emin').value) || 2);
       n.envioMax = Math.max(n.envioMin, parseFloat(v('ork-nob-emax').value) || 4);
       n.intervaloUni = v('ork-nob-uni').value === 'seg' ? 'seg' : 'min';
@@ -9586,7 +9770,7 @@
       nome: 'Automatização 24/7',
       abrev: '24/7',
       icone: '♾️',
-      dica: 'Dois modos numa aba só. 🌾 Farm: Farm Hard por 2-3 min → cunhagem (opcional) → balanceador (opcional) → pausa → repete. ⚔️ Farm Player: repete sozinho o ataque salvo no Ataque Mass (caixa ♾️ lá dentro). Nos dois: reloga se a sessão cair e continua; captcha: espera e segue. Fica salvo só nesta aba. Bolinha ♾️ no canto — clique pra parar.',
+      dica: 'Roda tudo sozinho, em ciclos, numa aba só. Você escolhe as ações e a ORDEM: Farm Hard, Cunhar, Balancear, Noblar bárbaras (Nobre BETA), Construir/recrutar (Gerente de Conta) e Coletor Hard — depois vem a pausa e repete. Modo Farm Player: repete o ataque salvo no Ataque Mass e roda a sequência entre as levas. Relogin automático, espera o captcha e continua.',
       checar: checaAuto247,
       rodar: rodarAuto247,
       destino: null
