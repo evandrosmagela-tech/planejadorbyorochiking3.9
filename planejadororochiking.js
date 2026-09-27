@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 65;
+  window.__ORK_VERSAO__ = 66;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -225,6 +225,16 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-26-dormindo-nomes',
+      data: '26/09/2026',
+      titulo: 'Farm Dormindo com configuração própria + nomes novos',
+      itens: [
+        'Farm Dormindo agora abre com: 1x, rotação Normal, CL mín. 1000, CP mín. 1000, recurso mín. da bárbara 350.000, Ritmo humano ON, Priorizar a mais rica ON, 1 ataque por visita.',
+        'Se você mudar algo com o Dormindo aberto, fica salvo só pro Dormindo. Ao fechar, o Farm Hard normal volta com as configurações dele.',
+        'Nomes no painel: Cancelar Recrutamento, Coletar Cords Atacar e Apoiar, Coletar BB no Mapa, Gerente de Conta (BETA).'
+      ]
+    },
     {
       id: '2026-09-26-gerente-modelos-tropas',
       data: '26/09/2026',
@@ -2263,6 +2273,8 @@
     return !!(window.game_data && window.game_data.village);
   }
   function rodarFarmar() {
+    // Farm Hard normal: se o Dormindo não está ativo, volta as configurações normais (caso tenham ficado as do Dormindo)
+    try { if (localStorage.getItem('ork_retomar_dormindo') !== '1') { dormRestaurarNormal(); } } catch (e) {}
     (function(){ var FH_VERSAO = 43; /* Trava de instancia unica COM versao. Antes era so um true/false: se uma copia    ANTIGA do painel ja tivesse rodado na pagina, a nova desistia e reabria o popup    velho, dando a impressao de que a atualizacao nao pegou. Agora, se a copia que    ja esta na pagina for mais antiga, ela e descartada e esta assume. */ if (window.__FarmHardAtivo) { var versaoAtual = window.__FarmHardVersao || 0; if (versaoAtual >= FH_VERSAO) { if (typeof window.__FarmHardMostrar === "function") { window.__FarmHardMostrar(); } return; } console.warn("[OROCHIKING] Farm Hard v" + versaoAtual + " antigo detectado na pagina — substituindo pela v" + FH_VERSAO + "."); try { var velho = document.getElementById("farmhard-popup"); if (velho) { velho.remove(); } } catch (e) {} try { if (typeof window.__FarmHardParar === "function") { window.__FarmHardParar(); } } catch (e) {} } window.__FarmHardAtivo = true; window.__FarmHardVersao = FH_VERSAO; function _FarmarAS() { /* Script Escrito por ThiioM :) - Ajustado - Farm Hard 1.0 */ /* Lockr Script */ !function(t,e){t.Lockr=function(t,e){"use strict";return e.prefix="",e._getPrefixedKey=function(t,e){return e=e||{},e.noPrefix?t:this.prefix+t},e.set=function(t,e,r){var a=this._getPrefixedKey(t,r);try{localStorage.setItem(a,JSON.stringify({data:e}))}catch(t){}},e.get=function(t,e,r){var a,i=this._getPrefixedKey(t,r);try{a=JSON.parse(localStorage.getItem(i))}catch(t){a=localStorage[i]?{data:localStorage.getItem(i)}:null}return null===a?e:"object"==typeof a&&void 0!==a.data?a.data:e},e}(t,{})}(this); let CLMinimo = 0; let UltimaCLLida = null; let AldeiasPuladasCL = 0; /* ===== RITMO HUMANO =====    Liga/desliga o farm sozinho em blocos com tempos aleatorios, pra nao rodar    24h no mesmo ritmo (o que grita 'robo' pro servidor). Reaproveita a variavel    Pausado que ja existe: quando 'descansando', o farm so espera, sem perder    estado — os ataques em andamento voltam normalmente. */ let RitmoHumanoOn = false; let rhTimeout = null; let rhDescansando = false; /* Faixas por velocidade (em segundos). Cada ciclo sorteia dentro da faixa, entao    nunca cai no valor exato. Velocidade alta = blocos mais curtos (mais arriscado). */ const rhFaixas = () => { if (VelocidadeFator >= 2) { return { rodaMin: 150, rodaMax: 300, paraMin: 90, paraMax: 180 }; } if (VelocidadeFator >= 1.25) { return { rodaMin: 210, rodaMax: 360, paraMin: 60, paraMax: 150 }; } return { rodaMin: 300, rodaMax: 540, paraMin: 60, paraMax: 240 }; }; const rhSorteia = (min, max) => Math.round((min + Math.random() * (max - min)) * 1000); const rhAgendaProximo = () => { if (!RitmoHumanoOn || !Rodando) { return; } const f = rhFaixas(); if (!rhDescansando) { /* estava rodando -> agora descansa */ rhDescansando = true; Pausado = true; /* avisa que o farm ESTA EM PAUSA — janela livre pra cunhagem */ try { window.__ORK_FARM_EM_PAUSA__ = true; } catch (e) {} const ms = rhSorteia(f.paraMin, f.paraMax); AtualizarStatus('Ritmo humano: descansando ' + Math.round(ms/1000) + 's'); console.log('[OROCHIKING] Ritmo humano: pausa de ' + Math.round(ms/1000) + 's'); rhTimeout = setTimeout(rhAgendaProximo, ms); } else { /* estava descansando -> volta a rodar */ rhDescansando = false; Pausado = false; /* avisa que o farm VOLTOU A RODAR — cunhagem deve segurar */ try { window.__ORK_FARM_EM_PAUSA__ = false; } catch (e) {} const ms = rhSorteia(f.rodaMin, f.rodaMax); AtualizarStatus('Ritmo humano: farmando ' + Math.round(ms/1000) + 's'); console.log('[OROCHIKING] Ritmo humano: rodando ' + Math.round(ms/1000) + 's'); rhTimeout = setTimeout(rhAgendaProximo, ms); } }; const rhLigar = () => { if (RitmoHumanoOn) { return; } RitmoHumanoOn = true; rhDescansando = false; Pausado = false; try { window.__ORK_FARM_EM_PAUSA__ = false; } catch (e) {} const f = rhFaixas(); const ms = rhSorteia(f.rodaMin, f.rodaMax); console.log('[OROCHIKING] Ritmo humano LIGADO — 1o bloco de ' + Math.round(ms/1000) + 's'); if (rhTimeout) { clearTimeout(rhTimeout); } rhTimeout = setTimeout(rhAgendaProximo, ms); }; const rhDesligar = () => { RitmoHumanoOn = false; rhDescansando = false; /* farm nao esta mais gerenciando pausas — nao bloqueia a cunhagem */ try { window.__ORK_FARM_EM_PAUSA__ = true; } catch (e) {} if (rhTimeout) { clearTimeout(rhTimeout); rhTimeout = null; } /* so tira a pausa se foi o ritmo humano que pausou (nao mexe numa pausa manual) */ if (Rodando) { Pausado = false; } console.log('[OROCHIKING] Ritmo humano desligado.'); }; const LerPorVisita = () => { let n = NaN; const el = document.getElementById('fh-porvisita'); if (el) { n = parseInt(el.value, 10); } else { try { n = parseInt(localStorage.getItem('fh_por_visita') || '1', 10); } catch (e) {} } return Math.max(1, Math.min(10, n || 1)); }; let CPMinimo = 0; let UltimaCPLida = null; const FH_MIN_RECURSOS = 150000; let RecursoMinimo = 0; const LerRecursoMinimo = () => { const el = document.getElementById('fh-recmin'); RecursoMinimo = el ? (parseInt(el.value, 10) || 0) : 0; return RecursoMinimo; }; const MinimoEfetivo = () => { return RecursoMinimo > 0 ? RecursoMinimo : FH_MIN_RECURSOS; }; const AtualizarStatusRec = () => { const el = document.getElementById('fh-recmin-status'); if (!el) { return; } if (RecursoMinimo <= 0) { el.style.color = '#8a8a8a'; el.innerText = '150k'; el.title = 'usando o mínimo padrão de 150 mil'; } else { el.style.color = '#7ed17e'; el.innerText = (RecursoMinimo / 1000) + 'k'; el.title = 'só bárbaras com ' + RecursoMinimo.toLocaleString('pt-BR') + '+ de recurso total'; } }; let RelatoriosUsados = new Set(); let AlvosPuladosRepetidos = 0; const MarcarRelatorioUsado = (rid) => { RelatoriosUsados.add(rid); /* relatorio antigo nunca volta (o novo tem outro numero), entao da pra esquecer os mais velhos */ if (RelatoriosUsados.size > 40000) { const manter = Array.from(RelatoriosUsados).slice(-20000); RelatoriosUsados = new Set(manter); } }; const LiberarRelatorio = (rid) => { RelatoriosUsados.delete(rid); }; let MotivosFalha = {}; let UltimoResumoFalha = 0; const RegistrarMotivoFalha = (motivo) => { let m = String(Array.isArray(motivo) ? motivo[0] : motivo).slice(0, 90); MotivosFalha[m] = (MotivosFalha[m] || 0) + 1; /* a cada 30s no maximo, mostra um resumo agrupado no Console (sem inundar de mensagens) */ if (Date.now() - UltimoResumoFalha > 30000) { UltimoResumoFalha = Date.now(); const lista = Object.keys(MotivosFalha).sort((a, b) => MotivosFalha[b] - MotivosFalha[a]).map((k) => MotivosFalha[k] + 'x  ' + k); console.log('[OROCHIKING] Farm Hard - motivos das falhas ate agora:\n  ' + lista.join('\n  ') + '\n  (alvos pulados por ja terem ataque a caminho: ' + AlvosPuladosRepetidos + ')'); } };
     const LerCLMinimo = () => { const el = document.getElementById('fh-clmin'); CLMinimo = el ? (parseInt(el.value, 10) || 0) : 0; return CLMinimo; }; const LerCPMinimo = () => { const el = document.getElementById('fh-cpmin'); CPMinimo = el ? (parseInt(el.value, 10) || 0) : 0; return CPMinimo; };
     const AtualizarStatusCP = () => { const el = document.getElementById('fh-cpmin-status'); if (!el) { return; } if (CPMinimo <= 0) { el.style.color = '#8a8a8a'; el.innerText = 'off'; el.title = ''; return; } if (UltimaCPLida === null) { el.style.color = '#ffb347'; el.innerText = '...'; el.title = 'lendo cavalaria pesada'; return; } if (UltimaCPLida === -1) { el.style.color = '#ff8a6b'; el.innerText = 'erro'; el.title = 'nao consegui ler a CP do seu mundo'; return; } el.style.color = '#7ed17e'; el.innerText = UltimaCPLida + ''; el.title = 'CP lida: ' + UltimaCPLida; }; const AtualizarStatusCL = () => { const el = document.getElementById('fh-clmin-status'); if (!el) { return; } if (CLMinimo <= 0) { el.style.color = '#8a8a8a'; el.innerText = 'off'; el.title = ''; return; } if (UltimaCLLida === null) { el.style.color = '#ffb347'; el.innerText = '...'; el.title = 'lendo cavalaria'; return; } if (UltimaCLLida === -1) { el.style.color = '#ff8a6b'; el.innerText = 'erro'; el.title = 'nao consegui ler a CL do seu mundo'; return; } el.style.color = '#7ed17e'; el.innerText = UltimaCLLida + ''; el.title = 'CL lida: ' + UltimaCLLida + ' | aldeias puladas: ' + AldeiasPuladasCL; };
@@ -2317,23 +2329,72 @@
   function checaFarmDormindo() {
     return checaFarmar();
   }
+  /* ---------- Farm Dormindo: configuração própria ----------
+     O Dormindo tem as SUAS configurações (padrão abaixo). Enquanto ele está aberto,
+     o que você mudar no Farm Hard fica salvo pro Dormindo; ao fechar, o Farm Hard
+     normal volta com as configurações dele. */
+  var FH_CHAVES = { cl: 'fh_cl_minimo', cp: 'fh_cp_minimo', rec: 'fh_recurso_minimo', ritmo: 'fh_ritmo_humano', rica: 'fh_prioriza_rica', visita: 'fh_por_visita' };
+  var DORM_PADRAO = { fator: '1', grupos: '1', cl: '1000', cp: '1000', rec: '350000', ritmo: '1', rica: '1', visita: '1' };
+  function dormLer() {
+    var c = JSON.parse(JSON.stringify(DORM_PADRAO));
+    try { var s = JSON.parse(localStorage.getItem('ork_dormindo_cfg') || 'null'); if (s) { for (var k in s) { if (s[k] != null) { c[k] = String(s[k]); } } } } catch (e) {}
+    return c;
+  }
+  function dormAplicarChaves(c) {
+    try {
+      if (localStorage.getItem('ork_fh_normal_backup') === null) {
+        var bk = {}; for (var k in FH_CHAVES) { bk[k] = localStorage.getItem(FH_CHAVES[k]); }
+        localStorage.setItem('ork_fh_normal_backup', JSON.stringify(bk));
+      }
+      for (var k2 in FH_CHAVES) { localStorage.setItem(FH_CHAVES[k2], c[k2]); }
+    } catch (e) {}
+  }
+  function dormRestaurarNormal() {
+    try {
+      var bk = JSON.parse(localStorage.getItem('ork_fh_normal_backup') || 'null');
+      if (!bk) { return; }
+      for (var k in FH_CHAVES) { if (bk[k] === null || bk[k] === undefined) { localStorage.removeItem(FH_CHAVES[k]); } else { localStorage.setItem(FH_CHAVES[k], bk[k]); } }
+      localStorage.removeItem('ork_fh_normal_backup');
+    } catch (e) {}
+  }
+  function dormCapturar() {
+    try {
+      if (localStorage.getItem('ork_retomar_dormindo') !== '1' || !document.getElementById('fh-fechar')) { return; }
+      var c = dormLer();
+      for (var k in FH_CHAVES) { var v = localStorage.getItem(FH_CHAVES[k]); if (v !== null) { c[k] = v; } }
+      var vel = document.querySelector('.fh-vel.ativa'); if (vel) { c.fator = vel.getAttribute('data-fator') || c.fator; }
+      var gr = document.querySelector('.fh-opcao-input:checked'); if (gr) { c.grupos = gr.value || c.grupos; }
+      localStorage.setItem('ork_dormindo_cfg', JSON.stringify(c));
+    } catch (e) {}
+  }
+  var dormOuvindo = false;
   function rodarFarmDormindo() {
-    rodarFarmar();
+    var cfgD = dormLer();
     try { localStorage.setItem('ork_retomar_dormindo', '1'); } catch (e) {}
+    dormAplicarChaves(cfgD);
+    rodarFarmar();
+    if (!dormOuvindo) {
+      dormOuvindo = true;
+      ['click', 'input', 'change'].forEach(function (ev) {
+        document.addEventListener(ev, function () { setTimeout(dormCapturar, 250); }, true);
+      });
+    }
     setTimeout(function () {
       try {
-        var botaoLento = document.querySelector('.fh-vel[data-fator="0.5"]');
-        if (botaoLento) { botaoLento.click(); }
-        var grupo2 = document.querySelector('.fh-opcao-input[value="2"]');
-        if (grupo2 && !grupo2.checked) {
-          grupo2.checked = true;
-          grupo2.dispatchEvent(new Event('change', { bubbles: true }));
+        var vel = document.querySelector('.fh-vel[data-fator="' + cfgD.fator + '"]');
+        if (vel) { vel.click(); }
+        var grupo = document.querySelector('.fh-opcao-input[value="' + cfgD.grupos + '"]');
+        if (grupo && !grupo.checked) {
+          grupo.checked = true;
+          grupo.dispatchEvent(new Event('change', { bubbles: true }));
         }
         var fechar = document.getElementById('fh-fechar');
         if (fechar) {
           fechar.addEventListener('click', function () {
+            dormCapturar();
             try { localStorage.removeItem('ork_retomar_dormindo'); } catch (e) {}
-          });
+            dormRestaurarNormal();
+          }, true);
         }
         var iniciar = document.getElementById('fh-iniciar');
         if (iniciar) { iniciar.click(); }
@@ -7687,7 +7748,7 @@
   function gerEsperar(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function gerEntre(a, b) { return Math.floor(a + Math.random() * (b - a + 1)); }
   function gerLog(t) { try { console.log('[OROCHIKING] Gerente: ' + t); } catch (e) {} }
-  function gerStatus(t) { var b = document.getElementById('ork-ger-bolinha'); if (b && t) { b.title = 'Gerente Hard (BETA): ' + t + ' — clique pra parar'; } }
+  function gerStatus(t) { var b = document.getElementById('ork-ger-bolinha'); if (b && t) { b.title = 'Gerente de Conta (BETA): ' + t + ' — clique pra parar'; } }
   function gerNum(t) { var n = parseInt(String(t == null ? '' : t).replace(/[^0-9]/g, ''), 10); return isNaN(n) ? 0 : n; }
   function gerNomePredio(id) {
     var n = { main: 'Ed. Principal', barracks: 'Quartel', stable: 'Estábulo', garage: 'Oficina', church: 'Igreja', church_f: 'Primeira igreja',
@@ -8210,7 +8271,7 @@
       'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
       'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
     b.innerHTML = '<span style="font-size:18px">🏗️</span><span id="ork-ger-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">GER</span>';
-    b.addEventListener('click', function () { if (confirm('Parar o Gerente Hard (BETA TEST)?')) { gerParar('parado pelo usuário'); } });
+    b.addEventListener('click', function () { if (confirm('Parar o Gerente de Conta (BETA TEST)?')) { gerParar('parado pelo usuário'); } });
     document.body.appendChild(b);
     if (gerRelogio) { clearInterval(gerRelogio); }
     gerRelogio = setInterval(function () {
@@ -8249,7 +8310,7 @@
       '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:600px;max-width:calc(100vw - 20px);' +
         'max-height:calc(100vh - 30px);overflow:auto;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12)">' +
         '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:9px 12px;display:flex;align-items:center;gap:8px">' +
-          '<span style="font-weight:800;font-size:13px;letter-spacing:1.1px">🏗️ GERENTE HARD</span>' +
+          '<span style="font-weight:800;font-size:13px;letter-spacing:1.1px">🏗️ GERENTE DE CONTA</span>' +
           '<span title="Ferramenta em teste: pode apresentar bugs. Use o Simular antes de ativar e avise se algo sair errado." style="font-size:8.5px;background:#141200;color:#FFC400;padding:2px 7px;border-radius:9px;font-weight:800;letter-spacing:.5px;cursor:help">BETA TEST</span>' +
           '<span style="flex:1;text-align:center;font-size:10px;font-weight:700;color:#3d3000">' + (c.ativo ? 'RODANDO' : 'PARADO') + '</span>' +
           '<span id="ork-ger-x" style="cursor:pointer;font-weight:bold;font-size:15px">&times;</span></div>' +
@@ -9203,7 +9264,7 @@
       nome: 'Farm Dormindo',
       abrev: 'Dormindo',
       icone: '😴',
-      dica: 'Abre o Farm Hard já no modo mais lento (0.5x "Durma em Paz", ~1 ataque a cada 2s) e em 2 grupos — pra reduzir bem o risco de captcha enquanto você não está olhando.',
+      dica: 'Abre o Farm Hard com a configuração própria do Dormindo, que evitou bem o captcha: 1x, rotação Normal, CL mín. 1000, CP mín. 1000, recurso mín. da bárbara 350.000, Ritmo humano ON, Priorizar a mais rica ON, 1 ataque por visita. Se você mudar algo com o Dormindo aberto, fica salvo só pro Dormindo — o Farm Hard normal continua com as configurações dele.',
       checar: checaFarmDormindo,
       rodar: rodarFarmDormindo,
       destino: null
@@ -9233,7 +9294,7 @@
     {
       id: 'cancelar',
       nome: 'Cancelar Recrutamento',
-      abrev: 'Cancelar',
+      abrev: 'Cancelar Recrutamento',
       icone: '🚫',
       dica: 'Ao clicar, leva para Visão Geral → Produção; ao chegar, clique em "Ativar agora" pra cancelar.',
       checar: checaCancelar,
@@ -9242,8 +9303,8 @@
     },
     {
       id: 'defender',
-      nome: 'Coletar Atk e Def',
-      abrev: 'Atk/Def',
+      nome: 'Coletar Cords Atacar e Apoiar',
+      abrev: 'Coletar Cords Atacar e Apoiar',
       icone: '🛡️',
       categoria: 'Coleta',
       dica: 'Ao clicar, leva para Comandos → Ataques Recebidos; ao chegar, clique em "Ativar agora" pra coletar.',
@@ -9288,8 +9349,8 @@
     },
     {
       id: 'coletorfarm',
-      nome: 'Coletor BB Padrão Farm/Assistente',
-      abrev: 'BB Padrão',
+      nome: 'Coletar BB no Mapa',
+      abrev: 'Coletar BB no Mapa',
       icone: '🧺',
       dica: 'Ao clicar, leva para o Mapa e a lista de bárbaros próximos (com os ícones de farm) abre sozinha ao chegar.',
       checar: checaColetorFarm,
@@ -9343,8 +9404,8 @@
     },
     {
       id: 'gerente',
-      nome: 'Gerente Hard (BETA TEST)',
-      abrev: 'Gerente BETA',
+      nome: 'Gerente de Conta (BETA TEST)',
+      abrev: 'Gerente de Conta',
       icone: '🏗️',
       dica: 'Constrói e recruta sozinho por GRUPO: cada regra liga um grupo do jogo (manual ou dinâmico) a um modelo de construção e a um modelo de tropas do seu Gerente de Conta. Repõe a fila sem o limite do Gerente, respeita a reserva do modelo de tropas. Use "Simular" pra conferir antes. Bolinha 🏗️ no canto — clique pra parar.',
       checar: checaGerente,
