@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 80;
+  window.__ORK_VERSAO__ = 81;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -225,6 +225,16 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-27-gerente-trava',
+      data: '27/09/2026',
+      titulo: 'Gerente de Conta: não trava mais ao abrir',
+      itens: [
+        'Corrigido: para algumas pessoas a janela do Gerente abria travada — não dava pra escolher grupo, ler grupos e modelos, ativar nem fechar.',
+        'A causa era a lista de grupos lida pelo 🔄 do Nobre Bárbaras, que ficava incompleta pro Gerente. Agora o Gerente lê grupos e modelos de novo sozinho quando precisa.',
+        'O X de fechar funciona sempre, e se um grupo ou modelo não puder ser lido, os outros continuam aparecendo.'
+      ]
+    },
     {
       id: '2026-09-27-nobre-parar',
       data: '27/09/2026',
@@ -8007,11 +8017,32 @@
     var p = { ativo: false, regras: [], maxFila: 2, semRegraUsaAldeia: false, intervaloMin: 10, proximoEm: 0, feitos: [], ultimo: null };
     try { var c = JSON.parse(localStorage.getItem(GER_CHAVE) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     if (!Array.isArray(p.regras)) { p.regras = []; }
+    // regra salva quebrada (null, texto...) não pode derrubar o modal
+    p.regras = p.regras.filter(function (r) { return r && typeof r === 'object'; }).map(function (r) {
+      return { grupo: r.grupo != null ? String(r.grupo) : '0', grupoNome: r.grupoNome || '', cons: r.cons || '', consNome: r.consNome || '', trop: r.trop || '' };
+    });
     return p;
   }
   function gerGravar(c) { try { localStorage.setItem(GER_CHAVE, JSON.stringify(c)); } catch (e) {} }
   function gerChaveCatalogo() { return 'ork_gerente_catalogo_' + ((window.game_data && game_data.world) || ''); }
-  function gerLerCatalogo() { try { return JSON.parse(localStorage.getItem(gerChaveCatalogo()) || 'null'); } catch (e) { return null; } }
+  // O catálogo é compartilhado com o Nobre Bárbaras (que grava só os grupos). Antes, um catálogo
+  // incompleto (sem "construcao"/"tropas") quebrava o modal do Gerente ao abrir e travava tudo.
+  // Agora ele sempre volta completo, com listas válidas.
+  function gerLerCatalogo() {
+    var c = null;
+    try { c = JSON.parse(localStorage.getItem(gerChaveCatalogo()) || 'null'); } catch (e) { c = null; }
+    if (!c || typeof c !== 'object') { return null; }
+    function lista(v, ok) { return Array.isArray(v) ? v.filter(function (x) { return x && typeof x === 'object' && ok(x); }) : []; }
+    return {
+      grupos: lista(c.grupos, function (g) { return g.id != null && g.nome; }),
+      construcao: lista(c.construcao, function (m) { return m.id != null; }),
+      tropas: lista(c.tropas, function (m) { return m.nome; }).map(function (m) {
+        return { nome: String(m.nome), unidades: (m.unidades && typeof m.unidades === 'object') ? m.unidades : {}, buffer: Array.isArray(m.buffer) ? m.buffer : [0, 0, 0, 0] };
+      }),
+      // só conta como "lido" se os modelos também foram lidos (o Nobre grava só os grupos)
+      quando: (Array.isArray(c.construcao) && Array.isArray(c.tropas)) ? (+c.quando || 0) : 0
+    };
+  }
   function gerGravarCatalogo(c) { try { localStorage.setItem(gerChaveCatalogo(), JSON.stringify(c)); } catch (e) {} }
   function gerEsperar(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function gerEntre(a, b) { return Math.floor(a + Math.random() * (b - a + 1)); }
@@ -8234,12 +8265,14 @@
     return [];
   }
   async function gerAtualizarCatalogo() {
+    // cada leitura é independente: se uma falhar (ex.: conta sem Gerente de Conta/premium),
+    // as outras continuam valendo em vez de perder tudo
     var cat = { grupos: [], construcao: [], tropas: [], quando: Date.now() };
-    cat.grupos = await gerLerGrupos();
+    try { cat.grupos = await gerLerGrupos(); } catch (e) { gerLog('não consegui ler os grupos — ' + (e && e.message)); }
     await gerEsperar(gerEntre(300, 600));
-    cat.construcao = await gerLerModelosConstrucao();
+    try { cat.construcao = await gerLerModelosConstrucao(); } catch (e) { gerLog('não consegui ler os modelos de construção — ' + (e && e.message)); }
     await gerEsperar(gerEntre(300, 600));
-    cat.tropas = await gerLerModelosTropas();
+    try { cat.tropas = await gerLerModelosTropas(); } catch (e) { gerLog('não consegui ler os modelos de tropas — ' + (e && e.message)); }
     gerGravarCatalogo(cat);
     return cat;
   }
@@ -8558,13 +8591,15 @@
 
   /* ---------- modal ---------- */
   function gerResumoTropas(m) {
-    if (!m) { return ''; }
+    if (!m || !m.unidades) { return ''; }
     var t = Object.keys(m.unidades).map(function (u) { return m.unidades[u].toLocaleString('pt-BR') + ' ' + (GER_NOMES_TROPA[u] || u); }).join(', ');
     var b = m.buffer || [0, 0, 0, 0];
     return t + ((b[0] || b[1] || b[2] || b[3]) ? ' • reserva: ' + b[0] + '/' + b[1] + '/' + b[2] + ' rec., ' + b[3] + ' pop.' : '');
   }
   function gerAbrirModal() {
-    if (document.getElementById('ork-modal-ger')) { return; }
+    // se sobrou uma janela quebrada de antes (ela ficava presa na tela), remove e abre de novo
+    var velho = document.getElementById('ork-modal-ger');
+    if (velho) { velho.remove(); }
     var c = gerLer();
     var cat = gerLerCatalogo() || { grupos: [], construcao: [], tropas: [], quando: 0 };
     var regras = JSON.parse(JSON.stringify(c.regras || []));
@@ -8616,6 +8651,8 @@
       '</div>';
     document.body.appendChild(ov);
     var balao = autoLigarDicas(ov);
+    // o X é ligado ANTES de tudo: mesmo se algo abaixo falhar, dá pra fechar a janela
+    document.getElementById('ork-ger-x').addEventListener('click', fechar);
 
     function mostrarCatalogo() {
       var el = document.getElementById('ork-ger-cat');
@@ -8654,12 +8691,20 @@
       var btn = document.getElementById('ork-ger-ler');
       btn.disabled = true; btn.textContent = 'Lendo...';
       gerCacheTropas = null;
-    try { cat = await gerAtualizarCatalogo(); }
+      try { await gerAtualizarCatalogo(); cat = gerLerCatalogo() || cat; }
       catch (e) { document.getElementById('ork-ger-cat').innerHTML = '<span style="color:#ff8080">Erro ao ler: ' + gerHtml(e && e.message) + '</span>'; }
       btn.disabled = false; btn.textContent = '🔄 Ler grupos e modelos do jogo';
-      mostrarCatalogo(); desenharRegras();
+      desenhar();
     }
-    mostrarCatalogo(); desenharRegras();
+    function desenhar() {
+      try { mostrarCatalogo(); desenharRegras(); }
+      catch (e) {
+        console.error('[OROCHIKING] Gerente: erro ao montar a janela', e);
+        var el = document.getElementById('ork-ger-cat');
+        if (el) { el.innerHTML = '<span style="color:#ff8080">Erro ao montar a lista: ' + gerHtml(e && e.message) + ' — clique em 🔄 pra ler de novo.</span>'; }
+      }
+    }
+    desenhar();
     if (!cat.quando) { lerDoJogo(); }
     document.getElementById('ork-ger-ler').addEventListener('click', lerDoJogo);
     document.getElementById('ork-ger-add').addEventListener('click', function () {
@@ -8676,7 +8721,6 @@
       return n;
     }
     function erro(t) { document.getElementById('ork-ger-prev').innerHTML = '<div style="color:#ff8080;font-size:11px">' + t + '</div>'; }
-    document.getElementById('ork-ger-x').addEventListener('click', fechar);
     if (document.getElementById('ork-ger-parar')) {
       document.getElementById('ork-ger-parar').addEventListener('click', function () { gerParar('parado pelo usuário'); fechar(); });
     }
