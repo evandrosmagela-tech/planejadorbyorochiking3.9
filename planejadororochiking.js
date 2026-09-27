@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 79;
+  window.__ORK_VERSAO__ = 80;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -225,6 +225,16 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-27-nobre-parar',
+      data: '27/09/2026',
+      titulo: 'Nobre Bárbaras: Parar para de verdade',
+      itens: [
+        'Parar agora interrompe na hora até um ciclo que já estava no meio (não manda mais nobre, não forma, não explora) e não traz de volta o histórico apagado.',
+        'Vale pra tudo que estiver rodando o Nobre: esta aba, outras abas do mesmo mundo e o 24/7 (tira o "Noblar" da sequência; o resto do 24/7 continua).',
+        'A janela mostra se ele está rodando aqui, pelo 24/7 ou em outra aba — e o botão Parar aparece em todos esses casos.'
+      ]
+    },
     {
       id: '2026-09-27-nobre-escolta-ou',
       data: '27/09/2026',
@@ -6894,7 +6904,7 @@
     // as ferramentas avulsas que estão na sequência param sozinhas (quem comanda agora é o 24/7)
     if (seqOn.indexOf('cunhar') !== -1) { try { pararCunharPorSeguranca(); } catch (e) {} }
     if (seqOn.indexOf('balancear') !== -1) { try { balParar(); } catch (e) {} }
-    if (seqOn.indexOf('nobre') !== -1) { try { if (nobLer().ativo) { nobParar('assumido pelo 24/7'); } } catch (e) {} }
+    if (seqOn.indexOf('nobre') !== -1) { try { if (nobLer().ativo) { nobParar('assumido pelo 24/7', true); } } catch (e) {} }
     if (seqOn.indexOf('gerente') !== -1) { try { if (gerLer().ativo) { gerParar('assumido pelo 24/7'); } } catch (e) {} }
     if (seqOn.indexOf('coletor') !== -1) { try { window.__OROCHIKING__.parar(); } catch (e) {} }
     n.fase = n.modo !== 'player' ? 'seq' : 'atk-enviar';
@@ -8729,6 +8739,7 @@
   var NOB_TRAVA = 'ork_nobre_trava';
   var NOB_ABA = 'aba' + Math.random().toString(36).slice(2, 10);
   var nobTimer = null, nobRelogio = null, nobTravaId = null, nobRodando = false;
+  var nobGeracao = 0; // muda a cada Parar: um ciclo que já estava rodando percebe na hora e para de enviar/salvar
   var NOB_BONUS = [
     ['wood', '🪵 Madeira'], ['stone', '🧱 Argila'], ['iron', '⛓️ Ferro'], ['farm', '🌾 Fazenda'], ['barracks', '🛡️ Quartel'],
     ['stable', '🐎 Estábulo'], ['garage', '🛠️ Oficina'], ['storage', '📦 Armazém'], ['all', '⭐ Todos os recursos']
@@ -8788,7 +8799,10 @@
   function nobGravar(c) { try { sessionStorage.setItem(nobChave(), JSON.stringify(c)); } catch (e) {} }
   // versões antigas guardavam no localStorage (valia pra sempre, em todas as abas): limpa
   try { if (window.game_data && game_data.world) { localStorage.removeItem('ork_nobre_' + game_data.world); } } catch (e) {}
-  function nobSalvarEstado(cfg) { var c = nobLer(); c.alvos = cfg.alvos; c.explorados = cfg.explorados; nobGravar(c); }
+  function nobSalvarEstado(cfg) {
+    if (cfg && cfg._g != null && cfg._g !== nobGeracao) { return; } // parado no meio do ciclo: não ressuscita o histórico apagado
+    var c = nobLer(); c.alvos = cfg.alvos; c.explorados = cfg.explorados; nobGravar(c);
+  }
   function nobLog(t) { try { console.log('[OROCHIKING] Nobre Bárbaras: ' + t); } catch (e) {} }
   function nobStatus(t) { var b = document.getElementById('ork-nob-bolinha'); if (b && t) { b.title = 'Nobre Bárbaras (BETA): ' + t + ' — clique pra parar'; } }
   function nobDist(a, b) { return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)); }
@@ -9255,7 +9269,14 @@
     if (!simular && !externo && !nobPegarTrava()) { nobStatus('rodando em outra aba'); setTimeout(nobRetomar, gerEntre(20000, 30000)); return null; }
     nobRodando = true;
     if (!simular && !externo) { nobMostrarBolinha(); }
-    var parar = function () { return !simular && (externo ? !autoLer().ativo : !nobLer().ativo); };
+    var geracao = nobGeracao;
+    if (!simular) { cfg._g = geracao; }
+    var parar = function () {
+      if (simular) { return false; }
+      if (geracao !== nobGeracao) { return true; } // apertaram Parar
+      if (externo) { var a = autoLer(); return !a.ativo || autoSeqAtiva(a).indexOf('nobre') === -1; }
+      return !nobLer().ativo;
+    };
     var res = { enviados: 0, nobres: 0, conquistas: 0, pesquisas: 0, recrutou: 0, explorados: 0, falhas: 0 }, retorno = null;
     try {
       nobStatus('lendo suas aldeias');
@@ -9321,7 +9342,7 @@
             res.falhas++;
             nobLog('falhou ' + it.origem.coord + ' → ' + it.alvo.x + '|' + it.alvo.y + ': ' + String(r.erro).slice(0, 120));
           }
-          var c3 = nobLer(); c3.alvos = cfg.alvos; c3.explorados = cfg.explorados; nobGravar(c3);
+          nobSalvarEstado(cfg);
           if (i < p.plano.length - 1) { await gerEsperar(nobEntreEnvios(cfg)); }
         }
       }
@@ -9387,6 +9408,7 @@
     // limpa histórico velho (mantém as últimas 60)
     cfg.alvos = cfg.alvos.filter(function (a) { return a.status === 'caminho' || a.status === 'reenviar' || a.status === 'conquistada' || Date.now() - (a.enviadoEm || a.quando || 0) < 3 * 86400000; }).slice(-60);
     if (simular) { return retorno; }
+    if (geracao !== nobGeracao) { nobLog('ciclo interrompido pelo Parar.'); return retorno; }
     var c2 = nobLer();
     c2.alvos = cfg.alvos; c2.explorados = cfg.explorados;
     if (!c2.ativo) { nobGravar(c2); return retorno; }
@@ -9425,7 +9447,20 @@
     if (c.proximoEm && c.proximoEm > Date.now()) { nobAgendar(); return; }
     nobRodarCiclo();
   }
-  function nobParar(motivo) {
+  // Parar vale pra TUDO que estiver rodando o Nobre: esta aba, outras abas do mesmo mundo e o 24/7 (tira o Noblar da sequência)
+  function nobParar(motivo, soEstaAba) {
+    nobGeracao++;
+    if (!soEstaAba) {
+      try { localStorage.setItem('ork_nobre_parar_' + ((window.game_data && game_data.world) || ''), String(Date.now())); } catch (e) {}
+      try {
+        var a = autoLer();
+        if (a.ativo && autoSeqAtiva(a).indexOf('nobre') !== -1) {
+          a.seq = autoSeqCompleta(a).map(function (x) { return { id: x.id, on: x.id === 'nobre' ? false : x.on }; });
+          autoGravar(a);
+          nobLog('Noblar tirado da sequência do 24/7 (o resto do 24/7 continua).');
+        }
+      } catch (e) {}
+    }
     // parou = começa do zero na próxima vez (as configurações escolhidas ficam; o histórico de alvos/explorações é apagado)
     var c = nobLer(); c.ativo = false; c.proximoEm = 0; c.alvos = []; c.explorados = []; c.ultimo = null; nobGravar(c);
     if (nobTimer) { clearTimeout(nobTimer); nobTimer = null; }
@@ -9435,6 +9470,19 @@
     if (motivo) { nobLog('parado (' + motivo + ').'); }
   }
 
+
+  // Parar apertado em OUTRA aba: para aqui também
+  window.addEventListener('storage', function (ev) {
+    try {
+      if (ev.key !== 'ork_nobre_parar_' + ((window.game_data && game_data.world) || '')) { return; }
+      var c = nobLer();
+      if (c.ativo || nobRodando) { nobParar('parado em outra aba', true); }
+    } catch (e) {}
+  });
+  // alguém rodando o Nobre em outra aba? (a trava é renovada a cada 5s por quem está rodando)
+  function nobRodandoEmOutraAba() {
+    try { var t = JSON.parse(localStorage.getItem(NOB_TRAVA) || 'null'); return !!(t && t.aba !== NOB_ABA && Date.now() - (t.ts || 0) < 20000); } catch (e) { return false; }
+  }
 
   function nobMostrarBolinha() {
     if (document.getElementById('ork-nob-bolinha')) { return; }
@@ -9464,6 +9512,9 @@
   function nobAbrirModal() {
     if (document.getElementById('ork-modal-nob')) { return; }
     var c = nobLer();
+    var via247 = false; try { var a247 = autoLer(); via247 = a247.ativo && autoSeqAtiva(a247).indexOf('nobre') !== -1; } catch (e) {}
+    var outraAba = !c.ativo && nobRodandoEmOutraAba();
+    var rodandoAlgo = c.ativo || via247 || outraAba || nobRodando;
     var cat = gerLerCatalogo() || { grupos: [] };
     var ov = document.createElement('div');
     ov.id = 'ork-modal-nob';
@@ -9493,7 +9544,7 @@
           '<span style="font-weight:800;font-size:12px;letter-spacing:1px">👑 NOBRE BÁRBARAS</span>' +
           '<span style="font-size:8px;background:#141200;color:#FFC400;padding:2px 6px;border-radius:9px;font-weight:800" data-dica="Ferramenta nova: manda NOBRES de verdade. Use o Simular antes de ativar e acompanhe o Console (F12) nos primeiros ciclos.">BETA</span>' +
           '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="A cada ciclo: lê suas aldeias → busca bárbaras no mapa, de perto pra longe (bônus primeiro) → manda os nobres (cada um com a escolta escolhida) da aldeia mais perto que tem nobre → quando conquista, pesquisa o explorador, recruta e a própria aldeia nova explora as bárbaras ao redor pra entrarem no Farm.">?</span>' +
-          '<span style="flex:1;text-align:right;font-size:9.5px;font-weight:800;color:#3d3000">' + (c.ativo ? '● RODANDO' : 'PARADO') + '</span>' +
+          '<span style="flex:1;text-align:right;font-size:9.5px;font-weight:800;color:#3d3000">' + (c.ativo ? '● RODANDO' : via247 ? '● RODANDO PELO 24/7' : outraAba ? '● RODANDO EM OUTRA ABA' : nobRodando ? '● TERMINANDO CICLO' : 'PARADO') + '</span>' +
           '<span id="ork-nob-x" style="cursor:pointer;font-weight:bold;font-size:15px;margin-left:4px">&times;</span></div>' +
         '<div style="padding:6px 9px 9px">' +
           '<div style="' + sec + '"><div style="' + stit + '">🎯 Alvos</div>' +
@@ -9554,7 +9605,7 @@
           '<div id="ork-nob-prev" style="margin-top:6px"></div>' +
           '<div style="display:flex;gap:5px;margin-top:7px">' +
             '<button id="ork-nob-sim" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Simular</button>' +
-            (c.ativo ? '<button id="ork-nob-parar" style="flex:1;background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Parar</button>' : '') +
+            (rodandoAlgo ? '<button id="ork-nob-parar" style="flex:1;background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Parar</button>' : '') +
             '<button id="ork-nob-ok" style="flex:1.3;background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;border:none;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:800;font-size:11px;font-family:inherit">' + (c.ativo ? 'Salvar e rodar agora' : 'Ativar') + '</button>' +
           '</div>' +
         '</div>' +
