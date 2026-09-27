@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 77;
+  window.__ORK_VERSAO__ = 79;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -231,7 +231,9 @@
       titulo: 'Nobre Bárbaras: escolta com opções',
       itens: [
         'Cada linha da escolta agora é uma OPÇÃO, na ordem: o nobre sai com a primeira que a aldeia tiver (ex.: 50 CL ou, se faltar CL, 50 CP).',
-        'Antes ele exigia todas as linhas juntas e não mandava se faltasse uma delas.'
+        'Antes ele exigia todas as linhas juntas e não mandava se faltasse uma delas.',
+        'As configurações do Nobre ficam salvas NESTA ABA: recarregar ou trocar de tela mantém; fechou a aba/navegador, volta pro padrão.',
+        'Padrão: espaçamento 10, distância 1000, 1 nobre por bárbara, reforço 0, ciclo 22s, escolta 122 lanceiros OU 22 CL, produzir nobres ligado (máx. 1, raio 25), vizinhas exploram após 1 min.'
       ]
     },
     {
@@ -8733,11 +8735,14 @@
   ];
   function nobChave() { return 'ork_nobre_' + ((window.game_data && game_data.world) || ''); }
   function nobLer() {
-    var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 3, escolta: 'light', escoltas: null, nobres: 4, intervaloUni: 'min', reforco: 2, raio: 40,
-      maxSimult: 0, intervaloMin: 30, pontosMin: 0, pontosMax: 13000, priorizarBonus: true, soBonus: false,
-      bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10, vizinhasMin: 60, envioMin: 2, envioMax: 4, produzir: false, produzirMax: 1, produzirRaio: 10,
+    // padrão (quem nunca mexeu vê isso; o que a pessoa mudar e salvar fica valendo pra ela)
+    var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 10, escolta: 'light', escoltas: [{ u: 'spear', n: 122 }, { u: 'light', n: 22 }], nobres: 1, intervaloUni: 'seg', reforco: 0, raio: 1000,
+      maxSimult: 0, intervaloMin: 22, pontosMin: 0, pontosMax: 13000, priorizarBonus: true, soBonus: false,
+      bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10, vizinhasMin: 1, envioMin: 2, envioMax: 4, produzir: true, produzirMax: 1, produzirRaio: 25,
       alvos: [], explorados: [], proximoEm: 0, ultimo: null };
-    try { var c = JSON.parse(localStorage.getItem(nobChave()) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
+    // configuração e estado ficam salvos POR ABA (sessionStorage): recarregar/trocar de tela mantém;
+    // fechou a aba (ou o navegador), abre de novo com o padrão.
+    try { var c = JSON.parse(sessionStorage.getItem(nobChave()) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     if (!Array.isArray(p.alvos)) { p.alvos = []; }
     if (!Array.isArray(p.explorados)) { p.explorados = []; }
     if (!Array.isArray(p.bonusTipos)) { p.bonusTipos = []; }
@@ -8780,7 +8785,9 @@
   }
   // quantos nobres (cada um com uma escolta completa) dá pra mandar com essas tropas
   function nobQuantosCabem(tropas, esc, max) { return nobAlocarEscolta(tropas, esc, max).length; }
-  function nobGravar(c) { try { localStorage.setItem(nobChave(), JSON.stringify(c)); } catch (e) {} }
+  function nobGravar(c) { try { sessionStorage.setItem(nobChave(), JSON.stringify(c)); } catch (e) {} }
+  // versões antigas guardavam no localStorage (valia pra sempre, em todas as abas): limpa
+  try { if (window.game_data && game_data.world) { localStorage.removeItem('ork_nobre_' + game_data.world); } } catch (e) {}
   function nobSalvarEstado(cfg) { var c = nobLer(); c.alvos = cfg.alvos; c.explorados = cfg.explorados; nobGravar(c); }
   function nobLog(t) { try { console.log('[OROCHIKING] Nobre Bárbaras: ' + t); } catch (e) {} }
   function nobStatus(t) { var b = document.getElementById('ork-nob-bolinha'); if (b && t) { b.title = 'Nobre Bárbaras (BETA): ' + t + ' — clique pra parar'; } }
@@ -9270,7 +9277,8 @@
         if (a.status !== 'caminho' || agora < (a.chegada || 0) + 120000) { return; }
         if (barbPorId[a.id]) {
           a.tentativas = (a.tentativas || 0) + 1;
-          if (a.tentativas >= 4) { a.status = 'desistiu'; nobLog(a.x + '|' + a.y + ' não caiu depois de ' + a.tentativas + ' levas — desisti dela.'); }
+          if (!(+cfg.reforco > 0)) { a.status = 'desistiu'; nobLog(a.x + '|' + a.y + ' ainda é bárbara — reforço desligado (0): ela volta pra lista de alvos normal.'); }
+          else if (a.tentativas >= 4) { a.status = 'desistiu'; nobLog(a.x + '|' + a.y + ' não caiu depois de ' + a.tentativas + ' levas — desisti dela.'); }
           else { a.status = 'reenviar'; nobLog(a.x + '|' + a.y + ' ainda é bárbara — vou mandar reforço.'); }
         } else { a.status = 'perdida'; nobLog(a.x + '|' + a.y + ' não é mais bárbara e não é sua (outro jogador pegou?).'); }
       });
@@ -9426,7 +9434,7 @@
     var b = document.getElementById('ork-nob-bolinha'); if (b) { b.remove(); }
     if (motivo) { nobLog('parado (' + motivo + ').'); }
   }
-  window.addEventListener('storage', function (ev) { if (ev.key === nobChave() && !nobLer().ativo) { nobParar(); } });
+
 
   function nobMostrarBolinha() {
     if (document.getElementById('ork-nob-bolinha')) { return; }
@@ -9508,7 +9516,7 @@
           '<div style="' + sec + '"><div style="' + stit + '">👑 Nobres</div>' +
             '<div style="' + grade + '">' +
               num('ork-nob-qtd', c.nobres, 'Quantos nobres vão pra cada bárbara — todos saem da MESMA aldeia, no mesmo trem (cada um com a escolta escolhida abaixo). 1 = cada nobre pega uma bárbara diferente (se não cair, o reforço completa). Bárbara costuma ter lealdade 100 e cada nobre tira 20 a 35.', 'Por bárbara', 1, null) +
-              num('ork-nob-ref', c.reforco, 'Se a bárbara não cair (lealdade não zerou), no próximo ciclo manda mais esta quantidade de nobres nela antes de escolher alvos novos. Desiste depois de 4 tentativas.', 'Reforço', 1, null) +
+              num('ork-nob-ref', c.reforco, 'Se a bárbara não cair (lealdade não zerou), no próximo ciclo manda mais esta quantidade de nobres nela antes de escolher alvos novos (desiste depois de 4 tentativas). 0 = sem reforço: ela volta pra lista de alvos e pode ser escolhida de novo como qualquer outra.', 'Reforço', 0, null) +
               num('ork-nob-max', c.maxSimult, '0 = sem limite: usa TODOS os nobres que estiverem em casa de uma vez (ex.: 50 nobres e 1 por bárbara = 50 bárbaras no mesmo ciclo). Outro número = máximo de bárbaras recebendo nobre ao mesmo tempo.', 'Máx. juntas (0=∞)', 0, null) +
               '<label style="display:flex;align-items:center;gap:5px;background:#111;border:1px solid #242424;border-radius:6px;padding:3px 4px 3px 7px;min-width:0">' +
                 '<span style="flex:1;font-size:10.5px;color:#bbb;cursor:help;white-space:nowrap" data-dica="De quanto em quanto tempo o script roda de novo — escolha segundos ou minutos. Contado do fim do ciclo, +2 a 4s aleatórios. Mínimo 10 segundos. Com o FREIO: x2, mínimo 10 min.">Ciclo</span>' +
@@ -9542,6 +9550,7 @@
             return '<div style="font-size:10.5px;color:#ccc;padding:1px 0">' + a.x + '|' + a.y + (a.bonus ? ' ' + nobNomeBonus(a.bonus).split(' ')[0] : '') + ' • ' + (a.nobres || 0) + '👑 de ' + gerHtml(a.origem || '?') + ' • ' + st + '</div>';
           }).join('') + '</div></div>' : '') +
           (ult ? '<div style="font-size:10px;color:#808080;margin-top:6px">Último ciclo ' + new Date(ult.quando).toLocaleTimeString() + ': ' + ult.nobres + '👑 em ' + ult.enviados + ' alvo(s) • ' + ult.conquistas + ' conquista(s) • ' + ult.explorados + ' exploração(ões)' + (ult.falhas ? ' • ' + ult.falhas + ' falha(s)' : '') + '</div>' : '') +
+          '<div style="font-size:9.5px;color:#666;margin-top:6px">Suas mudanças ficam salvas nesta aba (recarregar ou trocar de tela mantém). Fechou a aba, volta pro padrão.</div>' +
           '<div id="ork-nob-prev" style="margin-top:6px"></div>' +
           '<div style="display:flex;gap:5px;margin-top:7px">' +
             '<button id="ork-nob-sim" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Simular</button>' +
@@ -9592,7 +9601,7 @@
       n.priorizarBonus = v('ork-nob-prbon').checked; n.soBonus = v('ork-nob-sobon').checked;
       n.bonusTipos = [].slice.call(ov.querySelectorAll('#ork-nob-tipos input:checked')).map(function (i) { return i.getAttribute('data-t'); });
       n.nobres = Math.max(1, parseInt(v('ork-nob-qtd').value, 10) || 1);
-      n.reforco = Math.max(1, Math.min(5, parseInt(v('ork-nob-ref').value, 10) || 2));
+      var rf = parseInt(v('ork-nob-ref').value, 10); n.reforco = Math.max(0, Math.min(5, isNaN(rf) ? 0 : rf));
       n.escoltas = escoltas.filter(function (e) { return e.u && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
       n.maxSimult = Math.max(0, parseInt(v('ork-nob-max').value, 10) || 0);
       n.produzir = v('ork-nob-prod').checked;
