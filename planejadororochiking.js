@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 67;
+  window.__ORK_VERSAO__ = 68;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -231,7 +231,8 @@
       titulo: 'Painel novo, mais organizado',
       itens: [
         'Ferramentas separadas por seção: Farm, Ataque e nobres, Coleta, Conta e Automação — com bolinha verde nas que estão rodando.',
-        'A versão aparece no topo do painel (ex.: Versão 67).',
+        'Painel mais largo e baixo (igual ao Farm Hard): ferramentas à esquerda, explicação e Ativar à direita — não ocupa mais a tela inteira.',
+        'A versão aparece no topo do painel (ex.: Versão 68).',
         'Nomes corrigidos: Coletar Bárbaras, Coletor BB Assistente e Ocultar Perfil.',
         'Janela do Coletar Bárbaras com o visual novo, nas mesmas cores do painel.'
       ]
@@ -9864,14 +9865,14 @@
      ESTILO
   ============================================================ */
   var css = `
-    #ork-painel{position:fixed;top:60px;right:16px;width:384px;max-width:calc(100vw - 24px);
+    #ork-painel{position:fixed;top:60px;right:16px;width:720px;max-width:calc(100vw - 24px);
       background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));
       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
       border:1px solid rgba(255,196,0,.16);border-radius:18px;
       box-shadow:0 24px 60px rgba(0,0,0,.55),0 2px 0 rgba(255,255,255,.03) inset,0 0 0 1px rgba(0,0,0,.4);
       font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;
       color:#ececec;z-index:999999;overflow:hidden;transition:box-shadow .2s ease}
-    #ork-header{background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;padding:13px 16px;
+    #ork-header{background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;padding:9px 14px;
       display:flex;justify-content:space-between;align-items:center;cursor:move;user-select:none;
       box-shadow:0 1px 0 rgba(255,255,255,.35) inset}
     #ork-header .ork-title{font-weight:800;font-size:13.5px;letter-spacing:1.1px;display:flex;align-items:center;gap:8px;
@@ -9884,15 +9885,17 @@
     #ork-header button:hover{background:rgba(0,0,0,.22);transform:scale(1.08)}
     #ork-header .ork-ver{background:rgba(26,20,0,.14);color:#1a1400;font-size:9.5px;font-weight:800;padding:3px 8px;border-radius:20px;
       letter-spacing:.3px;text-transform:none;border:1px solid rgba(26,20,0,.18)}
-    #ork-tabs{padding:8px 10px 10px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.22);
-      max-height:calc(100vh - 360px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#3a3a3a transparent}
-    .ork-sec{margin-top:6px}
+    #ork-main{display:grid;grid-template-columns:1.62fr 1fr;align-items:stretch}
+    #ork-tabs{padding:6px 10px 10px;border-right:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.22);
+      max-height:calc(100vh - 150px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#3a3a3a transparent}
+    @media (max-width:760px){#ork-main{grid-template-columns:1fr}#ork-tabs{border-right:none;border-bottom:1px solid rgba(255,255,255,.06);max-height:45vh}}
+    .ork-sec{margin-top:5px}
     .ork-sec-tit{font-size:9px;font-weight:800;color:#8a7327;text-transform:uppercase;letter-spacing:.9px;margin:0 2px 5px;
       display:flex;align-items:center;gap:6px}
     .ork-sec-tit:after{content:'';flex:1;height:1px;background:linear-gradient(90deg,rgba(255,196,0,.22),transparent)}
-    .ork-sec-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+    .ork-sec-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
     .ork-tab{position:relative;display:flex;align-items:center;gap:6px;min-width:0;background:rgba(255,255,255,.035);
-      border:1px solid rgba(255,255,255,.07);color:#b5b5b5;font-size:10.5px;font-weight:600;padding:7px 8px;border-radius:9px;
+      border:1px solid rgba(255,255,255,.07);color:#b5b5b5;font-size:10.5px;font-weight:600;padding:5px 7px;border-radius:8px;min-height:30px;
       cursor:pointer;text-align:left;transition:all .16s ease;font-family:inherit;line-height:1.2}
     .ork-tab-ic{font-size:12px;flex:0 0 auto}
     .ork-tab-txt{flex:1;min-width:0;overflow-wrap:anywhere}
@@ -9901,12 +9904,12 @@
     .ork-tab:hover{border-color:rgba(255,196,0,.35);color:#f2f2f2;background:rgba(255,255,255,.06);transform:translateY(-1px)}
     .ork-tab.ork-tab-ativa{background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#1a1400;border-color:transparent;
       box-shadow:0 4px 14px rgba(232,172,10,.35);font-weight:800}
-    #ork-body{padding:14px 16px 16px}
+    #ork-body{padding:12px 14px 12px;display:flex;flex-direction:column;min-width:0}
     #ork-content-titulo{font-size:15px;font-weight:800;color:#ffd84d;margin-bottom:8px;display:flex;align-items:center;gap:8px;
       letter-spacing:.2px}
     .ork-tag-tipo{font-size:9px;font-weight:800;color:#1a1400;background:linear-gradient(100deg,#ffc400,#ffe27a);
       padding:2px 8px;border-radius:9px;letter-spacing:.3px}
-    #ork-content-dica{font-size:11.5px;color:#9b9b9b;line-height:1.55;margin-bottom:14px;min-height:34px;
+    #ork-content-dica{font-size:11px;color:#9b9b9b;line-height:1.5;margin-bottom:10px;min-height:34px;max-height:150px;overflow-y:auto;
       background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:9px 11px}
     .ork-btn-grande{width:100%;background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#1a1400;border:none;
       border-radius:10px;font-weight:800;font-size:13px;padding:11px 12px;cursor:pointer;letter-spacing:.3px;
@@ -9914,8 +9917,8 @@
     .ork-btn-grande:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(232,172,10,.4)}
     .ork-btn-grande:active{transform:translateY(0)}
     #ork-status{font-size:10.5px;color:#ff9d5c;margin-top:12px;min-height:14px;line-height:1.4}
-    #ork-footer{font-size:9.5px;color:#5c5c5c;text-align:center;padding:9px 0 11px;border-top:1px solid rgba(255,255,255,.05)}
-    #ork-freio-box{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.07)}
+    #ork-footer{font-size:9.5px;color:#5c5c5c;text-align:center;padding:6px 10px 7px;border-top:1px solid rgba(255,255,255,.05)}
+    #ork-freio-box{margin-top:auto;padding-top:10px;border-top:1px solid rgba(255,255,255,.07)}
     #ork-freio-linha{display:flex;align-items:center;justify-content:space-between;gap:10px}
     #ork-freio-titulo{font-size:12px;font-weight:800;color:#ececec;letter-spacing:.3px}
     #ork-freio-btn{border:1px solid rgba(255,255,255,.14);background:#1c1c1c;color:#8a8a8a;
@@ -9923,7 +9926,7 @@
       text-transform:uppercase;letter-spacing:.5px;transition:all .15s;white-space:nowrap}
     #ork-freio-btn:hover{filter:brightness(1.15)}
     #ork-freio-btn.ork-freio-on{background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#1a1400;border-color:transparent}
-    #ork-freio-dica{font-size:9.5px;color:#777;margin-top:7px;line-height:1.5}
+    #ork-freio-dica{font-size:9px;color:#6f6f6f;margin-top:6px;line-height:1.45}
   `;
   var styleEl = document.createElement('style');
   styleEl.id = 'ork-style';
@@ -9956,6 +9959,7 @@
         '<button id="ork-close" title="Fechar">&times;</button>' +
       '</div>' +
     '</div>' +
+    '<div id="ork-main">' +
     '<div id="ork-tabs">' + tabsHtml + '</div>' +
     '<div id="ork-body">' +
       '<div id="ork-content-titulo"></div>' +
@@ -9971,6 +9975,7 @@
         'O Farm Hard roda em 1.25x com pausas, e a cunhagem só age NAS PAUSAS do farm — os dois nunca disparam juntos. ' +
         'Ataque e coletor também ficam mais espaçados. Menos requisição simultânea = menos captcha.</div>' +
       '</div>' +
+    '</div>' +
     '</div>' +
     '<div id="ork-footer">' +
       (window.__ORK_DUPLICADO__ ? '<span style="color:#ff9d5c">⚠ Há outra cópia do painel instalada no Tampermonkey — desative a antiga.</span><br>' : '') +
@@ -10046,8 +10051,8 @@
   var minimizado = false;
   document.getElementById('ork-min').addEventListener('click', function () {
     minimizado = !minimizado;
-    document.getElementById('ork-tabs').style.display = minimizado ? 'none' : 'flex';
-    document.getElementById('ork-body').style.display = minimizado ? 'none' : 'block';
+    document.getElementById('ork-main').style.display = minimizado ? 'none' : '';
+    document.getElementById('ork-footer').style.display = minimizado ? 'none' : '';
   });
 
   /* ============================================================
