@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 85;
+  window.__ORK_VERSAO__ = 86;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -226,6 +226,15 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-27-captcha-sem-refresh',
+      data: '27/09/2026',
+      titulo: 'Captcha: sem refresh e sem pedidos até você resolver',
+      itens: [
+        'Corrigido: a janela do captcha fechava e reabria sozinha a cada poucos segundos, gerando pedidos pro jogo com o captcha ativo.',
+        'Agora, depois do captcha, o painel não faz NENHUM pedido automático até você resolver. A janela só fecha quando o desafio some — ou no botão "✔ Já resolvi" (se você resolveu em outra aba).'
+      ]
+    },
     {
       id: '2026-09-27-captcha-janela',
       data: '27/09/2026',
@@ -2416,7 +2425,8 @@
       var topo = document.createElement('div');
       topo.style.cssText = 'background:#1a0000;color:#fff;font:700 13px "Segoe UI",Arial,sans-serif;padding:8px 12px;display:flex;gap:10px;align-items:center';
       topo.innerHTML = '<span style="flex:1">🔒 Resolva o captcha aqui. Quando resolver, esta janela fecha sozinha e tudo volta de onde parou.</span>' +
-        '<span id="ork-captcha-janela-rec" style="color:#ffd84d;cursor:pointer;text-decoration:underline;white-space:nowrap">recarregar esta janela</span>';
+        '<span id="ork-captcha-janela-rec" style="color:#ffd84d;cursor:pointer;text-decoration:underline;white-space:nowrap">recarregar esta janela</span>' +
+        '<button id="ork-captcha-janela-ok" type="button" style="background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#141200;border:none;border-radius:7px;padding:5px 10px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap">✔ Já resolvi</button>';
       var fr = document.createElement('iframe');
       fr.name = 'ork-captcha-frame';
       fr.style.cssText = 'flex:1;border:0;width:100%;background:#f4e4bc';
@@ -2425,6 +2435,7 @@
       caixa.appendChild(fr);
       document.body.appendChild(caixa);
       topo.querySelector('#ork-captcha-janela-rec').addEventListener('click', function () { try { fr.contentWindow.location.reload(); } catch (e) { fr.src = fr.src; } });
+      topo.querySelector('#ork-captcha-janela-ok').addEventListener('click', function () { fecharJanelaCaptcha('você confirmou que resolveu'); });
       var ov = document.getElementById('ork-captcha-overlay');
       if (ov) { ov.textContent = '🚨 CAPTCHA — RESOLVA NA JANELA ABAIXO. OS SCRIPTS VOLTAM SOZINHOS 🚨'; }
       console.warn('[OROCHIKING] Captcha detectado na resposta do jogo — abrindo o desafio numa janela por cima da página.');
@@ -2442,7 +2453,7 @@
   }
 
   function vigiarJanelaCaptcha(caixa, fr) {
-    var visto = false, ausente = 0, inicio = Date.now(), ultimaSonda = Date.now();
+    var visto = false, ausente = 0, inicio = Date.now();
     var id = setInterval(function () {
       if (!document.getElementById('ork-captcha-janela')) { clearInterval(id); return; }
       var doc = null;
@@ -2452,21 +2463,13 @@
         if (Date.now() - inicio > 30000) { clearInterval(id); caixa.remove(); captchaRecarregarPagina(); } // a janela não abriu: plano B
         return;
       }
-      if (captchaNaTelaEm(doc)) {
-        visto = true; ausente = 0;
-        // resolvido em outra aba? confere de vez em quando sem mexer no desafio aberto
-        if (Date.now() - ultimaSonda > 20000) {
-          ultimaSonda = Date.now();
-          fetch('/game.php?village=' + ((window.game_data && game_data.village && game_data.village.id) || '') + '&screen=overview', { credentials: 'include' })
-            .then(function (r) { return r.text(); })
-            .then(function (t) { if (!respostaEhCaptcha(t) && /game_data/.test(t)) { clearInterval(id); fecharJanelaCaptcha('resolvido em outra aba'); } })
-            .catch(function () {});
-        }
-        return;
-      }
+      // v86: nenhuma consulta ao jogo enquanto houver captcha, e a janela NÃO fecha sozinha à toa
+      // (antes fechava/reabria em ciclo, gerando pedidos com o captcha ativo).
+      // Só fecha quando o desafio que apareceu aqui some (resolvido) — ou no botão "Já resolvi".
+      if (captchaNaTelaEm(doc)) { visto = true; ausente = 0; return; }
+      if (!visto) { return; }
       ausente++;
-      if (visto && ausente >= 3) { clearInterval(id); fecharJanelaCaptcha('captcha resolvido'); return; }
-      if (!visto && ausente >= 6) { clearInterval(id); fecharJanelaCaptcha('o jogo não mostrou desafio'); }
+      if (ausente >= 3) { clearInterval(id); fecharJanelaCaptcha('captcha resolvido'); }
     }, 1000);
   }
 
@@ -2513,15 +2516,17 @@
       else if (alvo && alvo.url) { u = alvo.url; }
       else if (alvo) { u = String(alvo); }
       u = u.toLowerCase();
-      if (!u || u.indexOf('game.php') === -1) { return false; }
+      if (!u || (u.indexOf('game.php') === -1 && u.indexOf('map.php') === -1)) { return false; }
+      if (u.indexOf('map.php') !== -1) { return true; } // leitura do mapa (Coletar Bárbaras, Nobre)
 
       // nunca bloqueia nada relacionado ao desafio
       if (/captcha|bot_check|botcheck|bot-protect/.test(u)) { return false; }
 
       return (
-        /ajaxaction=farm_from_report/.test(u) ||   // Farm Hard / Coletor para Farmar
-        /screen=place/.test(u) ||                   // Ataque Mass (confirmar e enviar)
-        /screen=snob/.test(u) ||                    // Cunhagem automática
+        /ajaxaction=/.test(u) ||                    // qualquer ação (farm, ataque, mercado, construir, recrutar...)
+        /[?&]ajax=/.test(u) ||                      // telas por ajax (praça, grupos...)
+        /screen=(am_farm|place|snob|train|main|market|smith|am_village|am_troops)/.test(u) || // páginas lidas pelas ferramentas
+        /screen=overview_villages/.test(u) ||       // visões gerais lidas pelas ferramentas
         /action=command/.test(u)
       );
     } catch (e) { return false; }
