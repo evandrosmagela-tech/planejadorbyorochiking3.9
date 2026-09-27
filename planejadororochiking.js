@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 69;
+  window.__ORK_VERSAO__ = 72;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -225,6 +225,27 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-26-barbaras-rapido',
+      data: '26/09/2026',
+      titulo: 'Coletar Bárbaras mais rápido + tempo entre nobres',
+      itens: [
+        'O scan ao vivo usa o mesmo leitor rápido do Nobre Bárbaras: 40 setores por pedido (antes 8) e não pede mais setor fora do mundo.',
+        'O mapa lido fica guardado por 1 hora (junto com o Nobre Bárbaras): o 2º scan na mesma área sai na hora.',
+        'Corrigido: "Priorizar aldeias bônus" não priorizava nada — agora ordena Quartel › Estábulo › Fazenda › Recursos.',
+        'Nobre Bárbaras: novo campo "Entre envios de nobre (seg)". Padrão 2 a 4s (seguro, igual antes); pode baixar até 0,5s pra mandar mais rápido.'
+      ]
+    },
+    {
+      id: '2026-09-26-nobre-bb-3',
+      data: '26/09/2026',
+      titulo: 'Nobre Bárbaras: nobres primeiro e começo do zero',
+      itens: [
+        'Cada ciclo agora manda os NOBRES primeiro; pesquisa/recrutamento/exploração das aldeias conquistadas vem depois (antes a exploração atrasava os envios).',
+        'Ao Parar, o histórico de alvos e explorações é zerado: na próxima vez começa do zero (as configurações ficam salvas).',
+        'Se um ciclo não mandar nenhum nobre, o Console (F12) diz o motivo: quantas aldeias têm nobre em casa, quantas têm a escolta completa, espaçamento etc.'
+      ]
+    },
     {
       id: '2026-09-26-painel-v67',
       data: '26/09/2026',
@@ -4587,61 +4608,38 @@
     return window.game_data && window.game_data.screen === 'map';
   }
   function rodarBarbaras() {
-    !function(){var n,e="OROCHIKING - Barb Finder",o="orkBarbList",a="screen=map",t="",i=[],r=[],s=["barracks","stable","farm","resources"],l={};function c(){window.localStorage.setItem(`${o}_Settings`,JSON.stringify(n))}function p(){let n=$.grep(Object.values(TWMap.villages),n=>"0"==n.owner&&n.points),[e,o]=[game_data.village.x,game_data.village.y];n.forEach(n=>{n.x=Math.floor(n.xy/1e3),n.y=n.xy%1e3,n.distance=Math.sqrt((n.x-e)**2+(n.y-o)**2)}),n.sort((n,e)=>n.distance-e.distance),u(n)}function d(n){
+    !function(){var n,e="OROCHIKING - Barb Finder",o="orkBarbList",a="screen=map",t="",i=[],r=[],s=["barracks","stable","farm","resources"],l={barracks:"barracks",stable:"stable",farm:"farm",wood:"resources",stone:"resources",iron:"resources",all:"resources",storage:"resources"};function c(){window.localStorage.setItem(`${o}_Settings`,JSON.stringify(n))}function p(){let n=$.grep(Object.values(TWMap.villages),n=>"0"==n.owner&&n.points),[e,o]=[game_data.village.x,game_data.village.y];n.forEach(n=>{n.x=Math.floor(n.xy/1e3),n.y=n.xy%1e3,n.distance=Math.sqrt((n.x-e)**2+(n.y-o)**2)}),n.sort((n,e)=>n.distance-e.distance),u(n)}function d(n){
       /* v60: antes fazia TWMap.resize(2*raio+2) — o jogo tentava DESENHAR um mapa gigante e a tela congelava.
          Agora busca só os DADOS dos setores no servidor (map.php), em pacotes pequenos, sem desenhar nada. */
       if (window.__orkBarbScan) { UI.InfoMessage("Busca já em andamento..."); return; }
-      var raio = Math.max(1, parseFloat(n) || 30), cx = game_data.village.x, cy = game_data.village.y, S = 20, setores = [];
-      for (var sx = Math.floor((cx - raio) / S) * S; sx <= Math.floor((cx + raio) / S) * S; sx += S) {
-        for (var sy = Math.floor((cy - raio) / S) * S; sy <= Math.floor((cy + raio) / S) * S; sy += S) {
-          if (sx < 0 || sy < 0) continue;
-          var px = Math.max(sx, Math.min(cx, sx + S - 1)), py = Math.max(sy, Math.min(cy, sy + S - 1));
-          if (Math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy)) > raio) continue; /* setor fora do círculo */
-          setores.push(sx + "_" + sy);
-        }
-      }
-      var achadas = [], vistos = {}, lote = 8, feitos = 0, falhas = 0;
+      /* v71: usa o mesmo leitor rápido do Nobre Bárbaras — 40 setores por pedido, não pede setor
+         fora do mundo e guarda o mapa lido por 1 hora (o 2º scan na mesma área é instantâneo). */
+      var raio = Math.max(1, parseFloat(n) || 30), cx = game_data.village.x, cy = game_data.village.y;
       window.__orkBarbScan = true;
       $(`#${o}_scan`).prop("disabled", true).text("⏳ Buscando...");
-      function fim(msg) {
+      var aberto = function () { return !$(`#${o}_popup_container`).length; };
+      nobBuscarBarbaras([{ x: cx, y: cy, r: raio }], aberto, false, { lote: 40, progresso: function (f, tot, todos) {
+        $(`#${o}_textarea`).val(tot ? ("Buscando no mapa... " + f + "/" + tot + " setores novos" + (todos > tot ? " (" + (todos - tot) + " já estavam guardados)" : "")) : "Usando o mapa guardado...");
+      } }).then(function (res) {
         window.__orkBarbScan = false;
         $(`#${o}_scan`).prop("disabled", false).text("🔍 Scan");
         if (!$(`#${o}_popup_container`).length) return;
+        var achadas = [];
+        res.lista.forEach(function (b) {
+          if (!b.pontos) return;
+          var dist = Math.sqrt((b.x - cx) * (b.x - cx) + (b.y - cy) * (b.y - cy));
+          if (dist > raio) return;
+          achadas.push({ id: b.id, x: b.x, y: b.y, points: b.pontos, distance: dist, bonusTipo: b.bonus });
+        });
         achadas.sort(function (a, b) { return a.distance - b.distance; });
         u(achadas);
-        if (msg) UI.InfoMessage(msg);
-      }
-      function proximo(i) {
-        if (!$(`#${o}_popup_container`).length) { window.__orkBarbScan = false; return; } /* fechou a janela: para */
-        if (i >= setores.length) { fim(falhas ? falhas + " pacote(s) falharam — tente Scan de novo." : ""); return; }
-        $(`#${o}_textarea`).val("Buscando no mapa... " + Math.min(i + lote, setores.length) + "/" + setores.length + " setores (" + achadas.length + " bárbaras até agora)");
-        var qs = setores.slice(i, i + lote).map(function (k) { return k + "=1"; }).join("&");
-        fetch("/map.php?v=2&" + qs, { credentials: "include", headers: { "x-requested-with": "XMLHttpRequest" } })
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            var secs = Array.isArray(j) ? j : (j && Array.isArray(j.sectors) ? j.sectors : []);
-            secs.forEach(function (sec) {
-              var vilas = (sec && sec.data && sec.data.villages) || {};
-              Object.keys(vilas).forEach(function (dx) {
-                Object.keys(vilas[dx] || {}).forEach(function (dy) {
-                  var c = vilas[dx][dy];
-                  if (!c || +c[4] !== 0) return; /* só bárbaras */
-                  var pts = parseInt(String(c[3] || "0").replace(/\D/g, ""), 10) || 0;
-                  if (!pts || vistos[c[0]]) return;
-                  var x = (+sec.x) + (+dx), y = (+sec.y) + (+dy);
-                  var dist = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-                  if (dist > raio) return;
-                  vistos[c[0]] = 1;
-                  achadas.push({ id: +c[0], x: x, y: y, points: pts, distance: dist, bonus: c[6] });
-                });
-              });
-            });
-          })
-          .catch(function () { falhas++; })
-          .then(function () { feitos++; setTimeout(function () { proximo(i + lote); }, 90 + Math.floor(Math.random() * 90)); });
-      }
-      proximo(0);
-    }function u(n){r=n,_()}function g(n){let e=function(n){let e=n.bonus??n.bonus_id??n.bonusId??null;if(null==e)return null;let o=Array.isArray(e)?e:[e];for(let n of o)if(l[n])return l[n];return null}(n),o=e?s.indexOf(e):-1;return-1===o?s.length:o}function _(){i=function(e){if("spaced"===n.strategy){let o=Math.max(0,parseFloat(n.spacing)||0),a=[],G={},T=Math.max(1,Math.ceil(o)),K=(x,y)=>Math.floor(x/T)+"_"+Math.floor(y/T);return e.forEach(n=>{let gx=Math.floor(n.x/T),gy=Math.floor(n.y/T),ok=!0;for(let ix=gx-1;ix<=gx+1&&ok;ix++)for(let iy=gy-1;iy<=gy+1&&ok;iy++){let L=G[ix+"_"+iy];if(L)for(let e of L)if(Math.sqrt((e.x-n.x)**2+(e.y-n.y)**2)<o){ok=!1;break}}ok&&(a.push(n),(G[K(n.x,n.y)]=G[K(n.x,n.y)]||[]).push(n))}),a}return e}(r),n.prioritizeBonus&&(i=i.slice().sort((n,e)=>g(n)-g(e))),$(`#${o}_count`).text(i.length),x()}function x(){let e=n.format,a=i.map(n=>"coords_comma"==e?`${n.x}|${n.y},`:"link"==e?`[village]${n.x}|${n.y}[/village]`:`${n.x}|${n.y}`);$(`#${o}_textarea`).val(a.join(" "))}function b(){let n=document.getElementById(`${o}_textarea`);n.select(),n.setSelectionRange(0,999999),navigator.clipboard.writeText(n.value).then(()=>{UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)}).catch(()=>{document.execCommand("copy"),UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)})}!function(){if($(`#${o}_popup_container`).length)return void UI.ErrorMessage("Script já foi carregado, recarregue a página antes de chamá-lo novamente");let i=window.location.search.match(/t=\d+/g);if(i&&(t=i),-1==window.location.href.indexOf(`${a}`))return UI.ErrorMessage("Script precisa ser executado no mapa"),void(window.location.href=window.location.pathname+`?${t?t+"&":""}${a}`);!function(){let e=window.localStorage.getItem(`${o}_Settings`);n=e?JSON.parse(e):{mode:"loaded",radius:30,format:"coords",strategy:"cluster",spacing:5,prioritizeBonus:!0}}(),function(){let a=`
+        if (res.falhas) UI.InfoMessage(res.falhas + " pacote(s) falharam — clique em Scan de novo (o que já foi lido fica guardado).");
+      }).catch(function (err) {
+        window.__orkBarbScan = false;
+        $(`#${o}_scan`).prop("disabled", false).text("🔍 Scan");
+        $(`#${o}_textarea`).val("Erro ao ler o mapa: " + (err && err.message));
+      });
+    }function u(n){r=n,_()}function g(n){let e=function(n){let t=n.bonusTipo||nobTipoBonus(n.bonus);return t&&l[t]?l[t]:null}(n),o=e?s.indexOf(e):-1;return-1===o?s.length:o}function _(){i=function(e){if("spaced"===n.strategy){let o=Math.max(0,parseFloat(n.spacing)||0),a=[],G={},T=Math.max(1,Math.ceil(o)),K=(x,y)=>Math.floor(x/T)+"_"+Math.floor(y/T);return e.forEach(n=>{let gx=Math.floor(n.x/T),gy=Math.floor(n.y/T),ok=!0;for(let ix=gx-1;ix<=gx+1&&ok;ix++)for(let iy=gy-1;iy<=gy+1&&ok;iy++){let L=G[ix+"_"+iy];if(L)for(let e of L)if(Math.sqrt((e.x-n.x)**2+(e.y-n.y)**2)<o){ok=!1;break}}ok&&(a.push(n),(G[K(n.x,n.y)]=G[K(n.x,n.y)]||[]).push(n))}),a}return e}(r),n.prioritizeBonus&&(i=i.slice().sort((n,e)=>g(n)-g(e))),$(`#${o}_count`).text(i.length),x()}function x(){let e=n.format,a=i.map(n=>"coords_comma"==e?`${n.x}|${n.y},`:"link"==e?`[village]${n.x}|${n.y}[/village]`:`${n.x}|${n.y}`);$(`#${o}_textarea`).val(a.join(" "))}function b(){let n=document.getElementById(`${o}_textarea`);n.select(),n.setSelectionRange(0,999999),navigator.clipboard.writeText(n.value).then(()=>{UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)}).catch(()=>{document.execCommand("copy"),UI.SuccessMessage(`Copiadas ${i.length} coordenadas para a área de transferência`)})}!function(){if($(`#${o}_popup_container`).length)return void UI.ErrorMessage("Script já foi carregado, recarregue a página antes de chamá-lo novamente");let i=window.location.search.match(/t=\d+/g);if(i&&(t=i),-1==window.location.href.indexOf(`${a}`))return UI.ErrorMessage("Script precisa ser executado no mapa"),void(window.location.href=window.location.pathname+`?${t?t+"&":""}${a}`);!function(){let e=window.localStorage.getItem(`${o}_Settings`);n=e?JSON.parse(e):{mode:"loaded",radius:30,format:"coords",strategy:"cluster",spacing:5,prioritizeBonus:!0}}(),function(){let a=`
     <div id="${o}_popup_container" class="ork_popup_container">
       <div class="ork_bf_head">
         <span class="ork_bf_title">🗺️ COLETAR BÁRBARAS</span>
@@ -8564,7 +8562,7 @@
   function nobLer() {
     var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 3, escolta: 'light', escoltas: null, nobres: 4, intervaloUni: 'min', reforco: 2, raio: 40,
       maxSimult: 0, intervaloMin: 30, pontosMin: 0, pontosMax: 13000, priorizarBonus: true, soBonus: false,
-      bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10, vizinhasMin: 60,
+      bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10, vizinhasMin: 60, envioMin: 2, envioMax: 4,
       alvos: [], explorados: [], proximoEm: 0, ultimo: null };
     try { var c = JSON.parse(localStorage.getItem(nobChave()) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     if (!Array.isArray(p.alvos)) { p.alvos = []; }
@@ -8573,6 +8571,11 @@
     if (!Array.isArray(p.escoltas)) { p.escoltas = [{ u: p.escolta === 'heavy' ? 'heavy' : 'light', n: 25 }]; }
     p.escoltas = p.escoltas.filter(function (e) { return e && e.u && e.u !== 'snob' && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
     return p;
+  }
+  // pausa entre um envio de nobre e o próximo: sorteada em ms entre mín. e máx. (padrão 2 a 4s; mínimo 0,5s)
+  function nobEntreEnvios(c) {
+    var a = Math.max(0.5, parseFloat(c.envioMin) || 2), b = Math.max(a, parseFloat(c.envioMax) || 4);
+    return gerEntre(Math.round(a * 1000), Math.round(b * 1000));
   }
   function nobIntervaloMs(c) {
     var v = Math.max(0, Number(c.intervaloMin) || 30);
@@ -8727,10 +8730,12 @@
     return Object.keys(setores);
   }
   // centros: [{x, y, r}] — lê só os setores que tocam cada círculo; fresco = ignora o cache
-  async function nobBuscarBarbaras(centros, parar, fresco) {
+  async function nobBuscarBarbaras(centros, parar, fresco, opc) {
+    opc = opc || {};
     var mapa = nobCarregarMapa(), ks = nobSetores(centros), falhas = 0, lidos = 0;
     var faltam = fresco ? ks : ks.filter(function (k) { return !mapa[k]; });
-    var LOTE = 20;
+    var LOTE = opc.lote || 20;
+    if (opc.progresso) { opc.progresso(0, faltam.length, ks.length); }
     for (var i = 0; i < faltam.length; i += LOTE) {
       if (parar && parar()) { break; }
       nobStatus('lendo mapa ' + Math.min(i + LOTE, faltam.length) + '/' + faltam.length + ' setores novos');
@@ -8755,6 +8760,7 @@
           });
         });
         lidos += lote.length;
+        if (opc.progresso) { opc.progresso(Math.min(i + LOTE, faltam.length), faltam.length, ks.length); }
       } catch (e) { falhas++; lote.forEach(function (k) { if (fresco) { delete mapa[k]; } }); }
       await gerEsperar(gerEntre(80, 160));
     }
@@ -8998,7 +9004,48 @@
       });
 
       if (!simular) { nobSalvarEstado(cfg); }
-      // 2) pós-conquista: pesquisa, recruta e explora
+      // 2) novos envios (primeiro, sempre)
+      var prog = await nobBuscaProgressiva(cfg, origensBase, raio, distMax, parar);
+      var p = prog.plano, busca = prog.busca;
+      retorno = { plano: p, busca: busca, aldeias: todas.length, origensLidas: origensBase.length, distMax: distMax };
+      if (!simular && !p.plano.length) {
+        var comNobreCasa = origensBase.filter(function (a) { return (a.tropas.snob || 0) >= 1; }).length;
+        nobLog('nenhum nobre enviado neste ciclo — ' + comNobreCasa + ' aldeia(s) com nobre em casa, ' + p.origens + ' com nobre + escolta completa (' + nobTextoEscolta(cfg.escoltas || []) + ' por nobre)' +
+          (p.vagas === 0 ? ', sem vaga (limite de bárbaras ao mesmo tempo)' : '') + ', ' + p.candidatas + ' bárbara(s) no filtro' +
+          (p.motivos.espaco ? ', ' + p.motivos.espaco + ' barrada(s) pelo espaçamento' : '') + (p.motivos.semOrigem ? ', ' + p.motivos.semOrigem + ' sem aldeia com nobres suficientes perto' : '') + '.');
+      }
+      if (!simular && p.plano.length) {
+        // confirmação fresca: os alvos escolhidos ainda são bárbaros?
+        var fresca = await nobBuscarBarbaras(p.plano.map(function (it) { return { x: it.alvo.x, y: it.alvo.y, r: 0 }; }), parar, true);
+        var aindaBarb = {}; fresca.lista.forEach(function (b) { aindaBarb[b.id] = 1; });
+        var antes = p.plano.length;
+        p.plano = p.plano.filter(function (it) { return aindaBarb[it.alvo.id]; });
+        if (p.plano.length < antes) { nobLog((antes - p.plano.length) + ' alvo(s) deixaram de ser bárbaros desde a leitura do mapa — pulei.'); }
+      }
+      if (!simular) {
+        for (var i = 0; i < p.plano.length && !parar(); i++) {
+          var it = p.plano[i];
+          while (window.__ORK_CAPTCHA_BLOQUEADO__) { nobStatus('captcha — esperando'); await gerEsperar(gerEntre(3000, 5000)); if (parar()) { break; } }
+          nobStatus('enviando nobre ' + (i + 1) + '/' + p.plano.length);
+          var r = await nobEnviarComando(it.origem.id, it.alvo, nobMontarTrem(it.nobres, cfg.escoltas || []));
+          var existente = cfg.alvos.filter(function (a) { return a.id === it.alvo.id; })[0];
+          if (r.ok) {
+            res.enviados++; res.nobres += r.plano.nobres;
+            var reg = existente || { id: it.alvo.id, x: it.alvo.x, y: it.alvo.y, pontos: it.alvo.pontos, bonus: it.alvo.bonus, tentativas: 0 };
+            reg.status = 'caminho'; reg.origem = it.origem.coord; reg.nobres = (reg.nobres || 0) + r.plano.nobres;
+            reg.enviadoEm = Date.now(); reg.chegada = Date.now() + (r.durMs || 3 * 3600000);
+            if (!existente) { cfg.alvos.push(reg); }
+            nobLog('👑 ' + r.plano.nobres + ' nobre(s) de ' + it.origem.coord + ' → ' + it.alvo.x + '|' + it.alvo.y + (it.alvo.bonus ? ' (' + nobNomeBonus(it.alvo.bonus) + ')' : '') +
+              ', chega às ' + new Date(reg.chegada).toLocaleTimeString() + '.');
+          } else {
+            res.falhas++;
+            nobLog('falhou ' + it.origem.coord + ' → ' + it.alvo.x + '|' + it.alvo.y + ': ' + String(r.erro).slice(0, 120));
+          }
+          var c3 = nobLer(); c3.alvos = cfg.alvos; c3.explorados = cfg.explorados; nobGravar(c3);
+          if (i < p.plano.length - 1) { await gerEsperar(nobEntreEnvios(cfg)); }
+        }
+      }
+      // 3) pós-conquista (depois dos nobres, pra explorar não atrasar os envios): pesquisa, recruta e explora
       if (!simular) {
         var novas = cfg.alvos.filter(function (a) { return a.status === 'conquistada'; });
         for (var q = 0; q < novas.length && !parar(); q++) {
@@ -9044,41 +9091,6 @@
         }
       }
 
-      // 3) novos envios
-      var prog = await nobBuscaProgressiva(cfg, origensBase, raio, distMax, parar);
-      var p = prog.plano, busca = prog.busca;
-      retorno = { plano: p, busca: busca, aldeias: todas.length, origensLidas: origensBase.length, distMax: distMax };
-      if (!simular && p.plano.length) {
-        // confirmação fresca: os alvos escolhidos ainda são bárbaros?
-        var fresca = await nobBuscarBarbaras(p.plano.map(function (it) { return { x: it.alvo.x, y: it.alvo.y, r: 0 }; }), parar, true);
-        var aindaBarb = {}; fresca.lista.forEach(function (b) { aindaBarb[b.id] = 1; });
-        var antes = p.plano.length;
-        p.plano = p.plano.filter(function (it) { return aindaBarb[it.alvo.id]; });
-        if (p.plano.length < antes) { nobLog((antes - p.plano.length) + ' alvo(s) deixaram de ser bárbaros desde a leitura do mapa — pulei.'); }
-      }
-      if (!simular) {
-        for (var i = 0; i < p.plano.length && !parar(); i++) {
-          var it = p.plano[i];
-          while (window.__ORK_CAPTCHA_BLOQUEADO__) { nobStatus('captcha — esperando'); await gerEsperar(gerEntre(3000, 5000)); if (parar()) { break; } }
-          nobStatus('enviando nobre ' + (i + 1) + '/' + p.plano.length);
-          var r = await nobEnviarComando(it.origem.id, it.alvo, nobMontarTrem(it.nobres, cfg.escoltas || []));
-          var existente = cfg.alvos.filter(function (a) { return a.id === it.alvo.id; })[0];
-          if (r.ok) {
-            res.enviados++; res.nobres += r.plano.nobres;
-            var reg = existente || { id: it.alvo.id, x: it.alvo.x, y: it.alvo.y, pontos: it.alvo.pontos, bonus: it.alvo.bonus, tentativas: 0 };
-            reg.status = 'caminho'; reg.origem = it.origem.coord; reg.nobres = (reg.nobres || 0) + r.plano.nobres;
-            reg.enviadoEm = Date.now(); reg.chegada = Date.now() + (r.durMs || 3 * 3600000);
-            if (!existente) { cfg.alvos.push(reg); }
-            nobLog('👑 ' + r.plano.nobres + ' nobre(s) de ' + it.origem.coord + ' → ' + it.alvo.x + '|' + it.alvo.y + (it.alvo.bonus ? ' (' + nobNomeBonus(it.alvo.bonus) + ')' : '') +
-              ', chega às ' + new Date(reg.chegada).toLocaleTimeString() + '.');
-          } else {
-            res.falhas++;
-            nobLog('falhou ' + it.origem.coord + ' → ' + it.alvo.x + '|' + it.alvo.y + ': ' + String(r.erro).slice(0, 120));
-          }
-          var c3 = nobLer(); c3.alvos = cfg.alvos; c3.explorados = cfg.explorados; nobGravar(c3);
-          await gerEsperar(gerEntre(2000, 4000));
-        }
-      }
     } catch (e) {
       console.error('[OROCHIKING] Nobre Bárbaras: erro no ciclo', e);
       retorno = retorno || { erro: (e && e.message) || String(e) };
@@ -9120,7 +9132,8 @@
     nobRodarCiclo();
   }
   function nobParar(motivo) {
-    var c = nobLer(); c.ativo = false; c.proximoEm = 0; nobGravar(c);
+    // parou = começa do zero na próxima vez (as configurações escolhidas ficam; o histórico de alvos/explorações é apagado)
+    var c = nobLer(); c.ativo = false; c.proximoEm = 0; c.alvos = []; c.explorados = []; c.ultimo = null; nobGravar(c);
     if (nobTimer) { clearTimeout(nobTimer); nobTimer = null; }
     if (nobRelogio) { clearInterval(nobRelogio); nobRelogio = null; }
     nobSoltarTrava();
@@ -9138,7 +9151,7 @@
       'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
       'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
     b.innerHTML = '<span style="font-size:18px">👑</span><span id="ork-nob-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">NOB</span>';
-    b.addEventListener('click', function () { if (confirm('Parar o Nobre Bárbaras (BETA TEST)?\n\n(Nobres que já saíram continuam indo — isso só para os próximos envios.)')) { nobParar('parado pelo usuário'); } });
+    b.addEventListener('click', function () { if (confirm('Parar o Nobre Bárbaras (BETA TEST)?\n\nO histórico de alvos e explorações é zerado — na próxima vez começa do zero (suas configurações ficam salvas). Nobres que já saíram continuam indo.')) { nobParar('parado pelo usuário'); } });
     document.body.appendChild(b);
     if (nobRelogio) { clearInterval(nobRelogio); }
     nobRelogio = setInterval(function () {
@@ -9219,6 +9232,10 @@
                 '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Tropas que vão JUNTO com CADA nobre (escolha o tipo e a quantidade). Ex.: 25 Cavalaria leve = cada nobre sai com 25 CL. Pode somar mais de um tipo. Quantidade em branco ou 0 = tira a linha. Sem nenhuma linha = nobre vai sozinho. Aldeia que não tiver a escolta completa não manda.">Escolta de cada nobre</span>' +
                   '<button type="button" id="ork-nob-escadd" style="background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:5px;padding:1px 8px;cursor:pointer;font-weight:700;font-size:10px;font-family:inherit">+ tropa</button></div>' +
                 '<div id="ork-nob-esc"></div></div>' +
+              '<label style="grid-column:1 / -1;display:flex;align-items:center;gap:5px;background:#111;border:1px solid #242424;border-radius:6px;padding:3px 4px 3px 7px">' +
+                '<span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Pausa entre um envio de nobre (ou trem) e o próximo, sorteada em milissegundos entre o mínimo e o máximo. Padrão 2 a 4s = seguro. Pode baixar até 0,5s pra mandar mais rápido — quanto menor, maior o risco de captcha (se aparecer, o script para e espera você resolver).">Entre envios de nobre (seg)</span>' +
+                '<input id="ork-nob-emin" type="number" min="0.5" step="0.1" value="' + (c.envioMin == null ? 2 : c.envioMin) + '" style="width:52px;' + inp + ';padding:3px 4px;text-align:center"><span style="font-size:10px;color:#777">a</span>' +
+                '<input id="ork-nob-emax" type="number" min="0.5" step="0.1" value="' + (c.envioMax == null ? 4 : c.envioMax) + '" style="width:52px;' + inp + ';padding:3px 4px;text-align:center"></label>' +
             '</div>' +
           '</div>' +
           '<div style="' + sec + '"><div style="' + stit + '">🔭 Depois da conquista</div>' +
@@ -9287,6 +9304,8 @@
       n.reforco = Math.max(1, Math.min(5, parseInt(v('ork-nob-ref').value, 10) || 2));
       n.escoltas = escoltas.filter(function (e) { return e.u && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
       n.maxSimult = Math.max(0, parseInt(v('ork-nob-max').value, 10) || 0);
+      n.envioMin = Math.max(0.5, parseFloat(v('ork-nob-emin').value) || 2);
+      n.envioMax = Math.max(n.envioMin, parseFloat(v('ork-nob-emax').value) || 4);
       n.intervaloUni = v('ork-nob-uni').value === 'seg' ? 'seg' : 'min';
       n.intervaloMin = Math.max(n.intervaloUni === 'seg' ? 10 : 1, parseFloat(v('ork-nob-int').value) || 30);
       n.pesquisar = v('ork-nob-pesq').checked;
@@ -9321,6 +9340,7 @@
     });
     v('ork-nob-ok').addEventListener('click', function () {
       var n = lerCampos();
+      if (!c.ativo) { n.alvos = []; n.explorados = []; n.ultimo = null; } // ativando do zero: começa limpo
       n.ativo = true; n.proximoEm = 0;
       nobGravar(n);
       fechar();
