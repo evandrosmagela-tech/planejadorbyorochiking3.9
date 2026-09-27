@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 76;
+  window.__ORK_VERSAO__ = 77;
 
   /* ============================================================
      NOVIDADES / CHANGELOG
@@ -225,6 +225,15 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-27-nobre-escolta-ou',
+      data: '27/09/2026',
+      titulo: 'Nobre Bárbaras: escolta com opções',
+      itens: [
+        'Cada linha da escolta agora é uma OPÇÃO, na ordem: o nobre sai com a primeira que a aldeia tiver (ex.: 50 CL ou, se faltar CL, 50 CP).',
+        'Antes ele exigia todas as linhas juntas e não mandava se faltasse uma delas.'
+      ]
+    },
     {
       id: '2026-09-27-247-sequencia',
       data: '27/09/2026',
@@ -8754,14 +8763,23 @@
     return u.filter(function (x) { return x !== 'snob' && x !== 'militia'; });
   }
   function nobTextoEscolta(esc) {
-    return esc.length ? esc.map(function (e) { return e.n + ' ' + (GER_NOMES_TROPA[e.u] || NOB_NOME_UN[e.u] || e.u); }).join(' + ') : 'sem escolta';
+    return esc.length ? esc.map(function (e) { return e.n + ' ' + (GER_NOMES_TROPA[e.u] || NOB_NOME_UN[e.u] || e.u); }).join(' OU ') : 'sem escolta';
   }
-  // quantos nobres (cada um com a escolta completa) dá pra mandar com essas tropas
-  function nobQuantosCabem(tropas, esc, max) {
-    var n = Math.min(max, tropas.snob || 0);
-    esc.forEach(function (e) { n = Math.min(n, Math.floor((tropas[e.u] || 0) / e.n)); });
-    return Math.max(0, n);
+  // Cada linha da escolta é uma OPÇÃO: pra cada nobre usa a primeira linha que a aldeia tiver completa
+  // (ex.: 50 CL OU 50 CP — sem CL, vai com CP). Devolve a escolta escolhida pra cada nobre.
+  function nobAlocarEscolta(tropas, esc, max) {
+    var t = {}; Object.keys(tropas || {}).forEach(function (k) { t[k] = tropas[k] || 0; });
+    var out = [], snob = t.snob || 0;
+    while (out.length < max && snob > 0) {
+      if (!esc.length) { out.push(null); snob--; continue; }
+      var e = esc.filter(function (x) { return (t[x.u] || 0) >= x.n; })[0];
+      if (!e) { break; }
+      t[e.u] -= e.n; snob--; out.push(e);
+    }
+    return out;
   }
+  // quantos nobres (cada um com uma escolta completa) dá pra mandar com essas tropas
+  function nobQuantosCabem(tropas, esc, max) { return nobAlocarEscolta(tropas, esc, max).length; }
   function nobGravar(c) { try { localStorage.setItem(nobChave(), JSON.stringify(c)); } catch (e) {} }
   function nobSalvarEstado(cfg) { var c = nobLer(); c.alvos = cfg.alvos; c.explorados = cfg.explorados; nobGravar(c); }
   function nobLog(t) { try { console.log('[OROCHIKING] Nobre Bárbaras: ' + t); } catch (e) {} }
@@ -9020,13 +9038,13 @@
   // trem de nobres: cada nobre com 25 de escolta (CL ou CP; se faltar uma, completa com a outra)
   function nobMontarTrem(qtd, esc) {
     return function (cont) {
-      var n = nobQuantosCabem(cont, esc, qtd);
+      var aloc = nobAlocarEscolta(cont, esc, qtd), n = aloc.length;
       if (n < 1) { return null; }
-      var leva = {}; esc.forEach(function (e) { leva[e.u] = (leva[e.u] || 0) + e.n; }); leva.snob = 1;
+      function leva(e) { var l = {}; if (e) { l[e.u] = e.n; } l.snob = 1; return l; }
       var zero = {}; Object.keys(cont).forEach(function (k) { zero[k] = 0; });
       var trens = [];
-      for (var i = 1; i < n; i++) { var t = JSON.parse(JSON.stringify(zero)); Object.keys(leva).forEach(function (u) { t[u] = leva[u]; }); trens.push(t); }
-      return { unidades: JSON.parse(JSON.stringify(leva)), trens: trens, nobres: n };
+      for (var i = 1; i < n; i++) { var t = JSON.parse(JSON.stringify(zero)), l = leva(aloc[i]); Object.keys(l).forEach(function (u) { t[u] = l[u]; }); trens.push(t); }
+      return { unidades: leva(aloc[0]), trens: trens, nobres: n };
     };
   }
 
@@ -9175,7 +9193,7 @@
     var tipos = {}; (cfg.bonusTipos || []).forEach(function (t) { tipos[t] = 1; });
     var origens = aldeias.filter(function (a) { return nobQuantosCabem(a.tropas, esc, 1) >= 1; })
       .map(function (a) { return { id: a.id, x: a.x, y: a.y, coord: a.coord, tropas: JSON.parse(JSON.stringify(a.tropas)) }; });
-    function gastar(o, n) { o.tropas.snob -= n; esc.forEach(function (e) { o.tropas[e.u] -= e.n * n; }); }
+    function gastar(o, n) { nobAlocarEscolta(o.tropas, esc, n).forEach(function (e) { o.tropas.snob -= 1; if (e) { o.tropas[e.u] -= e.n; } }); }
     // pontos que os alvos novos precisam respeitar (espaçamento): suas aldeias + alvos em andamento
     var fixos = aldeias.map(function (a) { return { x: a.x, y: a.y }; }).concat(cfg.alvos.filter(function (a) { return a.status === 'caminho' || a.status === 'reenviar'; }));
     var cand = barbs.filter(function (b) {
@@ -9264,7 +9282,7 @@
       retorno = { plano: p, busca: busca, aldeias: todas.length, origensLidas: origensBase.length, distMax: distMax };
       if (!simular && !p.plano.length) {
         var comNobreCasa = origensBase.filter(function (a) { return (a.tropas.snob || 0) >= 1; }).length;
-        nobLog('nenhum nobre enviado neste ciclo — ' + comNobreCasa + ' aldeia(s) com nobre em casa, ' + p.origens + ' com nobre + escolta completa (' + nobTextoEscolta(cfg.escoltas || []) + ' por nobre)' +
+        nobLog('nenhum nobre enviado neste ciclo — ' + comNobreCasa + ' aldeia(s) com nobre em casa, ' + p.origens + ' com nobre + alguma escolta completa (' + nobTextoEscolta(cfg.escoltas || []) + ' por nobre)' +
           (p.vagas === 0 ? ', sem vaga (limite de bárbaras ao mesmo tempo)' : '') + ', ' + p.candidatas + ' bárbara(s) no filtro' +
           (p.motivos.espaco ? ', ' + p.motivos.espaco + ' barrada(s) pelo espaçamento' : '') + (p.motivos.semOrigem ? ', ' + p.motivos.semOrigem + ' sem aldeia com nobres suficientes perto' : '') + '.');
       }
@@ -9497,7 +9515,7 @@
                 '<input id="ork-nob-int" type="number" min="1" value="' + c.intervaloMin + '" style="width:48px;' + inp + ';padding:3px 4px;text-align:center">' +
                 '<select id="ork-nob-uni" style="' + inp + ';padding:3px 2px"><option value="min"' + (c.intervaloUni !== 'seg' ? ' selected' : '') + '>min</option><option value="seg"' + (c.intervaloUni === 'seg' ? ' selected' : '') + '>seg</option></select></label>' +
               '<div style="grid-column:1 / -1;background:#111;border:1px solid #242424;border-radius:6px;padding:4px 6px">' +
-                '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Tropas que vão JUNTO com CADA nobre (escolha o tipo e a quantidade). Ex.: 25 Cavalaria leve = cada nobre sai com 25 CL. Pode somar mais de um tipo. Quantidade em branco ou 0 = tira a linha. Sem nenhuma linha = nobre vai sozinho. Aldeia que não tiver a escolta completa não manda.">Escolta de cada nobre</span>' +
+                '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Tropa que vai JUNTO com CADA nobre. Cada linha é uma OPÇÃO, na ordem: o nobre sai com a primeira que a aldeia tiver completa (ex.: 1ª linha 50 CL, 2ª linha 50 CP → sem CL suficiente, vai com CP). Só não manda se a aldeia não tiver nenhuma das opções. Quantidade em branco ou 0 = tira a linha. Sem nenhuma linha = nobre vai sozinho.">Escolta de cada nobre (1ª opção, 2ª opção...)</span>' +
                   '<button type="button" id="ork-nob-escadd" style="background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:5px;padding:1px 8px;cursor:pointer;font-weight:700;font-size:10px;font-family:inherit">+ tropa</button></div>' +
                 '<div id="ork-nob-esc"></div></div>' +
               '<label style="grid-column:1 / -1;display:flex;align-items:center;gap:5px;background:#111;border:1px solid #242424;border-radius:6px;padding:3px 4px 3px 7px">' +
