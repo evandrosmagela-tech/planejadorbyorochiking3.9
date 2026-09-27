@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 83;
+  window.__ORK_VERSAO__ = 84;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -226,6 +226,17 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-27-captcha-aba-unica',
+      data: '27/09/2026',
+      titulo: 'Captcha aparece na hora (mesmo com uma aba só)',
+      itens: [
+        'Antes: com o Farm Hard rodando numa aba só, o captcha não aparecia na tela até você recarregar — os envios iam falhando e o bloqueio ficava mais longo.',
+        'Agora o painel reconhece o captcha na própria resposta do jogo, para tudo na hora, toca o alarme e recarrega a página uma vez pro desafio aparecer.',
+        'Depois que você resolver, o Farm Hard volta sozinho com a mesma velocidade e rotação (vale pro Dormindo também). Se você tinha pausado, ele não liga sozinho.',
+        'Proteção contra loop: no máximo uma recarga por minuto.'
+      ]
+    },
     {
       id: '2026-09-27-nao-trava',
       data: '27/09/2026',
@@ -2217,7 +2228,24 @@
     } catch (e) { return function () {}; }
   }
 
+  // v84: antes de fechar o Farm Hard por causa do captcha, guarda como ele estava (só nesta aba)
+  // pra ele voltar sozinho, igual, depois que o captcha for resolvido.
+  function orkGuardarFarmPraRetomar() {
+    try {
+      var st = document.getElementById('farmhard-status');
+      if (!document.getElementById('fh-fechar') || !st) { return; }
+      if (/^(Parado|Pausado)/i.test((st.textContent || '').trim())) { return; } // estava parado/pausado por você: não liga sozinho
+      try { if (autoLer().ativo) { return; } } catch (e) {} // com o 24/7 ligado, quem religa o farm é o 24/7
+      var vel = document.querySelector('.fh-vel.ativa'), gr = document.querySelector('.fh-opcao-input:checked');
+      sessionStorage.setItem('ork_fh_pos_captcha', JSON.stringify({
+        fator: vel ? vel.getAttribute('data-fator') : '1', grupos: gr ? gr.value : '1',
+        dormindo: localStorage.getItem('ork_retomar_dormindo') === '1', ts: Date.now()
+      }));
+    } catch (e) {}
+  }
+
   function pararFarmHard() {
+    orkGuardarFarmPraRetomar();
     try {
       var fechar = document.getElementById('fh-fechar');
       if (fechar) { fechar.click(); return; }
@@ -2270,6 +2298,63 @@
   // no DOM. Se o desafio realmente aparecer na tela, o alarme toca; se não
   // aparecer (caso comum: menção a bot_check dentro do JS normal da página),
   // nada acontece. Isso elimina o alarme tocando sem captcha nenhum na tela.
+  // v84: sinal FORTE de captcha numa resposta: o CONTEÚDO do desafio (não a simples menção
+  // a bot_check que existe no código normal de toda página).
+  function respostaEhCaptcha(texto) {
+    if (!texto) { return false; }
+    var t = String(texto);
+    var primeiro = t.replace(/^\s+/, '').charAt(0);
+    if (primeiro === '{' || primeiro === '[') {
+      var j = null;
+      try { j = JSON.parse(t); } catch (e) { return false; }
+      var achou = false;
+      (function varrer(o, prof) {
+        if (achou || o == null || prof > 4) { return; }
+        if (typeof o === 'string') {
+          if (/prote[cç][aã]o contra bots|bot protection|verifica[cç][aã]o d[ae] prote[cç][aã]o/i.test(o)) { achou = true; }
+          return;
+        }
+        if (typeof o !== 'object') { return; }
+        Object.keys(o).forEach(function (k) {
+          if (achou) { return; }
+          if (/bot_?protect|botprotection|captcha/i.test(k) && o[k]) { achou = true; return; }
+          if (prof < 1 || /^(error|response|msg|message|dialog)$/i.test(k)) { varrer(o[k], prof + 1); }
+        });
+      })(j, 0);
+      return achou;
+    }
+    if (!/prote[cç][aã]o contra bots|bot protection|verifica[cç][aã]o d[ae] prote[cç][aã]o/i.test(t)) { return false; }
+    // tira scripts/estilos e as tags: só o texto que aparece na tela conta
+    var visivel = t.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');
+    return /prote[cç][aã]o contra bots|bot protection/i.test(visivel) &&
+      /iniciar a verifica[cç][aã]o|verifica[cç][aã]o d[ae] prote[cç][aã]o|start the bot protection|bot protection check/i.test(visivel);
+  }
+
+  // Captcha pego pela rede (a tela ainda não mostra): para tudo e recarrega a página
+  // UMA vez pro desafio aparecer. Antes, numa aba só com o farm, ele nunca aparecia.
+  var ORK_RECARGA_CAPTCHA = 'ork_captcha_recarga';
+  function captchaPelaRede() {
+    if (captchaNaTela()) { ativarModoCaptcha(); return; }
+    if (window.__ORK_CAPTCHA_REDE__) { return; }
+    window.__ORK_CAPTCHA_REDE__ = true;
+    ativarModoCaptcha();
+    var ov = document.getElementById('ork-captcha-overlay');
+    var ultima = 0;
+    try { ultima = +sessionStorage.getItem(ORK_RECARGA_CAPTCHA) || 0; } catch (e) {}
+    if (Date.now() - ultima < 60000) { // já recarregou há menos de 1 min: não entra em loop
+      if (ov) { ov.textContent = '🚨 CAPTCHA — aperte F5 pra ver o desafio e resolva 🚨'; }
+      console.warn('[OROCHIKING] Captcha pela rede, mas já recarreguei há pouco — aperte F5 pra ver o desafio.');
+      return;
+    }
+    if (ov) { ov.textContent = '🚨 CAPTCHA — recarregando a página pra mostrar o desafio... 🚨'; }
+    console.warn('[OROCHIKING] Captcha detectado na resposta do jogo — recarregando a página pra ele aparecer.');
+    setTimeout(function () {
+      if (captchaNaTela()) { return; } // o próprio jogo já mostrou
+      try { sessionStorage.setItem(ORK_RECARGA_CAPTCHA, String(Date.now())); } catch (e) {}
+      window.location.reload();
+    }, 1500 + Math.floor(Math.random() * 1001));
+  }
+
   function conferirCaptchaNoDom() {
     var tentativas = 0;
     (function tentar() {
@@ -2328,9 +2413,42 @@
 
   (function monitorCaptchaVisual() {
     setInterval(function () {
-      if (captchaNaTela()) { ativarModoCaptcha(); }
-      else { desativarModoCaptcha(); }
+      if (captchaNaTela()) { window.__ORK_CAPTCHA_REDE__ = false; ativarModoCaptcha(); }
+      else if (!window.__ORK_CAPTCHA_REDE__) { desativarModoCaptcha(); }
     }, 1200);
+  })();
+
+  /* v84: Farm Hard volta sozinho depois do captcha resolvido (mesma velocidade, rotação
+     e modo — normal ou Dormindo). Só na aba em que ele estava rodando. */
+  (function retomarFarmDepoisDoCaptcha() {
+    var livreDesde = 0, espera = 6000 + Math.floor(Math.random() * 4001);
+    setInterval(function () {
+      var cfg = null;
+      try { cfg = JSON.parse(sessionStorage.getItem('ork_fh_pos_captcha') || 'null'); } catch (e) {}
+      if (!cfg) { return; }
+      if (Date.now() - (cfg.ts || 0) > 3 * 3600000) { try { sessionStorage.removeItem('ork_fh_pos_captcha'); } catch (e) {} return; }
+      if (window.__ORK_CAPTCHA_BLOQUEADO__ || window.__ORK_CAPTCHA_REDE__ || captchaNaTela()) { livreDesde = 0; return; }
+      if (!window.game_data || !game_data.village) { return; }
+      if (!livreDesde) { livreDesde = Date.now(); return; }
+      if (Date.now() - livreDesde < espera) { return; }
+      try { sessionStorage.removeItem('ork_fh_pos_captcha'); } catch (e) {}
+      if (document.getElementById('fh-fechar')) { return; }
+      console.log('[OROCHIKING] Captcha resolvido — religando o Farm Hard como estava (' + (cfg.dormindo ? 'Dormindo' : cfg.fator + 'x') + ').');
+      try {
+        if (cfg.dormindo) { rodarFarmDormindo(); return; }
+        rodarFarmar();
+        setTimeout(function () {
+          try {
+            var vel = document.querySelector('.fh-vel[data-fator="' + cfg.fator + '"]');
+            if (vel) { vel.click(); }
+            var gr = document.querySelector('.fh-opcao-input[value="' + cfg.grupos + '"]');
+            if (gr && !gr.checked) { gr.checked = true; gr.dispatchEvent(new Event('change', { bubbles: true })); }
+            var ini = document.getElementById('fh-iniciar');
+            if (ini) { ini.click(); }
+          } catch (e) { console.error('[OROCHIKING] erro ao religar o Farm Hard', e); }
+        }, 700);
+      } catch (e) { console.error('[OROCHIKING] erro ao religar o Farm Hard', e); }
+    }, 2000);
   })();
 
   /* ============================================================
@@ -2351,7 +2469,8 @@
             try { if (resposta && resposta.ok) { window.__ORK_ULTIMA_REDE_OK__ = Date.now(); } } catch (e) {}
             try {
               resposta.clone().text().then(function (texto) {
-                if (textoIndicaCaptcha(texto)) { conferirCaptchaNoDom(); }
+                if (respostaEhCaptcha(texto)) { captchaPelaRede(); }
+                else if (textoIndicaCaptcha(texto)) { conferirCaptchaNoDom(); }
               }).catch(function () {});
             } catch (e) {}
             return resposta;
@@ -2383,7 +2502,11 @@
         try {
           xhr.addEventListener('load', function () {
             try { if (xhr.status >= 200 && xhr.status < 300) { window.__ORK_ULTIMA_REDE_OK__ = Date.now(); } } catch (e) {}
-            try { if (textoIndicaCaptcha(xhr.responseText)) { conferirCaptchaNoDom(); } } catch (e) {}
+            try {
+              var txtResp = xhr.responseText;
+              if (respostaEhCaptcha(txtResp)) { captchaPelaRede(); }
+              else if (textoIndicaCaptcha(txtResp)) { conferirCaptchaNoDom(); }
+            } catch (e) {}
           });
         } catch (e) {}
         return xhrSendOriginal.apply(xhr, arguments);
@@ -10003,7 +10126,7 @@
       nome: 'Farm Hard',
       abrev: 'Farm Hard',
       icone: '🌾',
-      dica: 'Ativa direto aqui — abre o popup do Farm Hard para configurar e iniciar.',
+      dica: 'Ativa direto aqui — abre o popup do Farm Hard para configurar e iniciar. Se der captcha, ele para na hora e a página recarrega sozinha pro desafio aparecer (mesmo com só essa aba aberta). Depois que você resolver, o Farm Hard volta sozinho com a mesma velocidade e rotação.',
       checar: checaFarmar,
       rodar: rodarFarmar,
       destino: null
