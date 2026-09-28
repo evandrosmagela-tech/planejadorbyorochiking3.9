@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 87;
+  window.__ORK_VERSAO__ = 89;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -226,6 +226,25 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-28-v89',
+      data: '28/09/2026',
+      titulo: 'Licença mais segura',
+      itens: [
+        'O painel agora só abre com o loader de licença instalado (saiu a lista fixa de nicks antiga).',
+        'A licença é reconferida sozinha a cada 10–15 minutos: se vencer ou for bloqueada, o painel avisa e desliga, mesmo com a página aberta há horas (ex.: 24/7). Falha de internet não derruba ninguém: só age depois de duas conferências negativas seguidas.'
+      ]
+    },
+    {
+      id: '2026-09-28-v88',
+      data: '28/09/2026',
+      titulo: 'Gerente de Conta: sem BETA e intervalo em segundos',
+      itens: [
+        'Gerente de Conta saiu do BETA.',
+        'Novo: "Repetir a cada" em minutos OU segundos (mínimo 10 segundos).',
+        '24/7: a ação "🏗️ Gerente de Conta" (ligue na sequência de ações do 24/7) agora respeita esse intervalo — só roda quando já passou o tempo configurado no Gerente.'
+      ]
+    },
     {
       id: '2026-09-28-v87',
       data: '28/09/2026',
@@ -830,16 +849,14 @@
      window.__ORK_LICENCA_OK__ (true/false), junto com
      window.__ORK_LICENCA_INFO__ (texto "Licenciado: nick — válido até ...").
 
-     Modo reserva: se essa variável não existir, é porque o painel foi
-     carregado SEM o loader de licença (ex: colado direto no Tampermonkey
-     ou aberto por bookmarklet). Nesse caso volta pra lista fixa de nicks,
-     pra não quebrar quem usa assim.
+     Sem o loader (variável não existe): o painel NÃO abre (v89 — antes
+     havia uma lista fixa de nicks liberados; foi removida).
 
      Importante: o trecho de relogin automático roda ANTES daqui de
      propósito — mesmo sem licença válida, a sessão consegue se recuperar
      sozinha; o loader revalida a licença quando a página recarregar.
   ============================================================ */
-  var NICKS_LIBERADOS = ['Orochi.2009', 'Juniro1717', 'Jordy Alba', 'Bleda', 'EliteTeam5', 'Mr-magg'];
+  // v89: a lista fixa de nicks foi REMOVIDA — o acesso agora é só pela licença (loader + licenses.json).
 
   function nickAtual() {
     try {
@@ -855,8 +872,7 @@
     if (temLoaderDeLicenca()) {
       try { return window.__ORK_LICENCA_OK__ === true; } catch (e) { return false; }
     }
-    var nick = nickAtual().toLowerCase();
-    return NICKS_LIBERADOS.some(function (n) { return n.toLowerCase() === nick; });
+    return false; // sem o loader de licença, o painel não abre pra ninguém
   }
 
   function textoLicenca() {
@@ -881,9 +897,45 @@
 
   if (!acessoLiberado()) {
     console.warn('[OROCHIKING] Painel bloqueado: ' +
-      (temLoaderDeLicenca() ? 'licença não liberada para este nick.' : 'nick fora da lista local.'));
+      (temLoaderDeLicenca() ? 'licença não liberada para este nick.' : 'o painel foi carregado sem o loader de licença (instale o "OROCHIKING - Painel (Loader + Licença)" no Tampermonkey).'));
     return;
   }
+
+  /* v89: RECONFERE A LICENÇA DE TEMPOS EM TEMPOS (a cada 10–15 min, tempo sorteado).
+     Antes ela só era conferida quando a página carregava — quem nunca recarregava (ex.: 24/7)
+     continuava usando depois de a licença vencer/ser bloqueada. Pra não derrubar ninguém por
+     falha de internet, só age depois de DUAS conferências negativas seguidas (a 2ª, 2–3 min depois):
+     aí avisa e recarrega a página, e o loader barra o painel. Não roda durante captcha. */
+  (function reconferirLicenca() {
+    if (typeof window.__ORK_REVALIDAR_LICENCA__ !== 'function') { return; }
+    var negativas = 0;
+    function entre(a, b) { return Math.floor(a + Math.random() * (b - a + 1)); }
+    function agendar(ms) { setTimeout(conferir, ms); }
+    function conferir() {
+      if (window.__ORK_CAPTCHA_BLOQUEADO__) { agendar(entre(60000, 120000)); return; }
+      var respondeu = false;
+      var limite = setTimeout(function () { if (!respondeu) { respondeu = true; agendar(entre(600000, 900000)); } }, 30000); // sem resposta: não conta
+      try {
+        window.__ORK_REVALIDAR_LICENCA__(function (ok) {
+          if (respondeu) { return; }
+          respondeu = true; clearTimeout(limite);
+          if (ok) { negativas = 0; agendar(entre(600000, 900000)); return; }
+          negativas++;
+          console.warn('[OROCHIKING] Licença: conferência negativa (' + negativas + '/2).');
+          if (negativas < 2) { agendar(entre(120000, 180000)); return; }
+          try {
+            var av = document.createElement('div');
+            av.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:2147483647;background:linear-gradient(165deg,#1a1a1a,#050505);' +
+              'border:1px solid #f0b90b;border-radius:12px;padding:12px 16px;color:#eee;font:13px "Segoe UI",Arial,sans-serif;box-shadow:0 12px 30px rgba(0,0,0,.7)';
+            av.innerHTML = '<b style="color:#ffd84d">🔒 OROCHIKING</b><br>Sua licença não está mais ativa (vencida ou bloqueada). A página vai recarregar e o painel será desligado.';
+            document.body.appendChild(av);
+          } catch (e) {}
+          setTimeout(function () { location.reload(); }, 8000);
+        });
+      } catch (e) { respondeu = true; clearTimeout(limite); agendar(entre(600000, 900000)); }
+    }
+    agendar(entre(600000, 900000));
+  })();
 
   /* ============================================================
      MANTER A ABA ATIVA EM SEGUNDO PLANO
@@ -6845,7 +6897,7 @@
     cunhar: { nome: '🪙 Cunhar moedas', dica: 'Vai pra Academia e cunha moedas em todas as páginas (1.000 aldeias por página).' },
     balancear: { nome: '⚖️ Balancear recursos', dica: 'Equilibra os recursos pelo mercado com os ajustes da aba Balancear. Só roda se já passou o tempo mínimo desde o último balanceamento.' },
     nobre: { nome: '👑 Noblar bárbaras', dica: 'Roda 1 ciclo do Noblar Automático com a configuração salva na aba Noblar Automático (alvos, escolta, produzir nobres, pós-conquista...).' },
-    gerente: { nome: '🏗️ Construir/recrutar (Gerente)', dica: 'Roda 1 ciclo do Gerente de Conta com as regras salvas na aba Gerente de Conta.' },
+    gerente: { nome: '🏗️ Gerente de Conta', dica: 'Roda 1 ciclo do Gerente de Conta (construir, recrutar e pesquisar) com as regras salvas na aba Gerente de Conta — só quando já passou o tempo do campo "Repetir a cada" de lá (em minutos ou segundos).' },
     coletor: { nome: '🧺 Coletor Hard (farm assistente)', dica: 'Roda 1 vez o Coletor Hard (ícone dourado flutuante) com a configuração salva nele.' }
   };
   function autoSeqCompleta(c) {
@@ -6870,8 +6922,13 @@
         autoLog('👑 rodando 1 ciclo do Noblar Automático.');
         await nobRodarCiclo(false, true);
       } else if (id === 'gerente') {
-        autoStatus('Gerente: construindo/recrutando...');
-        autoLog('🏗️ rodando 1 ciclo do Gerente de Conta.');
+        var gc = gerLer(), falta = (gc.ultimoCicloEm || 0) + gerIntervaloMs(gc) - Date.now();
+        if (falta > 0) {
+          autoLog('🏗️ Gerente de Conta: próximo ciclo só daqui a ' + Math.ceil(falta / 1000) + 's (intervalo do Gerente: ' + gerTextoIntervalo(gc) + ') — pulei.');
+          return;
+        }
+        autoStatus('Gerente: construindo/recrutando/pesquisando...');
+        autoLog('🏗️ rodando 1 ciclo do Gerente de Conta (intervalo configurado: ' + gerTextoIntervalo(gc) + ').');
         await gerRodarCiclo(true);
       } else if (id === 'coletor') {
         var api = window.__OROCHIKING__;
@@ -8562,7 +8619,7 @@
   var GER_TROPAS_FORA = ['militia', 'knight', 'snob'];
 
   function gerLer() {
-    var p = { ativo: false, regras: [], maxFila: 2, semRegraUsaAldeia: false, intervaloMin: 10, proximoEm: 0, feitos: [], ultimo: null,
+    var p = { ativo: false, regras: [], maxFila: 2, semRegraUsaAldeia: false, intervaloMin: 10, intervaloUni: 'min', proximoEm: 0, feitos: [], ultimo: null,
       pesquisar: false, pesqGrupo: '0', pesqGrupoNome: 'Todas as aldeias', pesqUnidades: null, pesqNivel: 0, pesqModo: 'jogo', pesqTemplate: '', pesqTemplateNome: '', consModo: 'jogo', recModo: 'jogo' };
     try { var c = JSON.parse(localStorage.getItem(GER_CHAVE) || 'null'); if (c && typeof c === 'object') { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     if (!Array.isArray(p.regras)) { p.regras = []; }
@@ -8574,6 +8631,12 @@
     return p;
   }
   function gerGravar(c) { try { localStorage.setItem(GER_CHAVE, JSON.stringify(c)); } catch (e) {} }
+  // v88: intervalo entre ciclos em minutos OU segundos (mínimo 10 segundos)
+  function gerIntervaloMs(c) {
+    var v = Math.max(0, Number(c.intervaloMin) || 10);
+    return c.intervaloUni === 'seg' ? Math.max(10, v) * 1000 : Math.max(1, v) * 60000;
+  }
+  function gerTextoIntervalo(c) { return (Number(c.intervaloMin) || 10) + (c.intervaloUni === 'seg' ? ' seg' : ' min'); }
   function gerChaveCatalogo() { return 'ork_gerente_catalogo_' + ((window.game_data && game_data.world) || ''); }
   // O catálogo é compartilhado com o Nobre Bárbaras (que grava só os grupos). Antes, um catálogo
   // incompleto (sem "construcao"/"tropas") quebrava o modal do Gerente ao abrir e travava tudo.
@@ -8598,7 +8661,7 @@
   function gerEsperar(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function gerEntre(a, b) { return Math.floor(a + Math.random() * (b - a + 1)); }
   function gerLog(t) { try { console.log('[OROCHIKING] Gerente: ' + t); } catch (e) {} }
-  function gerStatus(t) { var b = document.getElementById('ork-ger-bolinha'); if (b && t) { b.title = 'Gerente de Conta (BETA): ' + t + ' — clique pra parar'; } }
+  function gerStatus(t) { var b = document.getElementById('ork-ger-bolinha'); if (b && t) { b.title = 'Gerente de Conta: ' + t + ' — clique pra parar'; } }
   function gerNum(t) { var n = parseInt(String(t == null ? '' : t).replace(/[^0-9]/g, ''), 10); return isNaN(n) ? 0 : n; }
   function gerNomePredio(id) {
     var n = { main: 'Ed. Principal', barracks: 'Quartel', stable: 'Estábulo', garage: 'Oficina', church: 'Igreja', church_f: 'Primeira igreja',
@@ -9371,8 +9434,9 @@
     }
     gerRodando = false;
     var c2 = gerLer();
-    if (!c2.ativo) { return; }
-    var espera = Math.max(1, Number(c2.intervaloMin) || 10) * 60000;
+    c2.ultimoCicloEm = Date.now(); // o 24/7 usa pra respeitar o intervalo do Gerente
+    if (!c2.ativo) { c2.ultimo = { quando: Date.now(), construidos: res.construidos, falhasC: res.falhasC, recrutadas: res.recrutadas, falhasR: res.falhasR, tropas: res.tropas, pesquisas: res.pesquisas }; gerGravar(c2); return; }
+    var espera = gerIntervaloMs(c2);
     if (window.__ORK_FREIO__) { espera = Math.max(10 * 60000, espera * 2); }
     espera += gerEntre(2000, 4000);
     c2.proximoEm = Date.now() + espera;
@@ -9421,7 +9485,7 @@
       'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
       'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
     b.innerHTML = '<span style="font-size:18px">🏗️</span><span id="ork-ger-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">GER</span>';
-    b.addEventListener('click', function () { if (confirm('Parar o Gerente de Conta (BETA TEST)?')) { gerParar('parado pelo usuário'); } });
+    b.addEventListener('click', function () { if (confirm('Parar o Gerente de Conta?')) { gerParar('parado pelo usuário'); } });
     document.body.appendChild(b);
     if (gerRelogio) { clearInterval(gerRelogio); }
     gerRelogio = setInterval(function () {
@@ -9463,12 +9527,10 @@
         'max-height:calc(100vh - 30px);overflow:auto;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12)">' +
         '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:9px 12px;display:flex;align-items:center;gap:8px">' +
           '<span style="font-weight:800;font-size:13px;letter-spacing:1.1px">🏗️ GERENTE DE CONTA</span>' +
-          '<span title="Ferramenta em teste: pode apresentar bugs. Use o Simular antes de ativar e avise se algo sair errado." style="font-size:8.5px;background:#141200;color:#FFC400;padding:2px 7px;border-radius:9px;font-weight:800;letter-spacing:.5px;cursor:help">BETA TEST</span>' +
           '<span style="flex:1;text-align:center;font-size:10px;font-weight:700;color:#3d3000">' + (c.ativo ? 'RODANDO' : 'PARADO') + '</span>' +
           '<span id="ork-ger-x" style="cursor:pointer;font-weight:bold;font-size:15px">&times;</span></div>' +
         '<div style="padding:10px 12px">' +
-          '<div style="font-size:10.5px;color:#ffb347;background:rgba(255,179,71,.08);border:1px solid rgba(255,179,71,.25);border-radius:6px;padding:5px 8px;margin-bottom:6px">⚠️ BETA TEST — ferramenta nova, pode apresentar bugs. Use o <b>Simular</b> antes de ativar e acompanhe o Console (F12) nos primeiros ciclos.</div>' +
-          '<div style="font-size:11px;color:#9a9a9a">Cada regra liga um <b style="color:#ddd">grupo</b> do jogo a um <b style="color:#ddd">modelo de construção</b> e a um <b style="color:#ddd">modelo de tropas</b> do seu Gerente de Conta. Ele constrói e recruta sozinho, de tempos em tempos, 1 a 3s entre cada envio.</div>' +
+          '<div style="font-size:11px;color:#9a9a9a">Cada regra liga um <b style="color:#ddd">grupo</b> do jogo a um <b style="color:#ddd">modelo de construção</b> e a um <b style="color:#ddd">modelo de tropas</b> do seu Gerente de Conta. Ele constrói, recruta e pesquisa sozinho, de tempos em tempos (pelo Gerente do jogo, todas as aldeias de uma vez). Use o <b style="color:#ddd">Simular</b> pra conferir antes de ativar.</div>' +
           '<div style="' + card + '">' +
             '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="' + tit + ';flex:1">Regras (grupo → construção → tropas)</span>' +
               '<button type="button" id="ork-ger-ler" style="background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:6px;padding:4px 9px;cursor:pointer;font-weight:700;font-size:10.5px;font-family:inherit">🔄 Ler grupos e modelos do jogo</button></div>' +
@@ -9487,8 +9549,9 @@
               '<input id="ork-ger-fila" type="number" min="1" max="5" value="' + c.maxFila + '" style="width:62px;' + inp + '"></div>' +
             '<div style="' + lin + '"><input id="ork-ger-semregra" type="checkbox"' + (c.semRegraUsaAldeia ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">' +
               '<span style="' + rot + '" data-dica="Aldeias que não estão em nenhum grupo das regras: se marcado, constrói nelas usando o modelo que o Gerente de Conta já tem aplicado em cada uma (sem recrutar). Desmarcado: ignora.">Aldeias fora das regras: construir com o modelo que o Gerente já tem nelas' + autoInterrogacao() + '</span></div>' +
-            '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="Minutos entre um ciclo e o próximo, contados do fim do ciclo (+2 a 4s aleatórios). Com o FREIO: x2, mínimo 10 min.">Repetir a cada (min)' + autoInterrogacao() + '</span>' +
-              '<input id="ork-ger-int" type="number" min="1" value="' + c.intervaloMin + '" style="width:62px;' + inp + '"></div>' +
+            '<div style="' + lin + ';margin-bottom:0"><span style="' + rot + '" data-dica="De quanto em quanto tempo o Gerente roda de novo — escolha minutos ou segundos (mínimo 10 segundos). Contado do fim do ciclo, +2 a 4s aleatórios. Vale também dentro do 24/7: lá o Gerente só roda quando já passou esse tempo desde a última vez. Com o FREIO: x2, mínimo 10 min.">Repetir a cada' + autoInterrogacao() + '</span>' +
+              '<input id="ork-ger-int" type="number" min="1" value="' + c.intervaloMin + '" style="width:62px;' + inp + '">' +
+              '<select id="ork-ger-uni" style="' + inp + ';padding:4px 4px"><option value="min"' + (c.intervaloUni !== 'seg' ? ' selected' : '') + '>min</option><option value="seg"' + (c.intervaloUni === 'seg' ? ' selected' : '') + '>seg</option></select></div>' +
           '</div>' +
           '<div style="' + card + '">' +
             '<div style="' + lin + '"><input id="ork-ger-pesq" type="checkbox"' + (c.pesquisar ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">' +
@@ -9584,7 +9647,8 @@
       n.regras = regras.filter(function (r) { return r.cons || r.trop; });
       n.maxFila = Math.max(1, Math.min(5, parseInt(document.getElementById('ork-ger-fila').value, 10) || 2));
       n.semRegraUsaAldeia = document.getElementById('ork-ger-semregra').checked;
-      n.intervaloMin = Math.max(1, parseFloat(document.getElementById('ork-ger-int').value) || 10);
+      n.intervaloUni = document.getElementById('ork-ger-uni').value === 'seg' ? 'seg' : 'min';
+      n.intervaloMin = Math.max(n.intervaloUni === 'seg' ? 10 : 1, parseFloat(document.getElementById('ork-ger-int').value) || 10);
       n.consModo = document.getElementById('ork-ger-cmodo').value === 'painel' ? 'painel' : 'jogo';
       n.recModo = document.getElementById('ork-ger-rmodo').value === 'painel' ? 'painel' : 'jogo';
       n.pesquisar = document.getElementById('ork-ger-pesq').checked;
@@ -9685,7 +9749,7 @@
       gerGravar(n);
       fechar();
       gerLog('ativado — ' + n.regras.length + ' regra(s): ' + n.regras.map(function (r) { return (r.grupoNome || r.grupo) + ' → ' + (r.consNome || (r.cons ? r.cons : 'sem construção')) + ' / ' + (r.trop || 'sem tropas'); }).join('; ') +
-        '. Fila máx. ' + n.maxFila + ', a cada ' + n.intervaloMin + ' min.');
+        '. Fila máx. ' + n.maxFila + ', a cada ' + gerTextoIntervalo(n) + '.');
       gerMostrarBolinha();
       gerRodarCiclo();
     });
@@ -11049,7 +11113,7 @@
     },
     {
       id: 'gerente',
-      nome: 'Gerente de Conta (BETA TEST)',
+      nome: 'Gerente de Conta',
       abrev: 'Gerente de Conta',
       icone: '🏗️',
       dica: 'Constrói, recruta e pesquisa por GRUPO: cada regra liga um grupo do jogo (manual ou dinâmico) a um modelo de construção e a um modelo de tropas. Por padrão usa o Gerente de conta do PRÓPRIO JOGO: aplica os modelos em todas as aldeias do grupo de uma vez (500 por envio) e o jogo constrói, recruta e pesquisa sozinho — rápido mesmo com milhares de aldeias. Também dá pra escolher "Pelo painel" (aldeia por aldeia). Pesquisa no Ferreiro: pelo modelo de pesquisa do jogo, ou pelo painel (detecta se o mundo é de 1, 3 ou 10 níveis). Use "Simular" pra conferir antes. Bolinha 🏗️ no canto — clique pra parar.',
