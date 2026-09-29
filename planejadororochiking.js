@@ -208,7 +208,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 89;
+  window.__ORK_VERSAO__ = 90;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -226,6 +226,16 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-28-v90',
+      data: '28/09/2026',
+      titulo: 'Novo: aviso de captcha no WhatsApp',
+      itens: [
+        'Quando aparecer captcha, chega uma mensagem no seu WhatsApp (grátis, pelo CallMeBot) — assim você resolve rápido de onde estiver e os scripts voltam sozinhos.',
+        'Configure no botão "📱 Aviso no WhatsApp", embaixo do Freio no painel: tem o passo a passo pra pegar a chave e um botão "Mandar teste".',
+        '1 aviso por captcha (no máximo 1 a cada 3 minutos, mesmo com várias abas). Número e chave ficam só no seu navegador.'
+      ]
+    },
     {
       id: '2026-09-28-v89',
       data: '28/09/2026',
@@ -2595,6 +2605,85 @@
     } catch (e) { return false; }
   }
 
+  /* v90: AVISO NO WHATSAPP (CallMeBot) — manda uma mensagem pro SEU WhatsApp quando aparece captcha.
+     Número e chave ficam só neste navegador (localStorage). 1 aviso por captcha, no máximo 1 a cada 3 min
+     (mesmo com várias abas abertas). */
+  var ORK_WHATS = 'ork_whats_aviso';
+  function orkWhatsLer() {
+    var c = { on: false, fone: '', chave: '' };
+    try { var j = JSON.parse(localStorage.getItem(ORK_WHATS) || 'null'); if (j && typeof j === 'object') { c.on = !!j.on; c.fone = String(j.fone || ''); c.chave = String(j.chave || ''); } } catch (e) {}
+    return c;
+  }
+  function orkWhatsGravar(c) { try { localStorage.setItem(ORK_WHATS, JSON.stringify(c)); } catch (e) {} }
+  function orkWhatsFone(f) { return String(f || '').replace(/[^0-9]/g, ''); }
+  function orkWhatsEnviar(texto, forcar) {
+    var c = orkWhatsLer();
+    if ((!c.on && !forcar) || !orkWhatsFone(c.fone) || !c.chave) { return false; }
+    if (!forcar) {
+      try {
+        var ult = +localStorage.getItem('ork_whats_ultimo') || 0;
+        if (Date.now() - ult < 180000) { return false; } // outra aba já avisou há pouco
+        localStorage.setItem('ork_whats_ultimo', String(Date.now()));
+      } catch (e) {}
+    }
+    var url = 'https://api.callmebot.com/whatsapp.php?phone=' + encodeURIComponent('+' + orkWhatsFone(c.fone)) +
+      '&text=' + encodeURIComponent(texto) + '&apikey=' + encodeURIComponent(c.chave);
+    try { var img = new Image(); img.referrerPolicy = 'no-referrer'; img.src = url; } catch (e) {}
+    try { fetch(url, { mode: 'no-cors', referrerPolicy: 'no-referrer' }).catch(function () {}); } catch (e) {}
+    return true;
+  }
+  function orkWhatsTextoCaptcha() {
+    var gd = window.game_data || {};
+    return '🚨 OROCHIKING: CAPTCHA no mundo ' + (gd.world || '?') + ' (conta ' + ((gd.player && gd.player.name) || '?') + ', ' +
+      (function () { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); })() + '). Scripts pausados — resolva o captcha que eles voltam sozinhos.';
+  }
+
+  function orkWhatsModal(aoFechar) {
+    var velho = document.getElementById('ork-modal-whats'); if (velho) { velho.remove(); }
+    var c = orkWhatsLer();
+    var ov = document.createElement('div');
+    ov.id = 'ork-modal-whats';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    var inp = 'width:100%;box-sizing:border-box;background:#111;border:1px solid rgba(255,255,255,.14);color:#ececec;padding:7px 9px;border-radius:7px;font-size:12px;font-family:inherit';
+    ov.innerHTML =
+      '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:360px;max-width:calc(100vw - 20px);color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12);overflow:hidden">' +
+        '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:8px 12px;display:flex;align-items:center">' +
+          '<span style="flex:1;font-weight:800;font-size:12.5px;letter-spacing:1px">📱 AVISO NO WHATSAPP</span><span id="ork-whats-x" style="cursor:pointer;font-weight:800;font-size:15px">&times;</span></div>' +
+        '<div style="padding:10px 12px">' +
+          '<div style="font-size:11px;color:#aaa;line-height:1.5;margin-bottom:8px">Quando aparecer captcha, chega uma mensagem no seu WhatsApp (grátis, pelo CallMeBot). Pra pegar a chave, uma vez só:<br>' +
+            '<b style="color:#ddd">1.</b> Salve nos contatos o número <b style="color:#FFC400">+34 611 021 695</b><br>' +
+            '<b style="color:#ddd">2.</b> Mande pra ele: <b style="color:#FFC400">I allow callmebot to send me messages</b><br>' +
+            '<b style="color:#ddd">3.</b> Ele responde com a <b style="color:#ddd">apikey</b> — cole abaixo.<br>' +
+            '<span style="color:#888">Se ele responder "This Bot is full", salve o número NOVO que ele indicar e mande a mesma frase pra esse número.</span></div>' +
+          '<div style="font-size:10px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin:6px 0 3px">Seu WhatsApp (com 55 e DDD)</div>' +
+          '<input id="ork-whats-fone" type="text" placeholder="55 11 91234-5678" value="' + String(c.fone).replace(/"/g, '') + '" style="' + inp + '">' +
+          '<div style="font-size:10px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 3px">apikey do CallMeBot</div>' +
+          '<input id="ork-whats-chave" type="text" placeholder="ex.: 1234567" value="' + String(c.chave).replace(/"/g, '') + '" style="' + inp + '">' +
+          '<label style="display:flex;align-items:center;gap:7px;margin-top:9px;font-size:11.5px;color:#ccc;cursor:pointer"><input id="ork-whats-on" type="checkbox"' + (c.on ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">Avisar no WhatsApp quando der captcha</label>' +
+          '<div id="ork-whats-msg" style="font-size:10.5px;color:#888;margin-top:7px;min-height:14px">Fica salvo só neste navegador. 1 aviso por captcha (no máximo 1 a cada 3 min).</div>' +
+          '<div style="display:flex;gap:6px;margin-top:9px">' +
+            '<button id="ork-whats-teste" type="button" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:8px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Mandar teste</button>' +
+            '<button id="ork-whats-ok" type="button" style="flex:1;background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;border:none;border-radius:8px;padding:8px 0;cursor:pointer;font-weight:800;font-size:11px;font-family:inherit">Salvar</button>' +
+          '</div></div></div>';
+    document.body.appendChild(ov);
+    function ler() { return { on: document.getElementById('ork-whats-on').checked, fone: orkWhatsFone(document.getElementById('ork-whats-fone').value), chave: document.getElementById('ork-whats-chave').value.trim() }; }
+    function fechar() { ov.remove(); if (aoFechar) { aoFechar(); } }
+    function msg(t, cor) { var m = document.getElementById('ork-whats-msg'); m.textContent = t; m.style.color = cor || '#888'; }
+    document.getElementById('ork-whats-x').addEventListener('click', fechar);
+    document.getElementById('ork-whats-teste').addEventListener('click', function () {
+      var n = ler();
+      if (n.fone.length < 10 || !n.chave) { msg('Preencha o número (com 55 e DDD) e a apikey.', '#ff8080'); return; }
+      orkWhatsGravar(n);
+      orkWhatsEnviar('✅ OROCHIKING: teste do aviso de captcha. Se chegou, está funcionando!', true);
+      msg('Teste enviado — deve chegar no seu WhatsApp em alguns segundos. Não chegou? Confira o número e a apikey.', '#4ade80');
+    });
+    document.getElementById('ork-whats-ok').addEventListener('click', function () {
+      var n = ler();
+      if (n.on && (n.fone.length < 10 || !n.chave)) { msg('Pra ligar, preencha o número (com 55 e DDD) e a apikey.', '#ff8080'); return; }
+      orkWhatsGravar(n); fechar();
+    });
+  }
+
   function ativarModoCaptcha() {
     window.__ORK_CAPTCHA_BLOQUEADO__ = true;
     if (alarmeAtivo) return;
@@ -2603,6 +2692,7 @@
     mostrarOverlay();
     pararSomAtual = tocarAlarme();
     orkAvisosForaDaTela(true);
+    try { orkWhatsEnviar(orkWhatsTextoCaptcha()); } catch (e) {}
     console.warn('[OROCHIKING] Captcha detectado — envios automáticos pausados. O captcha e a navegação normal seguem liberados; resolva o desafio.');
   }
 
@@ -11602,6 +11692,10 @@
         '<div id="ork-freio-dica">Modo de baixo risco pra farm + cunhagem sem tomar captcha. ' +
         'O Farm Hard roda em 1.25x com pausas, e a cunhagem só age NAS PAUSAS do farm — os dois nunca disparam juntos. ' +
         'Ataque e coletor também ficam mais espaçados. Menos requisição simultânea = menos captcha.</div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px">' +
+          '<span style="font-size:12px;font-weight:800;color:#ececec;letter-spacing:.3px">📱 Aviso no WhatsApp</span>' +
+          '<button id="ork-whats-btn" type="button" style="border:1px solid rgba(255,255,255,.14);background:#1c1c1c;color:#8a8a8a;border-radius:20px;padding:5px 12px;font-weight:800;font-size:11px;cursor:pointer;font-family:inherit">configurar</button>' +
+        '</div>' +
       '</div>' +
     '</div>' +
     '</div>' +
@@ -11694,6 +11788,19 @@
   }
 
   (function ligarBotaoFreio() {
+    (function ligarBotaoWhats() {
+      var b = document.getElementById('ork-whats-btn');
+      if (!b) { return; }
+      function pintar() {
+        var c = orkWhatsLer(), ok = c.on && orkWhatsFone(c.fone) && c.chave;
+        b.textContent = ok ? 'LIGADO' : 'configurar';
+        b.style.background = ok ? 'linear-gradient(100deg,#e8ac0a,#ffdc63)' : '#1c1c1c';
+        b.style.color = ok ? '#1a1400' : '#8a8a8a';
+        b.style.borderColor = ok ? 'transparent' : 'rgba(255,255,255,.14)';
+      }
+      pintar();
+      b.addEventListener('click', function () { orkWhatsModal(pintar); });
+    })();
     var btn = document.getElementById('ork-freio-btn');
     if (!btn) { return; }
     function pintar() {
