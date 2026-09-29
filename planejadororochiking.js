@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 92;
+  window.__ORK_VERSAO__ = 93;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -298,6 +298,16 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-29-v93',
+      data: '29/09/2026',
+      titulo: 'KeyPress Hard funcionando enquanto você joga na mesma aba',
+      itens: [
+        'Antes, cada clique ou F5 no jogo cortava o KeyPress, e ele voltava relendo o Assistente desde a página 1, então quase não enviava. Agora ele guarda a aldeia e a página onde estava e volta direto dali, em menos de 1 segundo.',
+        'O ataque que estava sendo enviado na hora do clique termina de ser enviado e não é repetido.',
+        'Dá pra jogar normalmente na mesma aba com o KeyPress ativo, sem precisar de uma aba só pra ele.'
+      ]
+    },
     {
       id: '2026-09-29-v92',
       data: '29/09/2026',
@@ -690,7 +700,7 @@
         'Nova aba KeyPress: manda os modelos A, B ou C do Assistente de Saque sozinho — não precisa ficar na tela do Assistente, roda de qualquer tela.',
         'Modelo A + B: manda o A enquanto tiver tropa e o que sobrar vai no B, na mesma passada. Ou escolha só B ou só C.',
         'Passa por todas as páginas do Assistente enquanto tiver tropa e repete no intervalo que você escolher (sempre com atraso aleatório). Com várias abas abertas, só uma executa.',
-        'Bolinha ⌨️ no canto mostra a contagem pro próximo ciclo — clique nela pra parar. Para sozinho se aparecer captcha.'
+        'Pode jogar normalmente na mesma aba: se você clicar em algo ou der F5, ele volta em menos de 1s de onde parou (aldeia e página). Bolinha ⌨️ no canto mostra a contagem pro próximo ciclo — clique nela pra parar. Para sozinho se aparecer captcha.'
       ]
     },
     {
@@ -6756,7 +6766,7 @@
     }
     try {
       var r = await fetch(url, {
-        method: 'POST', credentials: 'include',
+        method: 'POST', credentials: 'include', keepalive: true, // termina de enviar mesmo se a página recarregar
         headers: {
           'accept': 'application/json, text/javascript, */*; q=0.01',
           'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
@@ -6784,11 +6794,24 @@
   // Farma a partir de UMA aldeia: lê as páginas do Assistente dela e manda o modelo escolhido
   // até a tropa acabar. ctx é compartilhado entre as aldeias do ciclo (alvos já atacados, contadores).
   async function kpFarmarAldeia(origem, ctx, rotulo) {
-    var p0 = await kpBuscarPagina(origem, 0);
+    // v93: jogando na MESMA aba, cada clique/F5 recarrega a página e cortava o KeyPress no meio;
+    // ele voltava lendo tudo de novo desde a página 1 e quase não enviava. Agora a posição
+    // (aldeia + página do Assistente) fica salva e ele volta direto de onde parou.
+    var cfgPos = kpLerConfig(), pos = cfgPos.pos;
+    var pIni = (pos && String(pos.origem) === String(origem) && pos.p > 0 && pos.paginas > pos.p) ? pos.p : 0;
+    if (!ctx.modelos && cfgPos.modelos) { ctx.modelos = cfgPos.modelos; }
+    var p0 = await kpBuscarPagina(origem, pIni);
     var modelos = kpLerModelos(p0.doc);
     if (modelos.a || modelos.b) { ctx.modelos = modelos; } else { modelos = ctx.modelos || {}; } // modelos A/B são da conta (iguais em todas as aldeias)
     var tropas = kpLerTropas(p0.doc);
-    var paginas = kpTotalPaginas(p0.doc);
+    var paginas = pIni ? pos.paginas : kpTotalPaginas(p0.doc);
+    function kpSalvarPos(pAtual) {
+      var c = kpLerConfig();
+      c.pos = { origem: origem, p: pAtual, paginas: paginas };
+      if (ctx.modelos && (ctx.modelos.a || ctx.modelos.b)) { c.modelos = ctx.modelos; }
+      kpGravarConfig(c);
+    }
+    if (pIni) { console.log('[OROCHIKING] KeyPress: página recarregou — voltando direto na página ' + (pIni + 1) + '/' + paginas + '.'); }
     var fila = ctx.cfg.modelo === 'a' ? ['a', 'b'] : [ctx.cfg.modelo === 'c' ? 'c' : 'b'];
     fila = fila.filter(function (l) { return l === 'c' || (modelos[l] && modelos[l].id); });
     if (!fila.length) {
@@ -6802,8 +6825,9 @@
     var esgotado = {};
     var recusasSeguidas = {};
     var enviadosAqui = 0;
-    for (var p = 0; p < paginas && !ctx.parado; p++) {
-      var pag = p === 0 ? p0 : await kpBuscarPagina(origem, p);
+    for (var p = pIni; p < paginas && !ctx.parado; p++) {
+      kpSalvarPos(p);
+      var pag = p === pIni ? p0 : await kpBuscarPagina(origem, p);
       var alvos = kpLerAlvos(pag.doc);
       for (var i = 0; i < alvos.length && !ctx.parado; i++) {
         var alvo = alvos[i];
@@ -6826,6 +6850,9 @@
           if (!kpLerConfig().ativo) { ctx.parado = true; break; }
         }
         if (ctx.parado) { break; }
+        // marca ANTES de enviar: se a página recarregar com o ataque a caminho, ele não é repetido
+        ctx.feitos[alvo.id] = 1;
+        var cfgA = kpLerConfig(); cfgA.feitos = Object.keys(ctx.feitos); kpGravarConfig(cfgA);
         var res = await kpEnviar(origem, letra, alvo, modelos);
         var tentativas = 0;
         while (!res.ok && kpEhLimiteSegundo(res.erro) && tentativas < 3) {
@@ -6841,6 +6868,8 @@
           var cfgF = kpLerConfig(); cfgF.feitos = Object.keys(ctx.feitos); kpGravarConfig(cfgF);
           kpAtualizarStatus('KeyPress enviando... ' + ctx.enviados + ' — ' + rotulo + ' (página ' + (p + 1) + '/' + paginas + ')');
         } else {
+          delete ctx.feitos[alvo.id];
+          var cfgR = kpLerConfig(); cfgR.feitos = Object.keys(ctx.feitos); kpGravarConfig(cfgR);
           ctx.falhas++;
           recusasSeguidas[letra] = (recusasSeguidas[letra] || 0) + 1;
           console.log('[OROCHIKING] KeyPress: ' + letra.toUpperCase() + ' -> ' + alvo.id + ' recusado: ' + String(res.erro).slice(0, 100));
@@ -6851,6 +6880,7 @@
       if (fila.every(function (x) { return esgotado[x]; })) { break; }
       if (p + 1 < paginas) { await kpEsperar(kpAleatorio(700, 1600)); }
     }
+    if (!ctx.parado) { var cFim = kpLerConfig(); cFim.pos = null; kpGravarConfig(cFim); }
     if (enviadosAqui) { console.log('[OROCHIKING] KeyPress: ' + rotulo + ' — ' + enviadosAqui + ' enviado(s), passando pra próxima.'); }
   }
 
@@ -6901,7 +6931,7 @@
     // atraso extra de 2 a 4s, sorteado em milissegundos (nunca repete o mesmo tempo)
     espera += 2000 + Math.floor(Math.random() * 2001);
     cfg.proximoEm = Date.now() + espera;
-    cfg.feitos = [];
+    cfg.feitos = []; cfg.pos = null;
     cfg.vilas = []; cfg.vilaIdx = 0; // próxima volta relê as aldeias (pega conquistas novas)
     kpGravarConfig(cfg);
     kpAgendar();
@@ -11523,8 +11553,11 @@
   ============================================================ */
   (function retomarKeyPress() {
     if (!(window.game_data && game_data.village)) return;
-    if (!kpLerConfig().ativo) return;
-    setTimeout(kpRetomar, kpAleatorio(1500, 3000));
+    var kc = kpLerConfig();
+    if (!kc.ativo) return;
+    // no meio de um ciclo (página recarregou por clique/F5): volta rápido
+    var noMeio = !(kc.proximoEm && kc.proximoEm > Date.now());
+    setTimeout(kpRetomar, noMeio ? kpAleatorio(400, 900) : kpAleatorio(1500, 3000));
   })();
 
   /* ============================================================
