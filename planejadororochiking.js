@@ -153,6 +153,78 @@
   })();
 
   /* ============================================================
+     v92 — TIMERS QUE NÃO ATRASAM COM A ABA MINIMIZADA
+
+     O "som inaudível" (mais abaixo) só liga depois de um clique na
+     página — e a 24/7 troca de página o tempo todo, então com a aba
+     minimizada ele quase nunca estava ligado e o Chrome segurava os
+     timers (até 1 minuto entre um passo e outro, às vezes parando).
+
+     Aqui TODOS os setTimeout/setInterval da página (painel, 24/7,
+     Farm, Ataque, Gerente, Cunhagem, monitores) passam a ser contados
+     por um Worker: o Chrome não segura timers de Worker em segundo
+     plano. Se o Worker não puder ser criado, fica tudo como antes.
+     Com a aba escondida, as animações (requestAnimationFrame), que o
+     Chrome simplesmente para, viram timers comuns.
+  ============================================================ */
+  (function timersSemAtrasoEmSegundoPlano() {
+    if (window.__ORK_TIMERS_WORKER__) { return; }
+    var nST = window.setTimeout, nCT = window.clearTimeout, nSI = window.setInterval, nCI = window.clearInterval;
+    var worker;
+    try {
+      var src = 'var t={};onmessage=function(e){var d=e.data;' +
+        'if(d.c){clearTimeout(t[d.id]);clearInterval(t[d.id]);delete t[d.id];return;}' +
+        'if(d.r){t[d.id]=setInterval(function(){postMessage(d.id)},d.ms);}' +
+        'else{t[d.id]=setTimeout(function(){delete t[d.id];postMessage(d.id)},d.ms);}}';
+      worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    } catch (e) { return; } // sem Worker: continua com os timers normais
+    window.__ORK_TIMERS_WORKER__ = true;
+    var fila = {}, prox = 1000000000; // ids altos: nunca batem com os do navegador
+    worker.onmessage = function (e) {
+      var item = fila[e.data];
+      if (!item) { return; }
+      if (!item.r) { delete fila[e.data]; }
+      try { item.fn.apply(window, item.args); } catch (err) { nST(function () { throw err; }, 0); }
+    };
+    worker.onerror = function () { worker = null; };
+    function agenda(repete, fn, ms, args) {
+      if (typeof fn !== 'function' || !worker) { return (repete ? nSI : nST).apply(window, [fn, ms].concat(args)); }
+      ms = Math.max(0, Number(ms) || 0);
+      if (repete && ms < 4) { ms = 4; }
+      var id = ++prox;
+      fila[id] = { fn: fn, args: args, r: repete };
+      try { worker.postMessage({ id: id, ms: ms, r: repete }); }
+      catch (e) { delete fila[id]; return (repete ? nSI : nST).apply(window, [fn, ms].concat(args)); }
+      return id;
+    }
+    function cancela(id, nativo) {
+      if (id && fila[id]) { delete fila[id]; try { worker.postMessage({ id: id, c: 1 }); } catch (e) {} return; }
+      nativo.call(window, id);
+    }
+    var st = function setTimeout(fn, ms) { return agenda(false, fn, ms, [].slice.call(arguments, 2)); };
+    var si = function setInterval(fn, ms) { return agenda(true, fn, ms, [].slice.call(arguments, 2)); };
+    var ct = function clearTimeout(id) { cancela(id, nCT); };
+    var ci = function clearInterval(id) { cancela(id, nCI); };
+    window.setTimeout = disfarcarComoNativa(st, 'setTimeout');
+    window.setInterval = disfarcarComoNativa(si, 'setInterval');
+    window.clearTimeout = disfarcarComoNativa(ct, 'clearTimeout');
+    window.clearInterval = disfarcarComoNativa(ci, 'clearInterval');
+    // animações: com a aba escondida o Chrome não chama requestAnimationFrame nenhuma vez
+    try {
+      var nRAF = window.requestAnimationFrame, nCAF = window.cancelAnimationFrame;
+      if (nRAF) {
+        var raf = function requestAnimationFrame(cb) {
+          if (!document.hidden) { return nRAF.call(window, cb); }
+          return -st(function () { cb(performance.now()); }, 16);
+        };
+        var caf = function cancelAnimationFrame(id) { if (id < 0) { ct(-id); } else { nCAF.call(window, id); } };
+        window.requestAnimationFrame = disfarcarComoNativa(raf, 'requestAnimationFrame');
+        window.cancelAnimationFrame = disfarcarComoNativa(caf, 'cancelAnimationFrame');
+      }
+    } catch (e) {}
+  })();
+
+  /* ============================================================
      LIMPEZA DO RASTRO DA INJEÇÃO
 
      O loader do Tampermonkey injeta o painel numa tag <script
@@ -208,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 90;
+  window.__ORK_VERSAO__ = 92;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -226,6 +298,25 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-29-v92',
+      data: '29/09/2026',
+      titulo: 'Tudo funcionando com a aba minimizada / em segundo plano',
+      itens: [
+        'Com a aba minimizada ou em outra aba, o Chrome atrasava os timers do painel (até 1 minuto por passo, às vezes parava). Agora todos os timers (24/7, Farm, Ataque, Gerente, Cunhagem, Balanceador, monitores de captcha e sessão) rodam no tempo certo mesmo em segundo plano, sem precisar clicar na página.',
+        'Relogin da 24/7 corrigido com a aba minimizada: atualize também o script "OROCHIKING Relogin" para a versão 1.4.',
+        'Dica: no Chrome, em Configurações → Desempenho → "Sempre manter estes sites ativos", adicione tribalwars.com.br, pra o Chrome nunca desligar a aba do jogo sozinho.',
+        'Inclui a correção da v91: a Quantidade de ataques do Ataque lê as aldeias de todas as páginas do grupo.'
+      ]
+    },
+    {
+      id: '2026-09-29-v91',
+      data: '29/09/2026',
+      titulo: 'Ataque: Quantidade de ataques em todas as páginas',
+      itens: [
+        'Corrigido: com o Combinado mostrando poucas aldeias por página (ex.: 25), a Quantidade de ataques só enxergava essa página. Agora ela lê as aldeias de TODAS as páginas do grupo aberto e escolhe entre todas.'
+      ]
+    },
     {
       id: '2026-09-28-v90',
       data: '28/09/2026',
@@ -2653,10 +2744,11 @@
           '<div style="font-size:11px;color:#aaa;line-height:1.5;margin-bottom:8px">Quando aparecer captcha, chega uma mensagem no seu WhatsApp (grátis, pelo CallMeBot). Pra pegar a chave, uma vez só:<br>' +
             '<b style="color:#ddd">1.</b> Salve nos contatos o número <b style="color:#FFC400">+34 611 021 695</b><br>' +
             '<b style="color:#ddd">2.</b> Mande pra ele: <b style="color:#FFC400">I allow callmebot to send me messages</b><br>' +
-            '<b style="color:#ddd">3.</b> Ele responde com a <b style="color:#ddd">apikey</b> — cole abaixo.<br>' +
+            '<b style="color:#ddd">3.</b> Ele responde "API Activated for <b style="color:#ddd">NÚMERO</b> — Your apikey is <b style="color:#ddd">CHAVE</b>". Copie os dois abaixo.<br>' +
             '<span style="color:#888">Se ele responder "This Bot is full", salve o número NOVO que ele indicar e mande a mesma frase pra esse número.</span></div>' +
-          '<div style="font-size:10px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin:6px 0 3px">Seu WhatsApp (com 55 e DDD)</div>' +
-          '<input id="ork-whats-fone" type="text" placeholder="55 11 91234-5678" value="' + String(c.fone).replace(/"/g, '') + '" style="' + inp + '">' +
+          '<div style="font-size:10px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin:6px 0 3px">Número — EXATAMENTE como o robô mostrou</div>' +
+          '<input id="ork-whats-fone" type="text" placeholder="ex.: 553599260196" value="' + String(c.fone).replace(/"/g, '') + '" style="' + inp + '">' +
+          '<div style="font-size:9.5px;color:#ffb347;margin-top:3px">Atenção: muitos números do Brasil ficam registrados SEM o 9 da frente (ex.: 55 35 9926-0196). Use o número que aparece em "API Activated for ...", senão a mensagem não chega.</div>' +
           '<div style="font-size:10px;color:#888;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 3px">apikey do CallMeBot</div>' +
           '<input id="ork-whats-chave" type="text" placeholder="ex.: 1234567" value="' + String(c.chave).replace(/"/g, '') + '" style="' + inp + '">' +
           '<label style="display:flex;align-items:center;gap:7px;margin-top:9px;font-size:11.5px;color:#ccc;cursor:pointer"><input id="ork-whats-on" type="checkbox"' + (c.on ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">Avisar no WhatsApp quando der captcha</label>' +
@@ -2672,10 +2764,10 @@
     document.getElementById('ork-whats-x').addEventListener('click', fechar);
     document.getElementById('ork-whats-teste').addEventListener('click', function () {
       var n = ler();
-      if (n.fone.length < 10 || !n.chave) { msg('Preencha o número (com 55 e DDD) e a apikey.', '#ff8080'); return; }
+      if (n.fone.length < 10 || !n.chave) { msg('Preencha o número (como o robô mostrou) e a apikey.', '#ff8080'); return; }
       orkWhatsGravar(n);
       orkWhatsEnviar('✅ OROCHIKING: teste do aviso de captcha. Se chegou, está funcionando!', true);
-      msg('Teste enviado — deve chegar no seu WhatsApp em alguns segundos. Não chegou? Confira o número e a apikey.', '#4ade80');
+      msg('Teste enviado — deve chegar em alguns segundos. Não chegou? O número tem que ser IGUAL ao de "API Activated for ..." (muitas vezes sem o 9 da frente).', '#4ade80');
     });
     document.getElementById('ork-whats-ok').addEventListener('click', function () {
       var n = ler();
@@ -4101,7 +4193,7 @@
                   "<button type='button' id='amxQtdSelecionar' class='amx-btn' style='width:100%' data-dica='Opcional: marca agora as aldeias escolhidas, pra você conferir no contador \"Selecionados\" antes de enviar. Se não clicar, a seleção é feita sozinha ao clicar em Enviar Comandos.'>Selecionar aldeias</button>" +
                 "</div>" +
               "</div>" +
-              "<div class='amx-hint' id='amxQtdInfo'>Opcional: com a quantidade preenchida, não precisa mudar \"aldeias por página\" no Combinado — o script escolhe sozinho as aldeias que têm as tropas preenchidas acima. Ao clicar em Enviar Comandos, a seleção é feita automaticamente.</div>" +
+              "<div class='amx-hint' id='amxQtdInfo'>Opcional: com a quantidade preenchida, o script lê as aldeias de TODAS as páginas do Combinado (do grupo aberto) e escolhe sozinho as que têm as tropas preenchidas acima — não precisa mudar \"aldeias por página\". Ao clicar em Enviar Comandos, a seleção é feita automaticamente.</div>" +
     
               "<div class='amx-row'>" +
                 "<div class='amx-field'>" +
@@ -4318,11 +4410,56 @@
             console.log("[AtaqueMass] Quantidade de ataques: " + escolhidas.length + "/" + qtd + " aldeias marcadas (" + cands.length + " com as tropas, prioridade " + prio + ").");
             return escolhidas.length;
           };
+          // v91: escolhe entre as aldeias de TODAS as páginas do Combinado (antes só enxergava a página aberta:
+          // com 25 por página, pedir 100 dava só 25). Lê o grupo que está aberto no Combinado.
+          var amxEscolherDeTodasPaginas = async function () {
+            var qtd = parseInt($("#amxQtdAtaques").val(), 10) || 0;
+            if (!qtd) { return null; }
+            var UNS = ["spear", "sword", "axe", "archer", "spy", "light", "marcher", "heavy", "ram", "catapult", "knight", "snob"];
+            var POP = { spear: 1, sword: 1, axe: 1, archer: 1, spy: 2, light: 4, marcher: 5, heavy: 6, ram: 5, catapult: 8, knight: 10, snob: 100 };
+            var pedido = {};
+            UNS.forEach(function (u) { var v = parseInt($("#" + u).val(), 10) || 0; if (v > 0) { pedido[u] = v; } });
+            if (!Object.keys(pedido).length) { $("#amxQtdInfo").html("<b style='color:#ff8080'>Preencha as tropas por envio antes de escolher a quantidade.</b>"); return []; }
+            var gSel = $("strong.group-menu-item").first().attr("data-group-id");
+            var grupo = String(gSel != null && gSel !== "" ? gSel : ((window.location.search.match(/[?&]group=(\d+)/) || [])[1] || "0"));
+            $("#amxQtdInfo").html("⏳ Lendo as aldeias de todas as páginas do Combinado...");
+            var todas = await nobAldeias(grupo);
+            var alvos = parseCoordsInput($("textarea[name=coords]").val()).map(function (c) { var p = c.split("|"); return { x: +p[0], y: +p[1] }; });
+            var cands = [];
+            todas.forEach(function (a) {
+              var ok = true, forca = 0;
+              Object.keys(pedido).forEach(function (u) {
+                var n = a.tropas[u] || 0, precisa = pedido[u] >= 99999 ? 1 : pedido[u];
+                if (n < precisa) { ok = false; }
+                forca += Math.min(n, pedido[u]) * (POP[u] || 1);
+              });
+              if (!ok) { return; }
+              var d = Infinity;
+              alvos.forEach(function (t) { var dd = Math.sqrt((a.x - t.x) * (a.x - t.x) + (a.y - t.y) * (a.y - t.y)); if (dd < d) { d = dd; } });
+              cands.push({ id: a.id, coord: a.coord, d: d, forca: forca });
+            });
+            var prio = $("#amxQtdPrioridade").val();
+            cands.sort(function (a, b) {
+              if (prio === "forte") { return (b.forca - a.forca) || (a.d - b.d); }
+              if (prio === "longe") { return b.d - a.d; }
+              return a.d - b.d;
+            });
+            var escolhidas = cands.slice(0, qtd);
+            // marca na tela as que estiverem nesta página (só pra conferência visual)
+            var porId = {}; escolhidas.forEach(function (c) { porId[String(c.id)] = 1; });
+            $("input.chkbox").each(function () { $(this).prop("checked", !!porId[String($(this).data("id"))]); });
+            $(".chkbox").first().trigger("change");
+            var msg = "✔ " + escolhidas.length + " aldeia(s) escolhida(s) de " + cands.length + " com as tropas preenchidas (" + todas.length + " aldeias no total, todas as páginas).";
+            if (escolhidas.length < qtd) { msg += " <b style='color:#ffb347'>Só " + cands.length + " têm as tropas — vão só essas.</b>"; }
+            $("#amxQtdInfo").html(msg);
+            console.log("[AtaqueMass] Quantidade de ataques: " + escolhidas.length + "/" + qtd + " (de " + cands.length + " com tropas, " + todas.length + " aldeias em todas as páginas, grupo " + grupo + ").");
+            return escolhidas;
+          };
           // sempre abre no padrão (Quantidade vazia = todas, prioridade "mais perto") — não confunde quem é novo
           try { if (typeof autoLigarDicas === "function" && document.getElementById("amxQtdBox")) { autoLigarDicas(document.getElementById("amxQtdBox")); } } catch (e) {}
           $("#amxQtdSelecionar").on("click", function () {
-            var r = amxSelecionarPorQuantidade();
-            if (r === null && !(parseInt($("#amxQtdAtaques").val(), 10) > 0)) { $("#amxQtdInfo").html("Preencha a quantidade de ataques (ex.: 100)."); }
+            if (!(parseInt($("#amxQtdAtaques").val(), 10) > 0)) { $("#amxQtdInfo").html("Preencha a quantidade de ataques (ex.: 100)."); return; }
+            amxEscolherDeTodasPaginas().catch(function (e) { $("#amxQtdInfo").html("<b style='color:#ff8080'>Erro ao ler as aldeias: " + (e && e.message) + "</b>"); });
           });
 
           executarEnvio = function (buildingOverride, onRoundDone) {
@@ -4330,10 +4467,21 @@
             onRoundDoneCallback = onRoundDone || null;
     
             function continuarEnvio() {
-              // v87: com "Quantidade de ataques" preenchida, marca as N aldeias certas antes de ler as marcadas
-              if (amxSelecionarPorQuantidade() === 0) {
-                var amxMsg0 = "Nenhuma aldeia da página tem as tropas preenchidas. Confira as tropas por envio ou apague a Quantidade de ataques.";
-                if (window.__ORK_LOOP_SILENCIOSO__) { console.warn("[AtaqueMass] " + amxMsg0); } else { alert(amxMsg0); }
+              // v91: com "Quantidade de ataques" preenchida (1ª rodada), escolhe entre TODAS as páginas do Combinado
+              if ((parseInt($("#amxQtdAtaques").val(), 10) || 0) > 0 && $("input.chkbox").length) {
+                amxEscolherDeTodasPaginas().then(function (escolhidas) {
+                  if (!escolhidas || !escolhidas.length) {
+                    var amxMsg0 = "Nenhuma aldeia tem as tropas preenchidas. Confira as tropas por envio ou apague a Quantidade de ataques.";
+                    if (window.__ORK_LOOP_SILENCIOSO__) { console.warn("[AtaqueMass] " + amxMsg0); } else { alert(amxMsg0); }
+                    return;
+                  }
+                  aldeias.splice(0, aldeias.length);
+                  escolhidas.forEach(function (c) { aldeias.push(new Aldeia(c.coord, c.id)); });
+                  prosseguirEnvio();
+                }).catch(function (e) {
+                  console.error("[AtaqueMass] erro ao ler as aldeias de todas as páginas", e);
+                  if (!window.__ORK_LOOP_SILENCIOSO__) { alert("Erro ao ler as aldeias de todas as páginas: " + (e && e.message)); }
+                });
                 return;
               }
               if ($("input.chkbox:checked").length) {
@@ -4344,7 +4492,9 @@
               } else {
                 usefullVillages();
               }
-    
+              prosseguirEnvio();
+            }
+            function prosseguirEnvio() {
               // A partir da 2a rodada a tabela de aldeias da pagina ja foi substituida
               // pela tabela de RESULTADOS — nao existe mais .chkbox nem .quickedit-vn pra
               // ler, entao a lista saia vazia e a rodada morria com "0/0 aldeias".
@@ -11185,7 +11335,7 @@
       nome: 'Automatização 24/7',
       abrev: '24/7',
       icone: '♾️',
-      dica: 'Roda tudo sozinho, em ciclos, numa aba só. Você escolhe as ações e a ORDEM: Farm Hard, Cunhar, Balancear, Noblar bárbaras (Noblar Automático), Construir/recrutar (Gerente de Conta) e Coletor Hard — depois vem a pausa e repete. Modo Farm Player: repete o ataque salvo no Ataque Mass e roda a sequência entre as levas. Relogin automático, espera o captcha e continua.',
+      dica: 'Roda tudo sozinho, em ciclos, numa aba só. Você escolhe as ações e a ORDEM: Farm Hard, Cunhar, Balancear, Noblar bárbaras (Noblar Automático), Construir/recrutar (Gerente de Conta) e Coletor Hard — depois vem a pausa e repete. Modo Farm Player: repete o ataque salvo no Ataque Mass e roda a sequência entre as levas. Relogin automático, espera o captcha e continua. Funciona com a aba minimizada ou em segundo plano (deixe o Chrome aberto e o PC sem hibernar).',
       checar: checaAuto247,
       rodar: rodarAuto247,
       destino: null
