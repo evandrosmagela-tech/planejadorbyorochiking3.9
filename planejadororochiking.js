@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 93;
+  window.__ORK_VERSAO__ = 94;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -298,6 +298,15 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-09-29-v94',
+      data: '29/09/2026',
+      titulo: 'Coletor BB Assistente com visual novo',
+      itens: [
+        'Janela do Coletor BB Assistente redesenhada: linhas escuras e coordenadas em dourado claro, bem legíveis (antes o fundo bege do jogo apagava o texto).',
+        'Botões organizados e em português: Tamanho do mapa + Aplicar, Recarregar, Iniciar ataques e Parar (o Recarregar não fica mais por cima do Parar).'
+      ]
+    },
     {
       id: '2026-09-29-v93',
       data: '29/09/2026',
@@ -5864,36 +5873,32 @@
     <a class="popup_box_close tooltip-delayed" id="${scriptTag}_popup_cross" href="javascript:void(0)">
     </a>
     <div id="${scriptTag}_popup_content" class="fm_popup_content">
-    <div style="padding:5px;">
-    <div style="border: 1px solid #804000; padding: 5px;">
-    <span>
-    </span>
+    <div>
+    <div>
     <div id="${scriptTag}_LAlist">
     <table>
     <thead>
     <tr>
-    <th style="min-width:70px;">Village</th>
-    <th style="min-width:40px;"><img src="/graphic/rechts.png"></th>
-    <th colspan="5">LA</th>
+    <th>Aldeia</th>
+    <th>Dist.</th>
+    <th colspan="5">Modelo</th>
     </tr>
     </thead>
     <tbody id="${scriptTag}_popupTable" class="vis">
     </tbody>
     </table>
     </div>
-    <p>
+    <div class="fm_ctrl">
+    <label for="${scriptTag}_mapSize">Tamanho do mapa</label>
     <input type="text" id="${scriptTag}_mapSize" value ="${TWMap.size[0]}" size="1">
-    <input id="${scriptTag}_resizeMap" value ="Resize Map" class="btn" type="submit">
-    
-    </p>
-    <p>
-    <input class="btn btn-confirm-yes" id="${scriptTag}_reloadTable" type="submit" value="Reload table">
-    </p>
-    <input class="btn" id="startAttack" type="submit" onclick="attacknow()" value="Start Attacks">
-    <input class="btn btn-confirm-no" id="stopAttack" type="submit" onclick="pararAttack()" value="Parar">
-    <br>
-    <br>
-    <br>
+    <input id="${scriptTag}_resizeMap" value ="Aplicar" class="btn fm_btn_sec" type="submit">
+    <span class="fm_grow"></span>
+    <input class="btn fm_btn_sec" id="${scriptTag}_reloadTable" type="submit" value="↻ Recarregar">
+    </div>
+    <div class="fm_ctrl">
+    <input class="btn" id="startAttack" type="submit" onclick="attacknow()" value="▶ Iniciar ataques">
+    <input class="btn btn-confirm-no" id="stopAttack" type="submit" onclick="pararAttack()" value="■ Parar">
+    </div>
     </div>
     </div>
     </div>
@@ -5913,91 +5918,90 @@
     }
     }</script>
     <style>
-    /*general css*/
+    /*general css — v94: visual clean (linhas escuras, coordenada bem legível)*/
     .fm_popup_container {
-    display: block;
-    position: fixed;
-    top: 8%;
-    left: 2%;
-    z-index: 1200;
-    background: linear-gradient(165deg, rgba(26,26,26,.97), rgba(8,8,8,.98));
-    border: 1px solid rgba(255,196,0,.16);
-    border-radius: 16px;
-    box-shadow: 0 24px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.4);
+    display: block; position: fixed; top: 8%; left: 2%; z-index: 1200; width: 310px; box-sizing: border-box;
+    background: #121212;
+    border: 1px solid rgba(232,172,10,.35);
+    border-radius: 14px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.65);
     font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
-    color: #ececec;
-    overflow: hidden;
+    color: #ececec; overflow: hidden;
     }
-    .fm_popup_content {
-    min-width: 260px;
-    min-height: 70px;
-    height: 100%;
-    overflow: hidden;
-    background: transparent;
-    color: #ececec;
-    padding: 6px 4px 10px;
-    }
-    .fm_popup_container table { color: #ececec; font-size: 11.5px; width: 100%; }
-    .fm_popup_container th {
-    color: #ffd84d; font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
-    border-bottom: 1px solid rgba(255,255,255,.08); padding: 6px 4px; font-weight: 700;
-    }
-    .fm_popup_container td { padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,.04); }
-    .fm_popup_container tr.row_a { background: rgba(255,255,255,.02); }
-    .fm_popup_container tr.row_b { background: transparent; }
-    .fm_popup_container tr:hover { background: rgba(255,196,0,.06); }
-    .fm_popup_container a { color: #ffd84d; text-decoration: none; }
-    .fm_popup_container a:hover { text-decoration: underline; }
-    .fm_popup_container input[type=text] {
-    background: #111; border: 1px solid rgba(255,255,255,.12); color: #ececec;
-    border-radius: 7px; padding: 5px 8px; font-size: 11.5px;
-    }
-    .fm_popup_container input.btn, .fm_popup_container input[type=submit] {
-    background: linear-gradient(100deg,#e8ac0a,#ffdc63); color: #1a1400; border: none;
-    border-radius: 8px; font-weight: 800; font-size: 11px; padding: 7px 13px; cursor: pointer;
-    margin: 4px 3px; letter-spacing: .3px;
-    }
-    .fm_popup_container input.btn:hover, .fm_popup_container input[type=submit]:hover { filter: brightness(1.08); }
-    .fm_popup_container input#stopAttack, .fm_popup_container .btn-confirm-no {
-    background: #7a1f1f !important; color: #fff !important;
-    }
-    .fm_popup_container .popup_box_close {
-    color: #1a1400; font-weight: 800; text-decoration: none; font-size: 15px;
-    position: absolute; right: 10px; top: 8px; cursor: pointer; z-index: 2;
-    }
-    .fm_popup_container .popup_box_close:before { content: "X"; }
     #${scriptTag}_popup_container:before {
     content: "COLETOR PARA FARMAR";
-    display: block; background: linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);
-    color: #1a1400; font-weight: 800; font-size: 12px; letter-spacing: 1px;
-    padding: 10px 14px; text-transform: uppercase;
+    display: block; background: linear-gradient(100deg,#e8ac0a,#ffdc63 55%,#e8ac0a);
+    color: #1a1400; font-weight: 800; font-size: 12px; letter-spacing: 1.2px;
+    padding: 11px 44px 11px 14px; cursor: move;
     }
-    /*specific css*/
-    .${scriptTag}_tableHeader{
-    height: 35px;
-    text-align: text-bottom;
+    .fm_popup_container .popup_box_close {
+    position: absolute; right: 9px; top: 7px; z-index: 2; width: 24px; height: 24px; line-height: 24px;
+    border-radius: 50%; background: rgba(26,20,0,.85) !important; color: #ffd84d; text-align: center;
+    font-weight: 800; font-size: 12px; text-decoration: none; cursor: pointer;
     }
+    .fm_popup_container .popup_box_close:before { content: "✕"; }
+    .fm_popup_container .popup_box_close:hover { background: #000 !important; }
+    .fm_popup_content { background: transparent; color: #ececec; padding: 12px 12px 14px; min-width: 0; }
+    .fm_popup_content > div { padding: 0 !important; }
+    .fm_popup_content > div > div { border: none !important; padding: 0 !important; }
+    /* tabela */
     #${scriptTag}_LAlist {
-    overflow-y:auto;
-    max-height:30vh;
+    overflow-y: auto; max-height: 32vh; border: 1px solid rgba(255,255,255,.07); border-radius: 10px; background: #0b0b0b;
+    scrollbar-width: thin; scrollbar-color: #e8ac0a #0b0b0b;
     }
-    #${scriptTag}_LAlist td, ${scriptTag}_LAlist th{
-    text-align: center;
+    #${scriptTag}_LAlist::-webkit-scrollbar { width: 6px; }
+    #${scriptTag}_LAlist::-webkit-scrollbar-thumb { background: #e8ac0a; border-radius: 6px; }
+    #${scriptTag}_LAlist table { width: 100%; border-collapse: collapse; border-spacing: 0; background: transparent !important; }
+    #${scriptTag}_LAlist th {
+    position: sticky; top: 0; z-index: 1; background: #1b1b1b !important; background-image: none !important;
+    color: #c9a13b; font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+    padding: 8px 6px; border-bottom: 1px solid rgba(232,172,10,.25); text-align: center;
     }
-    .${scriptTag}_farm_icon{
-    transform: scale(1.5);
-    width: 24px;
-    height: 24px;
+    #${scriptTag}_LAlist th img { filter: grayscale(1) brightness(1.6); vertical-align: middle; width: 14px; }
+    #${scriptTag}_LAlist tr, #${scriptTag}_LAlist tr td, #${scriptTag}_LAlist tbody.vis td {
+    background: transparent !important; background-image: none !important;
     }
-    .${scriptTag}_td_farm_icon{
-    min-width: 55px;
-    height: 30px;
+    #${scriptTag}_LAlist tr.row_a td { background: rgba(255,255,255,.025) !important; }
+    #${scriptTag}_LAlist td {
+    padding: 6px 6px; border-bottom: 1px solid rgba(255,255,255,.05) !important; text-align: center; vertical-align: middle;
+    color: #9a9a9a; font-size: 12px;
     }
-    
-    .btn-confirm-yes{
-    position: absolute;
-    right: 5px;
+    #${scriptTag}_LAlist tr:hover td { background: rgba(232,172,10,.08) !important; }
+    #${scriptTag}_LAlist td a.fm_coord {
+    color: #ffe08a !important; font-weight: 700; font-size: 13px; letter-spacing: .3px; text-decoration: none;
+    font-variant-numeric: tabular-nums;
     }
+    #${scriptTag}_LAlist td a.fm_coord:hover { color: #fff !important; text-decoration: underline; }
+    #${scriptTag}_LAlist td.fm_dist { color: #8d8d8d; font-variant-numeric: tabular-nums; }
+    .${scriptTag}_td_farm_icon { width: 40px; padding: 4px 2px !important; }
+    .${scriptTag}_farm_icon { display: inline-block; vertical-align: middle; border-radius: 5px;
+    transition: transform .12s, box-shadow .12s; }
+    .${scriptTag}_farm_icon:hover { transform: scale(1.12); box-shadow: 0 0 0 2px rgba(232,172,10,.55); }
+    /* controles */
+    .fm_ctrl { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; }
+    .fm_ctrl label { font-size: 11px; color: #8d8d8d; }
+    .fm_popup_container input[type=text] {
+    width: 44px; background: #0b0b0b; border: 1px solid rgba(255,255,255,.14); color: #ffe08a; text-align: center;
+    border-radius: 8px; padding: 6px 4px; font-size: 12px; font-weight: 700;
+    }
+    .fm_popup_container input[type=text]:focus { outline: none; border-color: #e8ac0a; }
+    .fm_popup_container input.btn, .fm_popup_container input[type=submit] {
+    margin: 0; border-radius: 9px; font-weight: 800; font-size: 11.5px; padding: 8px 11px; cursor: pointer; white-space: nowrap;
+    letter-spacing: .3px; background-image: none; box-shadow: none; transition: filter .12s, background .12s;
+    }
+    .fm_popup_container .fm_btn_sec {
+    background: transparent !important; color: #ffd84d !important; border: 1px solid rgba(232,172,10,.45) !important;
+    }
+    .fm_popup_container .fm_btn_sec:hover { background: rgba(232,172,10,.1) !important; }
+    .fm_popup_container #startAttack {
+    flex: 1; background: linear-gradient(100deg,#e8ac0a,#ffdc63) !important; color: #1a1400 !important; border: none !important;
+    }
+    .fm_popup_container #startAttack:hover { filter: brightness(1.08); }
+    .fm_popup_container #stopAttack {
+    background: transparent !important; color: #ff8a80 !important; border: 1px solid rgba(255,90,80,.5) !important;
+    }
+    .fm_popup_container #stopAttack:hover { background: rgba(255,90,80,.12) !important; }
+    .fm_popup_container .fm_grow { flex: 1; }
     </style>`;
     
     $("body").append(html);
@@ -6035,8 +6039,8 @@
     addLARow.counter++;
     $("#fmMapLA_popupTable").append(`
     <tr class=${addLARow.counter%2?"row_a":"row_b"}>
-    <td><a href="${window.location.pathname}?${sitter?sitter+"&":""}&screen=info_village&id=${village.id}" target="_blank">${parseInt(village.xy/1000)}|${village.xy%1000}</a></td>
-    <td>${village.distance}</td>
+    <td><a class="fm_coord" href="${window.location.pathname}?${sitter?sitter+"&":""}&screen=info_village&id=${village.id}" target="_blank">${parseInt(village.xy/1000)}|${village.xy%1000}</a></td>
+    <td class="fm_dist">${village.distance}</td>
     <td class="${scriptTag}_td_farm_icon"><a href="javascript:void(0);" class="fm_centered ${scriptTag}_farm_icon ${scriptTag}_sendFarm farm_icon farm_icon_a" data-farmtype="a" data-villagexy="${village.xy}"></a></td>
     <td class="${scriptTag}_td_farm_icon"><a href="javascript:void(0);" class="${scriptTag}_farm_icon ${scriptTag}_sendFarm farm_icon farm_icon_b" data-farmtype="b" data-villagexy="${village.xy}"></a></td>
     </tr>`);
