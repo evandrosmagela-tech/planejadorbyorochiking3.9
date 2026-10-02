@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      106.0
+// @version      107.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 106;
+  window.__ORK_VERSAO__ = 107;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -298,6 +298,14 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-10-02-v107',
+      data: '02/10/2026',
+      titulo: 'Atalhos no perfil: Ocultar e Coletar Perfil',
+      itens: [
+        '👤 Depois de usar Ocultar Perfil ou Coletar Perfil uma vez pelo painel, todo perfil de jogador que você abrir mostra uma barrinha com 🙈 Ocultar e 👤 Coletar Perfil — sem abrir o painel nem digitar o nick. Ele já clica em "exibir todas as aldeias" sozinho. O X da barrinha desliga.'
+      ]
+    },
     {
       id: '2026-10-02-v106',
       data: '02/10/2026',
@@ -14431,7 +14439,10 @@
       (err && err.message ? err.message : String(err)) + '\n\nSe continuar, clique em "Copiar erro" e mande pro suporte.', botoes);
   }
   // Roda a ferramenta; se quebrar ao abrir, tira da tela o que ficou pela metade e avisa
+  var ORK_ATALHO_PERFIL = 'ork_atalho_perfil';
   function orkExecutar(f) {
+    // v107: usou Perfil/Ocultar uma vez → os atalhos aparecem sozinhos em todo perfil de jogador
+    if (f && (f.id === 'perfil' || f.id === 'ocultar')) { try { localStorage.setItem(ORK_ATALHO_PERFIL, '1'); } catch (e) {} }
     var antes = new Set(Array.prototype.slice.call(document.body.children));
     try {
       f.rodar();
@@ -14796,11 +14807,46 @@
     var alvo = null;
     document.querySelectorAll('a').forEach(function (a) {
       if (alvo) return;
-      var t = (a.textContent || '').toLowerCase();
-      if (t.indexOf('exibir') !== -1 && t.indexOf('aldeia') !== -1) { alvo = a; }
+      var t = (a.textContent || '').toLowerCase(), oc = String(a.getAttribute('onclick') || '') + ' ' + String(a.getAttribute('href') || '');
+      if (/getAllVillages|fetch_villages/i.test(oc)) { alvo = a; return; }
+      if (/(exibir|mostrar|show|zeige|afficher|wy[sś]wietl)/.test(t) && /(aldeia|pueblo|village|dorf|wios|villaggi)/.test(t)) { alvo = a; }
     });
     return alvo;
   }
+
+  /* ============================================================
+     v107 — ATALHOS NO PERFIL DO JOGADOR (Ocultar Perfil e Coletar Perfil)
+     Depois de usar uma vez pelo painel, em TODO perfil de jogador aparece uma barrinha com
+     🙈 Ocultar e 👤 Coletar Perfil — sem precisar abrir o painel e digitar o nick.
+     O X da barrinha desliga (volta a aparecer quando usar pelo painel de novo).
+  ============================================================ */
+  (function atalhosNoPerfil() {
+    try {
+      if (!(window.game_data && game_data.screen === 'info_player')) { return; }
+      if (localStorage.getItem(ORK_ATALHO_PERFIL) !== '1') { return; }
+    } catch (e) { return; }
+    function montar() {
+      if (document.getElementById('ork-atalho-perfil')) { return; }
+      var bar = document.createElement('div'); bar.id = 'ork-atalho-perfil';
+      bar.style.cssText = 'position:fixed;top:70px;right:14px;z-index:99990;display:flex;gap:6px;align-items:center;background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:10px;padding:6px 8px;box-shadow:0 10px 24px rgba(0,0,0,.55);font-family:"Segoe UI",Arial,sans-serif';
+      var bt = 'border:none;border-radius:7px;padding:6px 11px;cursor:pointer;font-weight:800;font-size:11.5px;font-family:inherit';
+      bar.innerHTML = '<span style="color:#FFC400;font-weight:800;font-size:10px;letter-spacing:.6px">OROCHIKING</span>' +
+        '<button type="button" data-f="ocultar" style="' + bt + ';background:#232323;color:#FFC400;border:1px solid #3a3a3a" title="Esconde as aldeias que já têm ataque/apoio a caminho">🙈 Ocultar</button>' +
+        '<button type="button" data-f="perfil" style="' + bt + ';background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200" title="Coleta as coordenadas das aldeias deste jogador">👤 Coletar Perfil</button>' +
+        '<span id="ork-atalho-perfil-x" style="color:#777;cursor:pointer;font-weight:800;font-size:14px;margin-left:2px" title="Não mostrar mais (volta quando usar pelo painel)">&times;</span>';
+      document.body.appendChild(bar);
+      bar.querySelectorAll('button[data-f]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var f = FERRAMENTAS_POR_ID[b.getAttribute('data-f')]; if (!f) { return; }
+          var link = acharLinkExibirTodasAldeias();
+          if (link) { try { link.click(); } catch (e) {} b.disabled = true; var t0 = b.textContent; b.textContent = '⏳ carregando aldeias...'; setTimeout(function () { b.disabled = false; b.textContent = t0; orkExecutar(f); }, 1300); }
+          else { orkExecutar(f); }
+        });
+      });
+      bar.querySelector('#ork-atalho-perfil-x').addEventListener('click', function () { try { localStorage.removeItem(ORK_ATALHO_PERFIL); } catch (e) {} bar.remove(); });
+    }
+    setTimeout(montar, 400);
+  })();
 
   /* ============================================================
      RETOMAR CUNHAGEM AUTOMÁTICA APÓS RECARREGAR A PÁGINA
