@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      108.0
+// @version      110.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 108;
+  window.__ORK_VERSAO__ = 110;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -299,11 +299,20 @@
   ============================================================ */
   var ORK_NOVIDADES = [
     {
+      id: '2026-10-02-v109',
+      data: '02/10/2026',
+      titulo: 'Coletor Hard no painel e bolinha corrigida',
+      itens: [
+        '🕒 Coletor Hard agora também está no painel (seção Farm) — abre a mesma janela da bolinha dourada da direita.',
+        '🕒 Corrigido: a janela do Coletor Hard podia abrir FORA da tela (posição salva de uma tela maior ou arrastada pra longe) e parecia que não abria. Agora ela sempre volta pra dentro da tela.'
+      ]
+    },
+    {
       id: '2026-10-02-v108',
       data: '02/10/2026',
       titulo: 'Bolinhas no canto esquerdo',
       itens: [
-        '⚪ As bolinhas dos scripts ligados agora ficam encostadas no canto esquerdo, uma do lado da outra, sem buracos — não ficam mais no meio da tela. O Coletor Hard continua à direita.'
+        '⚪ As bolinhas dos scripts ligados agora ficam no canto esquerdo, uma ACIMA da outra, já no lugar certo quando a página carrega (não passam mais pelo meio da tela). O Coletor Hard continua à direita.'
       ]
     },
     {
@@ -1580,6 +1589,7 @@
       bolha.addEventListener('click', () => {
         cfg.aberto = painel.classList.contains('oculto');
         aplicarAbertura();
+        if (cfg.aberto) { posicionar(); }
         salvarConfig();
       });
     
@@ -1635,7 +1645,12 @@
       })();
     
       function posicionar() {
-        if (!cfg.pos) return;
+        if (!cfg.pos) { painel.style.left = ''; painel.style.top = ''; painel.style.right = ''; painel.style.bottom = ''; return; }
+        // v109: a janela tinha ficado fora da tela (arrastada / tela menor) e "não abria" — agora sempre volta pra dentro
+        const larg = painel.offsetWidth || 340, alt = Math.min(painel.offsetHeight || 300, window.innerHeight - 20);
+        const maxX = Math.max(0, window.innerWidth - larg - 6), maxY = Math.max(0, window.innerHeight - Math.min(alt, 160) - 6);
+        if (!(cfg.pos.x >= 0) || !(cfg.pos.y >= 0)) { cfg.pos = null; posicionar(); return; }
+        cfg.pos = { x: Math.min(cfg.pos.x, maxX), y: Math.min(cfg.pos.y, maxY) };
         painel.style.left = cfg.pos.x + 'px';
         painel.style.top = cfg.pos.y + 'px';
         painel.style.right = 'auto';
@@ -1658,6 +1673,7 @@
     
       aplicarAbertura();
       posicionar();
+      window.addEventListener('resize', () => { if (cfg.aberto) { posicionar(); } });
       refletirEstado();
     
       // ============================================================
@@ -2429,6 +2445,7 @@
     
       // API de console/teste
       window.__OROCHIKING__ = {
+        abrir: () => { cfg.aberto = true; aplicarAbertura(); posicionar(); salvarConfig(); },
         iniciar: executar,
         rodarUmaVez: () => (rodando ? Promise.resolve(false) : executar(true).then(() => true)), // usado pelo 24/7
         rodando: () => rodando,
@@ -3029,7 +3046,7 @@
     if (document.getElementById('ork-fh-bolinha')) { return; }
     var b = document.createElement('div');
     b.id = 'ork-fh-bolinha';
-    b.style.cssText = 'position:fixed;left:468px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+    b.style.cssText = 'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
       'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);' +
       'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
       'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
@@ -6776,7 +6793,7 @@
     btn.id = 'ork-cunhar-bolinha';
     btn.title = 'Cunhagem ativa — clique pra parar';
     btn.style.cssText = (
-      'position:fixed;left:20px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+      'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
       'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);' +
       'color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;' +
       'display:flex;align-items:center;justify-content:center;flex-direction:column;' +
@@ -7330,7 +7347,7 @@
     btn.id = 'ork-kp-bolinha';
     btn.title = 'KeyPress ativo — clique pra parar';
     btn.style.cssText = (
-      'position:fixed;left:84px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+      'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
       'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);' +
       'color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;' +
       'display:flex;align-items:center;justify-content:center;flex-direction:column;' +
@@ -8051,7 +8068,7 @@
     if (document.getElementById('ork-auto-bolinha')) { return; }
     var b = document.createElement('div');
     b.id = 'ork-auto-bolinha';
-    b.style.cssText = 'position:fixed;left:148px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+    b.style.cssText = 'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
       'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);' +
       'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
       'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
@@ -9051,7 +9068,7 @@
     if (document.getElementById('ork-bal-bolinha')) { return; }
     var b = document.createElement('div');
     b.id = 'ork-bal-bolinha';
-    b.style.cssText = 'position:fixed;left:212px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+    b.style.cssText = 'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
       'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);' +
       'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
       'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
@@ -10086,7 +10103,7 @@
     if (document.getElementById('ork-ger-bolinha')) { return; }
     var b = document.createElement('div');
     b.id = 'ork-ger-bolinha';
-    b.style.cssText = 'position:fixed;left:276px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+    b.style.cssText = 'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
       'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);' +
       'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
       'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
@@ -11226,7 +11243,7 @@
     if (document.getElementById('ork-nob-bolinha')) { return; }
     var b = document.createElement('div');
     b.id = 'ork-nob-bolinha';
-    b.style.cssText = 'position:fixed;left:340px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+    b.style.cssText = 'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
       'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);' +
       'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
       'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
@@ -12397,7 +12414,7 @@
     if (document.getElementById('ork-npl-bolinha')) { return; }
     var b = document.createElement('div');
     b.id = 'ork-npl-bolinha';
-    b.style.cssText = 'position:fixed;left:404px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
+    b.style.cssText = 'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;' +
       'background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);' +
       'cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;' +
       'box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
@@ -13106,7 +13123,7 @@
   function raMostrarBolinha() {
     if (document.getElementById('ork-ra-bolinha')) { return; }
     var b = document.createElement('div'); b.id = 'ork-ra-bolinha';
-    b.style.cssText = 'position:fixed;left:532px;bottom:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
+    b.style.cssText = 'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
     b.innerHTML = '<span style="font-size:18px">🏛️</span><span id="ork-ra-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">REC</span>';
     b.addEventListener('click', function () { if (confirm('Parar o Recursos pra Academia?')) { raParar(); } });
     document.body.appendChild(b);
@@ -13334,7 +13351,7 @@
   function etqMostrarBolinha() {
     if (document.getElementById('ork-etq-bolinha')) { return; }
     var b = document.createElement('div'); b.id = 'ork-etq-bolinha';
-    b.style.cssText = 'position:fixed;left:596px;bottom:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
+    b.style.cssText = 'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
     b.innerHTML = '<span style="font-size:18px">🏷️</span><span id="ork-etq-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">ETQ</span>';
     b.addEventListener('click', function () { if (confirm('Parar o Etiquetador automático?')) { etqParar(); } });
     document.body.appendChild(b);
@@ -13973,7 +13990,7 @@
     snpIniciarBatida(); snpFaixaDedicada();
     if (document.getElementById('ork-snp-bolinha')) { return; }
     var b = document.createElement('div'); b.id = 'ork-snp-bolinha';
-    b.style.cssText = 'position:fixed;left:660px;bottom:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
+    b.style.cssText = 'position:fixed;left:10px;bottom:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
     b.innerHTML = '<span style="font-size:18px">🛡️</span><span id="ork-snp-txt" style="font-size:8.5px;font-weight:800;margin-top:2px">SNIPE</span>';
     b.addEventListener('click', function () { snpAbrirModal(); });
     document.body.appendChild(b);
@@ -14453,18 +14470,23 @@
   (function bolinhasNoCanto() {
     var IDS = ['ork-cunhar-bolinha', 'ork-kp-bolinha', 'ork-auto-bolinha', 'ork-bal-bolinha', 'ork-ger-bolinha', 'ork-nob-bolinha',
       'ork-npl-bolinha', 'ork-fh-bolinha', 'ork-ra-bolinha', 'ork-etq-bolinha', 'ork-snp-bolinha'];
+    // v110: uma ACIMA da outra no canto esquerdo, já no lugar certo ao aparecer (sem passar pelo meio)
     function arrumar() {
-      var x = 10;
+      var y = 20;
       IDS.forEach(function (id) {
         var b = document.getElementById(id);
         if (!b || b.style.display === 'none') { return; }
-        var alvo = x + 'px';
-        if (b.style.left !== alvo) { b.style.left = alvo; }
+        if (b.style.left !== '10px') { b.style.left = '10px'; }
+        if (b.style.bottom !== y + 'px') { b.style.bottom = y + 'px'; }
         if (b.style.right) { b.style.right = ''; }
-        x += 60;
+        y += 62;
       });
     }
-    try { setInterval(arrumar, 600); arrumar(); } catch (e) {}
+    try {
+      // arruma no mesmo instante em que uma bolinha é colocada na página (antes de aparecer na tela)
+      new MutationObserver(function (muts) { for (var i = 0; i < muts.length; i++) { for (var j = 0; j < muts[i].addedNodes.length; j++) { var n = muts[i].addedNodes[j]; if (n && n.id && IDS.indexOf(n.id) !== -1) { arrumar(); return; } } } }).observe(document.body, { childList: true });
+      setInterval(arrumar, 800); arrumar();
+    } catch (e) {}
   })();
 
   var ORK_ATALHO_PERFIL = 'ork_atalho_perfil';
@@ -14605,6 +14627,19 @@
       buscaPorNick: true
     },
     {
+      id: 'coletorhard',
+      nome: 'Coletor Hard',
+      abrev: 'Coletor Hard',
+      icone: '🕒',
+      dica: 'Abre a janela do Coletor Hard (o mesmo da bolinha dourada do canto direito): explora as bárbaras em volta das suas aldeias pro Assistente de Saque, com raio, pontos, modelo e repetição em ciclos. Roda em qualquer tela de aldeia.',
+      checar: function () { return true; },
+      rodar: function () {
+        if (window.__OROCHIKING__ && typeof window.__OROCHIKING__.abrir === 'function') { window.__OROCHIKING__.abrir(); }
+        else { alert('O Coletor Hard só abre numa tela de aldeia do jogo. Abra a Visão geral da aldeia e tente de novo.'); }
+      },
+      destino: null
+    },
+    {
       id: 'coletorfarm',
       nome: 'Coletor BB Assistente',
       abrev: 'Coletor BB Assistente',
@@ -14742,7 +14777,7 @@
   ];
 
   var ORK_SECOES = [
-    ['🌾 Farm', ['farmar', 'farmdormindo', 'keypress', 'coletorfarm']],
+    ['🌾 Farm', ['farmar', 'farmdormindo', 'keypress', 'coletorhard', 'coletorfarm']],
     ['⚔️ Ataque e nobres', ['ataque', 'nobrebb', 'noblaplayer', 'etiquetador', 'snipe', 'defender']],
     ['🗺️ Coleta', ['barbaras', 'perfil', 'ocultar']],
     ['🏰 Conta', ['gerente', 'pesqmassa', 'construcao', 'recacademia', 'balanceador', 'cunhar', 'rename', 'cancelar']],
