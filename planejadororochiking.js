@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      113.0
+// @version      114.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 113;
+  window.__ORK_VERSAO__ = 114;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -298,6 +298,16 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-10-02-v114',
+      data: '02/10/2026',
+      titulo: 'Noblador de Player e Renomeador corrigidos',
+      itens: [
+        '🎯 Noblador de Player: escolta nova ➕ Somar (padrão) — o nobre leva TODAS as linhas juntas, cada uma até o valor, mandando o que a aldeia tiver (ex.: 5000 bárbaros e a aldeia tem 3200 → vai com 3200). O modo antigo (1ª opção OU 2ª) continua na caixinha ao lado da escolta.',
+        '🎯 Noblador de Player: quando um ciclo não manda nobre, agora mostra o MOTIVO na tela (aviso vermelho, bolinha com contorno vermelho e na janela) — inclusive a mensagem do jogo quando ele recusa o envio. O Simular também mostra o motivo.',
+        '✏️ Renomeador: volta a pular as aldeias que já têm o nome certo também no servidor espanhol (continente C44); o modo Nome + Continente também lê o C44.'
+      ]
+    },
     {
       id: '2026-10-02-v113',
       data: '02/10/2026',
@@ -5491,9 +5501,9 @@
           if (!mc || !mi || vistos[mi[1]]) { return; }
           vistos[mi[1]] = true;
           var x = parseInt(mc[1], 10), y = parseInt(mc[2], 10);
-          var mk = tr.textContent.match(/K(\d{2,3})\b/);
+          var mk = tr.textContent.match(/\(\d{1,3}\|\d{1,3}\)\s*[A-Za-z]{1,2}(\d{2,3})\b/); // v114: K44 (BR), C44 (ES)...
           var rotulo = tr.querySelector('.quickedit-label');
-          var nome = (rotulo ? rotulo.textContent : a.textContent).replace(/\(\d{1,3}\|\d{1,3}\)\s*K?\d{0,3}\s*$/, '').trim();
+          var nome = (rotulo ? rotulo.textContent : a.textContent).replace(/\s*\(\d{1,3}\|\d{1,3}\)\s*[A-Za-z]{0,2}\d{0,3}\s*$/, '').trim(); // v114: tira (x|y) + continente em qualquer idioma (K44, C44...)
           var barbara = /árbaro|barbar/i.test(nome);
           if (filtro === 'barbaras' && !barbara) { return; }
           if (filtro === 'minhas' && barbara) { return; }
@@ -11559,6 +11569,7 @@
     ['stable', '🐎 Estábulo'], ['garage', '🛠️ Oficina'], ['storage', '📦 Armazém'], ['all', '⭐ Todos os recursos']
   ];
   function nplChave() { return 'ork_noblap_' + ((window.game_data && game_data.world) || ''); }
+  var nplEscSomar = true;
   function nplLer() {
     // padrão (quem nunca mexeu vê isso; o que a pessoa mudar e salvar fica valendo pra ela)
     var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 1, escolta: 'light', escoltas: [{ u: 'spear', n: 122 }, { u: 'light', n: 22 }], nobres: 1, intervaloUni: 'seg', reforco: 0, raio: 1000,
@@ -11576,6 +11587,8 @@
     p.escoltas = p.escoltas.filter(function (e) { return e && e.u && e.u !== 'snob' && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
     if (!Array.isArray(p.refs)) { p.refs = []; }
     p.refs = p.refs.filter(function (r) { return r && isFinite(+r.x) && isFinite(+r.y); }).map(function (r) { return { x: Math.round(+r.x), y: Math.round(+r.y) }; });
+    if (p.escModo !== 'ou') { p.escModo = 'somar'; } // v114: padrão = somar as linhas, mandando o que tiver
+    nplEscSomar = p.escModo === 'somar';
     return p;
   }
   // v87: coordenadas de referência — "500|500 510|480" (qualquer separador) vira [{x,y}]
@@ -11617,18 +11630,27 @@
     return u.filter(function (x) { return x !== 'snob' && x !== 'militia'; });
   }
   function nplTextoEscolta(esc) {
-    return esc.length ? esc.map(function (e) { return e.n + ' ' + (GER_NOMES_TROPA[e.u] || NPL_NOME_UN[e.u] || e.u); }).join(' OU ') : 'sem escolta';
+    return esc.length ? (nplEscSomar ? 'até ' : '') + esc.map(function (e) { return e.n + ' ' + (GER_NOMES_TROPA[e.u] || NPL_NOME_UN[e.u] || e.u); }).join(nplEscSomar ? ' + ' : ' OU ') : 'sem escolta';
   }
   // Cada linha da escolta é uma OPÇÃO: pra cada nobre usa a primeira linha que a aldeia tiver completa
   // (ex.: 50 CL OU 50 CP — sem CL, vai com CP). Devolve a escolta escolhida pra cada nobre.
   function nplAlocarEscolta(tropas, esc, max) {
+    // Devolve, pra cada nobre, a escolta dele ({tropa: qtd}) ou null (nobre sozinho).
     var t = {}; Object.keys(tropas || {}).forEach(function (k) { t[k] = tropas[k] || 0; });
     var out = [], snob = t.snob || 0;
     while (out.length < max && snob > 0) {
       if (!esc.length) { out.push(null); snob--; continue; }
+      if (nplEscSomar) {
+        // v114: SOMAR — o nobre leva TODAS as linhas juntas, cada uma até o valor (manda o que tiver).
+        // Só não sai se não tiver nada de nenhuma linha (nobre sozinho morre na aldeia de jogador).
+        var m = {}, tot = 0;
+        esc.forEach(function (x) { var q = Math.min(x.n, t[x.u] || 0); if (q > 0) { m[x.u] = (m[x.u] || 0) + q; t[x.u] -= q; tot += q; } });
+        if (!tot) { break; }
+        snob--; out.push(m); continue;
+      }
       var e = esc.filter(function (x) { return (t[x.u] || 0) >= x.n; })[0];
       if (!e) { break; }
-      t[e.u] -= e.n; snob--; out.push(e);
+      t[e.u] -= e.n; snob--; var m1 = {}; m1[e.u] = e.n; out.push(m1);
     }
     return out;
   }
@@ -11640,6 +11662,36 @@
   function nplSalvarEstado(cfg) {
     if (cfg && cfg._g != null && cfg._g !== nplGeracao) { return; } // parado no meio do ciclo: não ressuscita o histórico apagado
     var c = nplLer(); c.alvos = cfg.alvos; c.explorados = cfg.explorados; nplGravar(c);
+  }
+  // v114: explica em palavras simples por que o ciclo não mandou nenhum nobre
+  function nplMotivoSemEnvio(cfg, p, origens, jj, distMax, raio) {
+    var esc = cfg.escoltas || [];
+    if (!String(cfg.jogadores || '').trim()) { return 'Nenhum nick de jogador digitado.'; }
+    if (!jj.lista.length) {
+      if (jj.naoAchados.length && !jj.achados.length) { return 'Não achei no mundo: ' + jj.naoAchados.join(', ') + ' — confira o nick (o arquivo do jogo atualiza ~1x por hora).'; }
+      if (jj.bloqueados.length && !jj.achados.length) { return 'Ignorado porque é você ou da sua tribo: ' + jj.bloqueados.join(', ') + '.'; }
+      return 'Os jogadores digitados não têm nenhuma aldeia no mundo.';
+    }
+    var comNobre = origens.filter(function (a) { return (a.tropas.snob || 0) >= 1; });
+    if (!comNobre.length) { return 'Nenhuma aldeia ' + (cfg.grupo && cfg.grupo !== '0' ? 'do grupo escolhido ' : '') + 'tem nobre EM CASA agora (os nobres podem estar na fila da Academia ou fora).'; }
+    if (!p.origens) { return comNobre.length + ' aldeia(s) têm nobre em casa, mas ' + (nplEscSomar ? 'nenhuma tem nada das tropas da escolta (' : 'nenhuma tem a escolta completa (') + nplTextoEscolta(esc) + ' por nobre).'; }
+    if (p.vagas === 0) { return 'Já tem o máximo de aldeias com nobre a caminho (campo Máx. juntas).'; }
+    var lim = Math.max(1, +cfg.raio || 40); if (distMax > 0) { lim = Math.min(lim, distMax); }
+    var pts = jj.lista.filter(function (b) { return b.pontos >= (cfg.pontosMin || 0) && b.pontos <= (cfg.pontosMax || 99999); });
+    if (!pts.length) { return 'Nenhuma aldeia dos jogadores está na faixa de pontos (' + (cfg.pontosMin || 0) + ' a ' + (cfg.pontosMax || 99999) + ').'; }
+    var esc1 = origens.filter(function (a) { return nplQuantosCabem(a.tropas, esc, 1) >= 1; }), menor = Infinity;
+    pts.forEach(function (b) { esc1.forEach(function (o) { var d = nplDist(o, b); if (d < menor) { menor = d; } }); });
+    if (menor > lim) { return 'A aldeia do jogador mais perto de uma aldeia sua com nobre + escolta fica a ' + menor.toFixed(1) + ' campos, e o limite é ' + lim + ' campos' + (distMax > 0 && distMax <= (+cfg.raio || 40) ? ' (limite de distância do nobre neste mundo)' : ' (Dist. máxima)') + '.'; }
+    var precisa = Math.max(1, cfg.nobres || 1);
+    if (p.motivos.semOrigem) { return 'Nenhuma aldeia perto o bastante tem ' + precisa + ' nobres + escolta em casa (campo Por aldeia = ' + precisa + ').'; }
+    if (p.motivos.espaco) { return p.motivos.espaco + ' alvo(s) barrado(s) pelo Espaçamento (' + cfg.espacamento + ').'; }
+    return 'Nenhuma aldeia serviu neste ciclo.';
+  }
+  var nplUltimoAviso = '';
+  function nplAvisarMotivo(m) {
+    if (!m) { return; }
+    try { if (window.UI && UI.ErrorMessage && m !== nplUltimoAviso) { UI.ErrorMessage('🎯 Noblador de Player não mandou nobre: ' + m, 9000); } } catch (e) {}
+    nplUltimoAviso = m;
   }
   function nplLog(t) { try { console.log('[OROCHIKING] Noblador de Player: ' + t); } catch (e) {} }
   function nplStatus(t) { var b = document.getElementById('ork-npl-bolinha'); if (b && t) { b.title = 'Noblador de Player: ' + t + ' — clique pra parar'; } }
@@ -11966,7 +12018,7 @@
     return function (cont) {
       var aloc = nplAlocarEscolta(cont, esc, qtd), n = aloc.length;
       if (n < 1) { return null; }
-      function leva(e) { var l = {}; if (e) { l[e.u] = e.n; } l.snob = 1; return l; }
+      function leva(e) { var l = {}; if (e) { Object.keys(e).forEach(function (u) { l[u] = e[u]; }); } l.snob = 1; return l; }
       var zero = {}; Object.keys(cont).forEach(function (k) { zero[k] = 0; });
       var trens = [];
       for (var i = 1; i < n; i++) { var t = JSON.parse(JSON.stringify(zero)), l = leva(aloc[i]); Object.keys(l).forEach(function (u) { t[u] = l[u]; }); trens.push(t); }
@@ -12125,7 +12177,7 @@
     var tipos = {}; (cfg.bonusTipos || []).forEach(function (t) { tipos[t] = 1; });
     var origens = aldeias.filter(function (a) { return nplQuantosCabem(a.tropas, esc, 1) >= 1; })
       .map(function (a) { return { id: a.id, x: a.x, y: a.y, coord: a.coord, tropas: JSON.parse(JSON.stringify(a.tropas)) }; });
-    function gastar(o, n) { nplAlocarEscolta(o.tropas, esc, n).forEach(function (e) { o.tropas.snob -= 1; if (e) { o.tropas[e.u] -= e.n; } }); }
+    function gastar(o, n) { nplAlocarEscolta(o.tropas, esc, n).forEach(function (e) { o.tropas.snob -= 1; if (e) { Object.keys(e).forEach(function (u) { o.tropas[u] -= e[u]; }); } }); }
     // pontos que os alvos novos precisam respeitar (espaçamento): suas aldeias + alvos em andamento
     var fixos = (cfg.espacoMinhas === false ? [] : aldeias.map(function (a) { return { x: a.x, y: a.y }; })).concat(cfg.alvos.filter(function (a) { return a.status === 'caminho' || a.status === 'reenviar'; }));
     var cand = barbs.filter(function (b) {
@@ -12240,9 +12292,10 @@
       if (jj.bloqueados.length) { nplLog('ignorado(s) — você ou sua tribo: ' + jj.bloqueados.join(', ') + '.'); }
       var p = nplPlanejar(cfg, origensBase, jj.lista, distMax, raio);
       var busca = { lista: jj.lista, setores: 0, lidos: 0, falhas: 0, raioLido: raio, jog: jj };
-      retorno = { plano: p, busca: busca, aldeias: todas.length, origensLidas: origensBase.length, distMax: distMax };
+      retorno = { plano: p, busca: busca, aldeias: todas.length, origensLidas: origensBase.length, distMax: distMax, motivo: p.plano.length ? '' : nplMotivoSemEnvio(cfg, p, origensBase, jj, distMax, raio) };
       if (!simular && !p.plano.length) {
         var comNobreCasa = origensBase.filter(function (a) { return (a.tropas.snob || 0) >= 1; }).length;
+        res.motivo = nplMotivoSemEnvio(cfg, p, origensBase, jj, distMax, raio);
         nplLog('nenhum nobre enviado neste ciclo — ' + comNobreCasa + ' aldeia(s) com nobre em casa, ' + p.origens + ' com nobre + alguma escolta completa (' + nplTextoEscolta(cfg.escoltas || []) + ' por nobre)' +
           (p.vagas === 0 ? ', sem vaga (limite de bárbaras ao mesmo tempo)' : '') + ', ' + p.candidatas + ' bárbara(s) no filtro' +
           (p.motivos.espaco ? ', ' + p.motivos.espaco + ' barrada(s) pelo espaçamento' : '') + (p.motivos.semOrigem ? ', ' + p.motivos.semOrigem + ' sem aldeia com nobres suficientes perto' : '') + '.');
@@ -12254,6 +12307,7 @@
         var antes = p.plano.length;
         p.plano = p.plano.filter(function (it) { return aindaBarb[it.alvo.id]; });
         if (p.plano.length < antes) { nplLog((antes - p.plano.length) + ' aldeia(s) já não são mais do jogador escolhido — pulei.'); }
+        if (antes && !p.plano.length) { res.motivo = 'As ' + antes + ' aldeia(s) escolhidas não aparecem mais como do jogador no mapa agora (mudaram de dono, ou o mapa do jogo não respondeu).'; }
       }
       if (!simular) {
         for (var i = 0; i < p.plano.length && !parar(); i++) {
@@ -12271,12 +12325,17 @@
             nplLog('👑 ' + r.plano.nobres + ' nobre(s) de ' + it.origem.coord + ' → ' + it.alvo.x + '|' + it.alvo.y + (it.alvo.bonus ? ' (' + nplNomeBonus(it.alvo.bonus) + ')' : '') +
               ', chega às ' + new Date(reg.chegada).toLocaleTimeString() + '.');
           } else {
-            res.falhas++;
+            res.falhas++; res.erros = (res.erros || []).concat(String(r.erro || '?').slice(0, 140));
             nplLog('falhou ' + it.origem.coord + ' → ' + it.alvo.x + '|' + it.alvo.y + ': ' + String(r.erro).slice(0, 120));
           }
           nplSalvarEstado(cfg);
           if (i < p.plano.length - 1) { await gerEsperar(nplEntreEnvios(cfg)); }
         }
+        if (!res.enviados && res.falhas && !res.motivo) {
+          var cont = {}; (res.erros || []).forEach(function (e) { cont[e] = (cont[e] || 0) + 1; });
+          res.motivo = 'O jogo recusou os ' + res.falhas + ' envio(s): ' + Object.keys(cont).sort(function (a, b) { return cont[b] - cont[a]; }).slice(0, 2).map(function (e) { return '"' + e + '"' + (cont[e] > 1 ? ' (' + cont[e] + 'x)' : ''); }).join(' • ');
+        }
+        if (!res.enviados && res.motivo) { nplAvisarMotivo(res.motivo); }
       }
       // 2b) produzir nobres na Academia (opcional) — ficam prontos pros próximos ciclos
       if (!simular && cfg.produzir && !parar()) {
@@ -12369,6 +12428,7 @@
     var c2 = nplLer();
     c2.alvos = cfg.alvos; c2.explorados = cfg.explorados;
     if (!c2.ativo) { nplGravar(c2); return retorno; }
+    if (res.motivo && !res.enviados) { c2.ultimoMotivo = res.motivo; } else if (res.enviados) { c2.ultimoMotivo = ''; }
     var espera = nplIntervaloMs(c2);
     if (window.__ORK_FREIO__) { espera = Math.max(10 * 60000, espera * 2); }
     espera += gerEntre(2000, 4000);
@@ -12379,7 +12439,7 @@
       if (falta < espera) { espera = Math.max(15000, falta); nplLog('nobre ficando pronto na Academia — próximo ciclo adiantado pra mandar ele.'); }
     }
     c2.proximoEm = Date.now() + espera;
-    c2.ultimo = { quando: Date.now(), enviados: res.enviados, nobres: res.nobres, conquistas: res.conquistas, explorados: res.explorados, pesquisas: res.pesquisas, recrutou: res.recrutou, falhas: res.falhas };
+    c2.ultimo = { quando: Date.now(), enviados: res.enviados, nobres: res.nobres, conquistas: res.conquistas, explorados: res.explorados, pesquisas: res.pesquisas, recrutou: res.recrutou, falhas: res.falhas, motivo: res.enviados ? '' : (res.motivo || '') };
     nplGravar(c2);
     nplLog('ciclo concluído — ' + res.nobres + ' nobre(s) em ' + res.enviados + ' alvo(s)' + (res.falhas ? ' (' + res.falhas + ' falha(s))' : '') + ', ' + res.conquistas + ' conquista(s), ' +
       res.explorados + ' exploração(ões). Próximo às ' + new Date(c2.proximoEm).toLocaleTimeString() + '.');
@@ -12461,7 +12521,8 @@
       var s = Math.max(0, Math.round((c.proximoEm - Date.now()) / 1000));
       el.textContent = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
       var cam = c.alvos.filter(function (a) { return a.status === 'caminho'; }).length;
-      nplStatus('próximo ciclo em ' + el.textContent + ' • ' + cam + ' alvo(s) com nobre a caminho');
+      nplStatus('próximo ciclo em ' + el.textContent + ' • ' + cam + ' alvo(s) com nobre a caminho' + (c.ultimoMotivo ? ' • ⚠ último ciclo não enviou: ' + c.ultimoMotivo : ''));
+      b.style.boxShadow = c.ultimoMotivo ? '0 0 0 3px rgba(255,107,107,.75),0 10px 26px rgba(0,0,0,.5)' : '0 10px 26px rgba(0,0,0,.5)';
     }, 1000);
   }
 
@@ -12555,7 +12616,8 @@
                 '<input id="ork-npl-int" type="number" min="1" value="' + c.intervaloMin + '" style="width:48px;' + inp + ';padding:3px 4px;text-align:center">' +
                 '<select id="ork-npl-uni" style="' + inp + ';padding:3px 2px"><option value="min"' + (c.intervaloUni !== 'seg' ? ' selected' : '') + '>min</option><option value="seg"' + (c.intervaloUni === 'seg' ? ' selected' : '') + '>seg</option></select></label>' +
               '<div style="grid-column:1 / -1;background:#111;border:1px solid #242424;border-radius:6px;padding:4px 6px">' +
-                '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Tropa que vai JUNTO com CADA nobre. Cada linha é uma OPÇÃO, na ordem: o nobre sai com a primeira que a aldeia tiver completa (ex.: 1ª linha 50 CL, 2ª linha 50 CP → sem CL suficiente, vai com CP). Só não manda se a aldeia não tiver nenhuma das opções. Quantidade em branco ou 0 = tira a linha. Sem nenhuma linha = nobre vai sozinho.">Escolta de cada nobre (1ª opção, 2ª opção...)</span>' +
+                '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Tropa que vai JUNTO com o nobre. SOMAR (padrão): o nobre leva TODAS as linhas juntas, cada uma ATÉ o valor — se a aldeia tem menos, manda o que tiver (ex.: 5000 bárbaros e a aldeia tem 3200 → vai com 3200). Só não sai se a aldeia não tiver nada de nenhuma linha. Com Por aldeia maior que 1, o 1º nobre leva o grosso e os outros levam o que sobrar. UMA OPÇÃO: cada linha é uma alternativa, na ordem — o nobre sai com a primeira que a aldeia tiver COMPLETA. Quantidade em branco ou 0 = tira a linha. Sem nenhuma linha = nobre vai sozinho.">Escolta de cada nobre</span>' +
+                  '<select id="ork-npl-escmodo" style="' + inp + ';padding:2px 4px;font-size:10.5px"><option value="somar"' + (c.escModo !== 'ou' ? ' selected' : '') + '>➕ Somar (manda o que tiver)</option><option value="ou"' + (c.escModo === 'ou' ? ' selected' : '') + '>1ª opção OU 2ª...</option></select>' +
                   '<button type="button" id="ork-npl-escadd" style="background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:5px;padding:1px 8px;cursor:pointer;font-weight:700;font-size:10px;font-family:inherit">+ tropa</button></div>' +
                 '<div id="ork-npl-esc"></div></div>' +
               '<label style="grid-column:1 / -1;display:flex;align-items:center;gap:5px;background:#111;border:1px solid #242424;border-radius:6px;padding:3px 4px 3px 7px">' +
@@ -12586,6 +12648,7 @@
             return '<div style="font-size:10.5px;color:#ccc;padding:1px 0">' + a.x + '|' + a.y + (a.bonus ? ' ' + nplNomeBonus(a.bonus).split(' ')[0] : '') + ' • ' + (a.nobres || 0) + '👑 de ' + gerHtml(a.origem || '?') + ' • ' + st + '</div>';
           }).join('') + '</div></div>' : '') +
           (ult ? '<div style="font-size:10px;color:#808080;margin-top:6px">Último ciclo ' + new Date(ult.quando).toLocaleTimeString() + ': ' + ult.nobres + '👑 em ' + ult.enviados + ' alvo(s) • ' + ult.conquistas + ' conquista(s) • ' + ult.explorados + ' exploração(ões)' + (ult.falhas ? ' • ' + ult.falhas + ' falha(s)' : '') + '</div>' : '') +
+          (c.ultimoMotivo ? '<div style="font-size:10.5px;color:#ff8f80;margin-top:4px;background:#2a1010;border:1px solid #4a1c1c;border-radius:6px;padding:5px 7px">⚠ Não mandou nobre no último ciclo: ' + gerHtml(c.ultimoMotivo) + '</div>' : '') +
           '<div style="font-size:9.5px;color:#666;margin-top:6px">Suas mudanças ficam salvas nesta aba (recarregar ou trocar de tela mantém). Fechou a aba, volta pro padrão.</div>' +
           '<div id="ork-npl-prev" style="margin-top:6px"></div>' +
           '<div style="display:flex;gap:5px;margin-top:7px">' +
@@ -12677,6 +12740,7 @@
       n.nobres = Math.max(1, parseInt(v('ork-npl-qtd').value, 10) || 1);
       var rf = parseInt(v('ork-npl-ref').value, 10); n.reforco = Math.max(0, Math.min(5, isNaN(rf) ? 0 : rf));
       n.escoltas = escoltas.filter(function (e) { return e.u && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
+      n.escModo = v('ork-npl-escmodo').value === 'ou' ? 'ou' : 'somar'; nplEscSomar = n.escModo === 'somar';
       n.maxSimult = Math.max(0, parseInt(v('ork-npl-max').value, 10) || 0);
       n.produzir = v('ork-npl-prod').checked;
       n.produzirMax = Math.max(1, parseInt(v('ork-npl-pmaxal').value, 10) || 1);
@@ -12729,13 +12793,13 @@
           (r.busca.falhas ? ' (' + r.busca.falhas + ' pacote(s) falharam)' : '') + ' • ' + p.candidatas + ' dentro do filtro/raio (' + p.raio + ' campos' + (r.distMax ? ', limite do mundo ' + r.distMax : '') + ') • vagas agora: ' + (p.vagas >= 100000 ? 'sem limite' : p.vagas) + '</div>' +
         '<div style="color:#FFC400;font-weight:800;margin-bottom:4px">👑 ' + p.plano.length + ' envio(s) no próximo ciclo</div>' +
         (linhas ? '<div style="max-height:190px;overflow:auto"><table style="width:100%;border-collapse:collapse">' + linhas + '</table></div>' :
-          '<div style="color:#777">' + (!(r.busca.lista || []).length ? 'Nenhuma aldeia encontrada — confira os nicks.' : p.vagas === 0 ? 'Sem vaga: já tem o máximo de aldeias com nobre a caminho (0 = sem limite).' : (!p.origens ? 'Nenhuma aldeia do grupo tem nobre + escolta em casa.' : 'Nenhuma aldeia serviu (espaçamento: ' + p.motivos.espaco + ', sem aldeia com nobres suficientes perto: ' + p.motivos.semOrigem + ').')) + '</div>') +
+          '<div style="color:#ff8f80">⚠ ' + gerHtml(r.motivo || 'Nenhuma aldeia serviu.') + '</div>') +
         '</div>';
     });
     v('ork-npl-ok').addEventListener('click', function () {
       var n = lerCampos();
       if (!c.ativo) { n.alvos = []; n.explorados = []; n.ultimo = null; } // ativando do zero: começa limpo
-      n.ativo = true; n.proximoEm = 0;
+      n.ativo = true; n.proximoEm = 0; n.ultimoMotivo = '';
       nplGravar(n);
       fechar();
       if (!n.jogadores) { alert('Digite pelo menos um nick de jogador.'); return; }
@@ -14802,7 +14866,7 @@
       nome: 'Noblador de Player',
       abrev: 'Noblador de Player',
       icone: '🎯',
-      dica: 'Igual ao Noblar Automático, mas pra jogadores: você digita os nicks, ele acha todas as aldeias deles no mundo e nobla as que estão dentro da Dist. máxima, a mais perto primeiro, com a mesma configuração de nobres, escolta, ciclo, Academia e pós-conquista. Antes de mandar, confere no mapa se a aldeia ainda é do jogador. Nunca nobla você nem a sua tribo. Opcional: 🛡️ Apoio pós-noblagem — assim que a aldeia cai, a sua aldeia mais perto que tem as tropas definidas manda apoio pra ela. Aldeia de jogador pode ter defesa — escolha a escolta pensando nisso.',
+      dica: 'Igual ao Noblar Automático, mas pra jogadores: você digita os nicks, ele acha todas as aldeias deles no mundo e nobla as que estão dentro da Dist. máxima, a mais perto primeiro, com a mesma configuração de nobres, escolta, ciclo, Academia e pós-conquista. Antes de mandar, confere no mapa se a aldeia ainda é do jogador. Escolta: ➕ Somar (padrão) — o nobre leva todas as linhas juntas, cada uma até o valor, mandando o que a aldeia tiver; ou 1ª opção OU 2ª. Se um ciclo não mandar nobre, aparece o motivo na tela. Nunca nobla você nem a sua tribo. Opcional: 🛡️ Apoio pós-noblagem — assim que a aldeia cai, a sua aldeia mais perto que tem as tropas definidas manda apoio pra ela. Aldeia de jogador pode ter defesa — escolha a escolta pensando nisso.',
       checar: checaNoblaPlayer,
       rodar: rodarNoblaPlayer,
       destino: null
