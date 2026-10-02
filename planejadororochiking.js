@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      101.0
+// @version      103.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 101;
+  window.__ORK_VERSAO__ = 103;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -298,6 +298,27 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-10-02-v103',
+      data: '02/10/2026',
+      titulo: 'Snipe: Aba do Snipe — navegue e recarregue à vontade',
+      itens: [
+        '🗗 Snipe: botão "Abrir aba do Snipe" — uma aba só pros disparos (tudo por AJAX). Você usa o jogo nas outras abas, navega e recarrega à vontade; ela pode ficar em segundo plano.',
+        '🛡️ Snipe: só 1 aba dispara. Se a aba que executa recarregar ou fechar, outra aba aberta assume em ~1 s e continua os snipes de onde parou (nunca dispara 2 vezes).'
+      ]
+    },
+    {
+      id: '2026-10-02-v102',
+      data: '02/10/2026',
+      titulo: 'Snipe: calibrador, mira mais certeira e TODOS os nobres',
+      itens: [
+        '🎯 Snipe: CALIBRADOR — mede de verdade quanto o seu pedido leva pra valer no servidor (lê a chegada com ms na Praça) e corrige os disparos. Aprende sozinho a cada snipe; botão "Calibrar agora" (1 tropa vai e volta) e calibra sozinho ao ligar.',
+        '🛡️ Snipe: apoio agora usa SEMPRE a duração que o jogo mostra (antes podia errar ~1 s). Cancelamento usa a hora REAL de saída lida na Praça.',
+        '🛡️ Snipe: depois de cada snipe mostra quando chegou/voltou de verdade e o erro em ms (ex.: +12 ms).',
+        '👑 Snipe: nova opção TODOS os nobres — uma defesa em cada espaço do trem (as tropas do cancelamento são divididas; cada aldeia de apoio cobre um espaço).',
+        '🛡️ Snipe: espaço mínimo padrão agora 50 ms (trem normal vem a cada 50 ms).'
+      ]
+    },
     {
       id: '2026-10-02-v101',
       data: '02/10/2026',
@@ -13346,10 +13367,11 @@
   var SNP_NOBRE = /nobre|noble|snob|adel|szlachcic|nobile|edel|šlecht|nemes|ευγεν|asilzade|дворян|nobleman/i;
   function snpLer() {
     var p = { ativo: false, cancel: true, apoio: true, maxApoio: 3, modoTropas: 'tudo', tropas: [{ u: 'spear', n: 0 }, { u: 'sword', n: 0 }, { u: 'archer', n: 0 }, { u: 'heavy', n: 0 }],
-      janelaCancelMin: 10, minGap: 100, aposNobre: 2, ajusteMs: 0, cancelModo: 'auto', bip: true, intervalo: 10, intervaloUni: 'seg', planos: {}, log: [] };
+      janelaCancelMin: 10, minGap: 50, aposNobre: 2, ajusteMs: 0, cancelModo: 'auto', bip: true, intervalo: 10, intervaloUni: 'seg', planos: {}, log: [] };
     try { var c = JSON.parse(localStorage.getItem(SNP_CHAVE) || 'null'); if (c) { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     if (!p.planos || typeof p.planos !== 'object') { p.planos = {}; }
     if (!Array.isArray(p.log)) { p.log = []; }
+    if (+p.minGap === 100 && !p.mg50) { p.minGap = 50; } p.mg50 = true; // v102: padrão novo 50 ms (trem normal vem a cada 50 ms)
     return p;
   }
   function snpGravar(c) { try { localStorage.setItem(SNP_CHAVE, JSON.stringify(c)); } catch (e) {} }
@@ -13364,7 +13386,7 @@
   function snpMedir(t0) { var d = performance.now() - t0; if (d > 0 && d < 3000) { snpRtts.push(d); if (snpRtts.length > 15) { snpRtts.shift(); } } }
   function snpIntervaloMs(c) { var v = Math.max(0, parseFloat(c.intervalo) || 15); return Math.max(3000, c.intervaloUni === 'min' ? v * 60000 : v * 1000); }
   // folga mínima antes de disparar (2 pedidos de preparo): bom pra speed com ataque de 12–40 s
-  function snpFolga() { return 1500 + 3 * snpRtt(); }
+  function snpFolga() { return 1500 + 4 * snpRtt(); }
   function snpBip(forte) {
     try { var C = window.AudioContext || window.webkitAudioContext; if (!C) { return; } window.__orkSnpAudio = window.__orkSnpAudio || new C(); var ac = window.__orkSnpAudio;
       var o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = forte ? 1320 : 880; g.gain.value = forte ? 0.35 : 0.2; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + (forte ? 0.35 : 0.12)); } catch (e) {}
@@ -13415,6 +13437,18 @@
     return total > 0 ? out : null;
   }
   // ataques chegando (com ms) — etiqueta os novos antes, pra saber quais são nobres
+  // hora de chegada (ms do servidor) de uma linha de comando: data-endtime + ms do texto; sem data-endtime, usa o contador
+  function snpHoraDaLinha(tr) {
+    var tm = tr.querySelector('[data-endtime]'), fim = tm ? (+tm.getAttribute('data-endtime') || 0) * 1000 : 0;
+    var ms = null, seg = null; tr.querySelectorAll('td').forEach(function (td) { var m = (td.textContent || '').match(/\d{1,2}:\d{2}:(\d{2}):(\d{3})/); if (m && ms === null) { ms = +m[2]; seg = +m[1]; } });
+    var chegada = fim ? fim + (ms || 0) : 0;
+    if (!fim) {
+      var tt = null; tr.querySelectorAll('.timer, span[class*="timer"], td').forEach(function (el) { var m = (el.textContent || '').trim().match(/^(\d+):(\d{2}):(\d{2})$/); if (m && tt === null) { tt = (+m[1] * 3600 + +m[2] * 60 + +m[3]) * 1000; } });
+      if (tt !== null) { chegada = snpAgora() + tt; }
+    }
+    if (chegada && seg !== null) { var alvoMs = seg * 1000 + ms, base = chegada - (((chegada % 60000) + 60000) % 60000), melhor = 0; [base - 60000, base, base + 60000].forEach(function (b) { if (!melhor || Math.abs(b + alvoMs - chegada) < Math.abs(melhor - chegada)) { melhor = b + alvoMs; } }); chegada = melhor; }
+    return { chegada: chegada, temMs: ms !== null };
+  }
   async function snpLerChegando() {
     var url = game_data.link_base_pure + 'overview_villages&mode=incomings&subtype=attacks&type=unignored&page=-1';
     async function ler() {
@@ -13423,18 +13457,10 @@
       etqLinhas(doc).forEach(function (tr) {
         var nome = etqNomeDaLinha(tr), ck = tr.querySelector('input[type="checkbox"]');
         var coords = []; tr.querySelectorAll('a').forEach(function (a) { var m = (a.textContent || '').match(/(\d{1,3})\|(\d{1,3})/); if (m && coords.indexOf(m[0]) === -1) { coords.push(m[0]); } });
-        var tm = tr.querySelector('[data-endtime]'), fim = tm ? (+tm.getAttribute('data-endtime') || 0) * 1000 : 0;
-        var ms = null, seg = null; tr.querySelectorAll('td').forEach(function (td) { var m = (td.textContent || '').match(/\d{1,2}:\d{2}:(\d{2}):(\d{3})/); if (m && ms === null) { ms = +m[2]; seg = +m[1]; } });
         var idm = (tr.querySelector('a[href*="info_command"]') || {}).href; idm = idm ? (idm.match(/[?&]id=(\d+)/) || [])[1] : null;
-        var chegada = fim ? fim + (ms || 0) : 0;
-        if (!fim) {
-          // sem data-endtime: usa o contador "Chega em" (h:mm:ss) e acerta o segundo/ms pela hora de chegada
-          var tt = null; tr.querySelectorAll('.timer, span[class*="timer"], td').forEach(function (el) { var m = (el.textContent || '').trim().match(/^(\d+):(\d{2}):(\d{2})$/); if (m && tt === null) { tt = (+m[1] * 3600 + +m[2] * 60 + +m[3]) * 1000; } });
-          if (tt !== null) { chegada = snpAgora() + tt; }
-        }
-        if (chegada && seg !== null) { var alvoMs = seg * 1000 + ms, base = chegada - (((chegada % 60000) + 60000) % 60000), melhor = 0; [base - 60000, base, base + 60000].forEach(function (b) { if (!melhor || Math.abs(b + alvoMs - chegada) < Math.abs(melhor - chegada)) { melhor = b + alvoMs; } }); chegada = melhor; }
-        if (!chegada || coords.length < 1) { return; }
-        lista.push({ id: idm || (ck && ck.value) || (coords.join('-') + chegada), nome: nome, alvo: coords[0], origem: coords[1] || '', chegada: chegada, temMs: ms !== null,
+        var h = snpHoraDaLinha(tr);
+        if (!h.chegada || coords.length < 1) { return; }
+        lista.push({ id: idm || (ck && ck.value) || (coords.join('-') + h.chegada), nome: nome, alvo: coords[0], origem: coords[1] || '', chegada: h.chegada, temMs: h.temMs,
           nobre: SNP_NOBRE.test(nome) || !!tr.querySelector('img[src*="snob"]'), semNome: ETQ_PADRAO.test(nome) });
       });
       return lista;
@@ -13445,11 +13471,11 @@
   }
   // alvos de snipe: cada trem de nobres (nobres colados, até 10 s um do outro) chegando numa aldeia sua.
   // "Snipar depois do Nº nobre" (padrão 2º): a defesa chega ENTRE o Nº e o (N+1)º nobre.
-  // 0 = antes do 1º nobre (depois do ataque de limpeza, ou 1 s antes se não tiver limpeza).
-  // Se ali o espaço for menor que o mínimo (ou o trem tiver menos nobres), tenta as posições vizinhas.
+  // 0 = antes do 1º nobre (depois da limpeza, ou 1 s antes se não tiver limpeza). -1 = TODOS: uma defesa em cada espaço.
   function snpTrens(lista, cfg) {
-    var porAlvo = {}, minGap = +cfg.minGap || 100, pref = Math.max(0, Math.min(9, parseInt(cfg.aposNobre, 10)));
+    var porAlvo = {}, minGap = +cfg.minGap || 50, pref = parseInt(cfg.aposNobre, 10);
     if (isNaN(pref)) { pref = 2; }
+    var todosEsp = pref < 0; pref = Math.max(0, Math.min(9, pref));
     lista.forEach(function (a) { (porAlvo[a.alvo] = porAlvo[a.alvo] || []).push(a); });
     var trens = [];
     Object.keys(porAlvo).forEach(function (alvo) {
@@ -13462,8 +13488,7 @@
         i += trem.length;
         var n1 = trem[0];
         var antes = todos.filter(function (a) { return !a.nobre && a.chegada <= n1.chegada && n1.chegada - a.chegada <= 10000; }).pop() || null;
-        // posições possíveis: k = 0 (antes do 1º) ... trem.length-1 (entre o último par)
-        function pos(k) {
+        var pos = function (k) {
           if (k === 0) {
             if (antes) { var g = n1.chegada - antes.chegada; return { k: 0, gap: g, aim: n1.chegada - Math.min(Math.floor(g / 2), 1000), onde: 'entre a limpeza e o 1º nobre', ms: n1.temMs && antes.temMs }; }
             return { k: 0, gap: Infinity, aim: n1.chegada - 1000, onde: '1 s antes do 1º nobre', ms: n1.temMs };
@@ -13471,24 +13496,51 @@
           if (k >= trem.length) { return null; }
           var x = trem[k - 1], y = trem[k], g2 = y.chegada - x.chegada;
           return { k: k, gap: g2, aim: x.chegada + Math.floor(g2 / 2), onde: 'entre o ' + k + 'º e o ' + (k + 1) + 'º nobre', ms: x.temMs && y.temMs };
+        };
+        var tr = { chave: alvo + '_' + n1.id, alvo: alvo, t1: n1.chegada, t2: trem[trem.length - 1].chegada, origem: n1.origem, nobres: trem.length };
+        if (todosEsp) {
+          // TODOS: uma mira em cada espaço do trem (antes do 1º e entre cada par de nobres)
+          var ps = []; for (var kk = 0; kk < trem.length; kk++) { var pp = pos(kk); if (pp && (pp.gap >= 20 || pp.gap === Infinity)) { ps.push(pp); } }
+          tr.miras = ps.map(function (p) { return { aim: p.aim, onde: p.onde, gap: p.gap === Infinity ? 0 : p.gap }; });
+          tr.aim = ps.length ? ps[0].aim : n1.chegada; tr.gap = ps.reduce(function (m, p) { return p.gap === Infinity ? m : Math.min(m, p.gap); }, 99999); if (tr.gap === 99999) { tr.gap = 0; }
+          tr.onde = 'TODOS os espaços (' + ps.length + ' mira' + (ps.length === 1 ? '' : 's') + ')'; tr.temMs = n1.temMs; tr.apertado = !ps.length;
+          trens.push(tr); continue;
         }
         var ordem = [], k;
         for (k = Math.min(pref, trem.length - 1); k >= 0; k--) { ordem.push(k); }
         for (k = pref + 1; k < trem.length; k++) { ordem.push(k); }
         var esc = null, tentou = [];
-        ordem.forEach(function (kk) { var p = pos(kk); if (!p) { return; } tentou.push(p); if (!esc && p.gap >= minGap) { esc = p; } });
-        var tr = { chave: alvo + '_' + n1.id, alvo: alvo, t1: n1.chegada, t2: trem[trem.length - 1].chegada, origem: n1.origem, nobres: trem.length };
+        ordem.forEach(function (o) { var p = pos(o); if (!p) { return; } tentou.push(p); if (!esc && p.gap >= minGap) { esc = p; } });
         if (esc) {
           tr.gap = esc.gap === Infinity ? 0 : esc.gap; tr.aim = esc.aim; tr.temMs = esc.ms;
           tr.onde = esc.onde + (esc.k !== Math.min(pref, trem.length - 1) && pref <= trem.length - 1 ? ' (o ' + pref + 'º estava colado demais)' : '');
         } else {
-          var mx = tentou.reduce(function (m, p) { return Math.max(m, p.gap); }, 0);
-          tr.gap = mx; tr.aim = n1.chegada; tr.onde = 'sem espaço'; tr.apertado = true; tr.temMs = n1.temMs;
+          tr.gap = tentou.reduce(function (m, p) { return Math.max(m, p.gap); }, 0); tr.aim = n1.chegada; tr.onde = 'sem espaço'; tr.apertado = true; tr.temMs = n1.temMs;
         }
+        tr.miras = [{ aim: tr.aim, onde: tr.onde, gap: tr.gap }];
         trens.push(tr);
       }
     });
     return trens;
+  }
+  // ---- CALIBRADOR: aprende quanto tempo o pedido leva pra "valer" no servidor (envio e cancelamento) ----
+  // Medido de verdade em cada comando: a Praça mostra a chegada com ms → hora real de saída = chegada − duração.
+  function snpCalib() { var c = snpLer(); return c.calib || {}; }
+  function snpBEnv() { var k = snpCalib(); return k.nEnv ? k.bEnv : snpRtt() / 2; }
+  function snpBCan() { var k = snpCalib(); return k.nCan ? k.bCan : snpBEnv(); }
+  function snpAprender(tipo, amostra) {
+    if (!isFinite(amostra) || Math.abs(amostra) > 2500) { return; }
+    snpMudar(function (c) {
+      var k = c.calib || {}, n = tipo === 'env' ? 'nEnv' : 'nCan', b = tipo === 'env' ? 'bEnv' : 'bCan';
+      if (k.origem !== Math.round(performance.timeOrigin)) { k.origem = Math.round(performance.timeOrigin); k.nEnv = Math.min(k.nEnv || 0, 1); k.nCan = Math.min(k.nCan || 0, 1); } // página recarregou: relógio do jogo pode ter mudado
+      if (!k[n]) { k[b] = amostra; } else { var peso = k[n] < 3 ? 0.5 : 0.3; k[b] = k[b] * (1 - peso) + amostra * peso; }
+      k[n] = (k[n] || 0) + 1; k.quando = Date.now(); c.calib = k;
+    });
+  }
+  function snpTextoCalib() {
+    var k = snpCalib(), velho = k.origem !== Math.round(performance.timeOrigin);
+    if (!k.nEnv && !k.nCan) { return 'sem calibrar (usando latência ~' + Math.round(snpRtt() / 2) + ' ms)'; }
+    return 'envio ' + (k.nEnv ? Math.round(k.bEnv) + ' ms' : '—') + ' • cancelar ' + (k.nCan ? Math.round(k.bCan) + ' ms' : '—') + ' (' + ((k.nEnv || 0) + (k.nCan || 0)) + ' medições' + (velho ? ', antes de recarregar — recalibre' : '') + ')';
   }
   // prepara o comando (2 primeiros passos da Praça) e devolve o "disparo" (último passo) pra dar no ms certo
   async function snpPreparar(origemId, alvo, unidades) {
@@ -13505,54 +13557,80 @@
     var r2 = await nobAjax('/game.php?village=' + origemId + '&screen=place&ajax=confirm&h=' + encodeURIComponent(nobCsrf()) + '&client_time=' + nobHora(), nobCodificar(pares));
     if (r2.erro) { return { erro: r2.erro }; }
     var d2 = nobDialogo(r2.dialog), dur = nobDuracaoMs(d2), corpo = nobCodificar(nobSerializar(d2.querySelector('form') || d2));
-    return { uni: uni, durMs: dur, fire: async function () {
+    return { uni: uni, durMs: dur, cont: cont, fire: async function () {
       var t0 = performance.now(), envioSrv = snpAgora();
       var r3 = await nobAjax('/game.php?village=' + origemId + '&screen=place&ajaxaction=popup_command&h=' + encodeURIComponent(nobCsrf()) + '&client_time=' + nobHora(), corpo);
-      var rtt = performance.now() - t0; snpMedir(t0);
-      return { ok: !r3.erro, erro: r3.erro, saidaSrv: envioSrv + rtt / 2 };
+      snpMedir(t0);
+      return { ok: !r3.erro, erro: r3.erro, envioSrv: envioSrv, saidaSrv: envioSrv + snpBEnv() };
     } };
   }
-  // acha o link de cancelar do comando que acabou de sair (tela Praça da aldeia)
-  async function snpAcharCancelar(origemId, destinoCoord) {
-    var d = await balGetDoc('/game.php?village=' + origemId + '&screen=place');
-    var melhor = null, maior = -1;
-    d.querySelectorAll('a[href*="action=cancel"]').forEach(function (a) {
-      var tr = a.closest('tr'), txt = tr ? tr.textContent : '';
-      var id = +((a.getAttribute('href') || '').match(/[?&]id=(\d+)/) || [])[1] || 0;
-      if ((!destinoCoord || txt.indexOf(destinoCoord) !== -1) && id > maior) { maior = id; melhor = a.getAttribute('href'); }
+  // comandos saindo da aldeia (tela Praça): id, link de cancelar, chegada com ms, se é volta
+  async function snpComandosPraca(origemId) {
+    var d = await balGetDoc('/game.php?village=' + origemId + '&screen=place'), out = [], vistos = {};
+    d.querySelectorAll('a[href*="info_command"]').forEach(function (a) {
+      var tr = a.closest('tr'); if (!tr) { return; }
+      var id = +((a.getAttribute('href') || '').match(/[?&]id=(\d+)/) || [])[1] || 0; if (!id || vistos[id]) { return; } vistos[id] = 1;
+      var canc = tr.querySelector('a[href*="action=cancel"]'), h = snpHoraDaLinha(tr);
+      out.push({ id: id, txt: tr.textContent || '', chegada: h.chegada, temMs: h.temMs, volta: !!tr.querySelector('img[src*="return"], img[src*="back"], img[src*="cancel"]') || !canc,
+        cancelUrl: canc ? new URL(canc.getAttribute('href').replace(/&amp;/g, '&'), location.origin + '/game.php').toString() : null });
     });
-    return melhor ? new URL(melhor.replace(/&amp;/g, '&'), location.origin + '/game.php').toString() : null;
+    return out;
   }
+  // acha o comando que acabou de sair pra um destino (o de maior id)
+  // (pega o MENOR id novo ainda não usado: com várias partes saindo em sequência, cada uma acha a sua)
+  var snpIdsUsados = {};
+  async function snpAcharComando(origemId, destinoCoord, idsAntes) {
+    var l = await snpComandosPraca(origemId), melhor = null;
+    l.forEach(function (x) { if (x.cancelUrl && !snpIdsUsados[x.id] && (!destinoCoord || x.txt.indexOf(destinoCoord) !== -1) && !(idsAntes && idsAntes[x.id]) && (!melhor || x.id < melhor.id)) { melhor = x; } });
+    if (melhor) { snpIdsUsados[melhor.id] = 1; }
+    return melhor;
+  }
+  function snpErroTxt(real, alvo) { var e = Math.round(real - alvo); return (e > 0 ? '+' : '') + e + ' ms'; }
   // ---- execução de uma ação (persistida: sobrevive a recarregar a aba, se der tempo) ----
   function snpAtualizarAcao(chave, idx, mud) { snpMudar(function (c) { var p = c.planos[chave]; if (p && p.acoes[idx]) { for (var k in mud) { p.acoes[idx][k] = mud[k]; } } }); }
   async function snpExecutarAcao(chave, idx) {
-    var memo = chave + '#' + idx; if (snpEmMemoria[memo]) { return; } snpEmMemoria[memo] = 1;
+    var memo = chave + '#' + idx; if (snpEmMemoria[memo]) { return; }
+    if (!snpSouExecutor()) { return; }
+    snpEmMemoria[memo] = 1;
     try {
       var c = snpLer(), p = c.planos[chave], a = p && p.acoes[idx]; if (!a) { return; }
-      var ajuste = +c.ajusteMs || 0;
+      var ajuste = +c.ajusteMs || 0, aim = a.aim || p.aim;
       if (a.estado === 'agendado') {
         await snpEsperarAte(a.sendAt - 25000);
         if (!snpLer().ativo) { snpAtualizarAcao(chave, idx, { estado: 'cancelado (parado)' }); return; }
         if (window.__ORK_CAPTCHA_BLOQUEADO__) { snpAtualizarAcao(chave, idx, { estado: 'falhou: captcha' }); snpLog(a.desc + ': captcha na tela — não deu pra snipar.', true); return; }
+        // ids que já existiam (pra achar o comando novo sem confusão)
+        var antes = {}; try { (await snpComandosPraca(a.origemId)).forEach(function (x) { antes[x.id] = 1; }); } catch (e) {}
         var prep = await snpPreparar(a.origemId, a.destino, a.unidades);
         if (prep.erro) { snpAtualizarAcao(chave, idx, { estado: 'falhou: ' + prep.erro }); snpLog(a.desc + ': ' + prep.erro, true); return; }
         var sendAt = a.sendAt;
-        if (a.tipo === 'apoio' && prep.durMs && Math.abs(prep.durMs - a.durMs) > 1500) { sendAt = p.aim - prep.durMs; } // confere com a duração do jogo
-        await snpEsperarAte(sendAt - snpRtt() / 2 + ajuste);
+        if (a.tipo === 'apoio' && prep.durMs) { sendAt = aim - prep.durMs; } // SEMPRE a duração que o próprio jogo mostrou
+        if (sendAt < snpAgora() + 30) { snpAtualizarAcao(chave, idx, { estado: 'falhou: perdeu a hora de sair' }); snpLog(a.desc + ': perdeu a hora de sair (preparo demorou).', true); return; }
+        await snpEsperarAte(sendAt - snpBEnv() - 120 + ajuste);
+        var cur = (snpLer().planos[chave] || { acoes: [] }).acoes[idx];
+        if (!cur || cur.estado !== 'agendado' || !snpSouExecutor()) { return; } // outra aba assumiu
+        snpAtualizarAcao(chave, idx, { estado: 'disparando', aba: SNP_ABA });
+        await snpEsperarAte(sendAt - snpBEnv() + ajuste);
         var f = await prep.fire();
+        snpAtualizarAcao(chave, idx, { estado: 'saiu — achando o comando', saidaSrv: f.saidaSrv, cancelAt: Math.round((f.saidaSrv + aim) / 2) });
         if (!f.ok) { snpAtualizarAcao(chave, idx, { estado: 'falhou: ' + f.erro }); snpLog(a.desc + ': envio recusado — ' + f.erro, true); return; }
-        if (a.tipo === 'apoio') { snpAtualizarAcao(chave, idx, { estado: 'enviado ✔ chega ~' + snpHora(f.saidaSrv + (prep.durMs || a.durMs)) }); snpLog(a.desc + ': apoio saiu, chega ~' + snpHora(f.saidaSrv + (prep.durMs || a.durMs)) + ' (alvo ' + snpHora(p.aim) + ').', true); return; }
-        var cancelAt = Math.round((f.saidaSrv + p.aim) / 2);
-        snpAtualizarAcao(chave, idx, { estado: 'saiu — achando o cancelar', saidaSrv: f.saidaSrv, cancelAt: cancelAt });
-        var url = null;
-        for (var t = 0; t < 6 && !url; t++) { await gerEsperar(t ? gerEntre(350, 600) : 150); try { url = await snpAcharCancelar(a.origemId, a.destino.coord); } catch (e) {} }
-        if (!url) { snpAtualizarAcao(chave, idx, { estado: 'falhou: não achei o cancelar (tropas seguem como apoio pra ' + a.destino.coord + ')' }); snpLog(a.desc + ': não achei o link de cancelar — as tropas seguem como apoio pra ' + a.destino.coord + '.', true); return; }
+        // lê a chegada REAL (com ms) na Praça: dá a hora real de saída e calibra o envio
+        var cmd = null;
+        for (var t = 0; t < 6 && !cmd; t++) { await gerEsperar(t ? gerEntre(250, 450) : 120); try { cmd = await snpAcharComando(a.origemId, a.destino.coord, antes); } catch (e) {} }
+        var saidaReal = f.saidaSrv;
+        if (cmd && cmd.chegada && cmd.temMs && prep.durMs) { saidaReal = cmd.chegada - prep.durMs; snpAprender('env', saidaReal - f.envioSrv); }
+        if (a.tipo === 'apoio') {
+          var cheg = cmd && cmd.chegada && cmd.temMs ? cmd.chegada : f.saidaSrv + (prep.durMs || a.durMs);
+          snpAtualizarAcao(chave, idx, { estado: 'enviado ✔ chega ' + snpHora(cheg) + ' (' + snpErroTxt(cheg, aim) + ')' });
+          snpLog(a.desc + ': apoio chega ' + snpHora(cheg) + ' — alvo ' + snpHora(aim) + ' (' + snpErroTxt(cheg, aim) + ').', true); return;
+        }
+        if (!cmd || !cmd.cancelUrl) { snpAtualizarAcao(chave, idx, { estado: 'falhou: não achei o cancelar (tropas seguem como apoio pra ' + a.destino.coord + ')' }); snpLog(a.desc + ': não achei o link de cancelar — as tropas seguem como apoio pra ' + a.destino.coord + '.', true); return; }
+        var cancelAt = Math.round((saidaReal + aim) / 2), url = cmd.cancelUrl;
         if (a.manual) {
-          // MANUAL: renomeia o comando com a hora de cancelar (já descontada a latência) e avisa com bip
-          var horaClique = cancelAt - snpRtt() / 2 + ajuste, txtHora = snpHora(horaClique);
-          var cmdId = (url.match(/[?&]id=(\d+)/) || [])[1], renomeou = false;
-          if (cmdId) { try { renomeou = await snpRenomearComando(a.origemId, cmdId, 'CANCELAR ' + txtHora); } catch (e) {} }
-          snpAtualizarAcao(chave, idx, { estado: 'manual: CANCELE às ' + txtHora, cancelUrl: url, cancelAt: cancelAt });
+          // MANUAL: renomeia o comando com a hora de cancelar (já descontada a calibração) e avisa com bip
+          var horaClique = cancelAt - snpBCan() + ajuste, txtHora = snpHora(horaClique), renomeou = false;
+          try { renomeou = await snpRenomearComando(a.origemId, cmd.id, 'CANCELAR ' + txtHora); } catch (e) {}
+          snpAtualizarAcao(chave, idx, { estado: 'manual: CANCELE às ' + txtHora, cancelUrl: url, cancelAt: cancelAt, saidaSrv: saidaReal });
           snpLog(a.desc + ': ' + (renomeou ? 'renomeei o comando' : 'não consegui renomear o comando') + ' — CANCELE às ' + txtHora + ' (hora do servidor) na Praça de ' + p.alvo + '.', true);
           if (snpLer().bip !== false) { for (var k = 3; k >= 0; k--) { await snpEsperarAte(horaClique - k * 1000); snpBip(k === 0); } } else { await snpEsperarAte(horaClique); }
           try { if (window.UI && UI.InfoMessage) { UI.InfoMessage('🛡️ CANCELE AGORA o comando de ' + p.alvo + '!', 3000); } } catch (e) {}
@@ -13561,24 +13639,47 @@
           if (aa && /^manual:/.test(aa.estado)) { snpAtualizarAcao(chave, idx, { estado: 'enviado ✔ (manual) — era pra cancelar às ' + txtHora }); }
           return;
         }
-        snpAtualizarAcao(chave, idx, { estado: 'esperando cancelar', cancelUrl: url });
+        snpAtualizarAcao(chave, idx, { estado: 'esperando cancelar', cancelUrl: url, cancelAt: cancelAt, saidaSrv: saidaReal, cmdId: cmd.id });
         a = snpLer().planos[chave].acoes[idx];
       }
       if (a.estado === 'esperando cancelar' && a.cancelUrl) {
         if (a.cancelAt - snpAgora() < -500) { snpAtualizarAcao(chave, idx, { estado: 'falhou: passou da hora de cancelar (aba recarregada?)' }); snpLog(a.desc + ': passou da hora de cancelar.', true); return; }
-        await snpEsperarAte(a.cancelAt - snpRtt() / 2 + ajuste);
+        await snpEsperarAte(a.cancelAt - snpBCan() - 120 + (+snpLer().ajusteMs || 0));
+        var cur2 = (snpLer().planos[chave] || { acoes: [] }).acoes[idx];
+        if (!cur2 || cur2.estado !== 'esperando cancelar' || !snpSouExecutor()) { return; } // outra aba assumiu
+        snpAtualizarAcao(chave, idx, { estado: 'cancelando' });
+        await snpEsperarAte(a.cancelAt - snpBCan() + (+snpLer().ajusteMs || 0));
         var t0 = performance.now(), cancSrv = snpAgora();
         var rc = await fetch(a.cancelUrl, { credentials: 'include' }); snpMedir(t0);
-        var cancReal = cancSrv + (performance.now() - t0) / 2, volta = 2 * cancReal - a.saidaSrv;
-        if (rc.ok) { snpAtualizarAcao(chave, idx, { estado: 'cancelado ✔ volta ~' + snpHora(volta) }); snpLog(a.desc + ': cancelado — tropas voltam ~' + snpHora(volta) + ' (alvo ' + snpHora(p.aim) + ').', true); }
-        else { snpAtualizarAcao(chave, idx, { estado: 'falhou: cancelar recusado (HTTP ' + rc.status + ')' }); snpLog(a.desc + ': o jogo recusou o cancelamento.', true); }
+        if (!rc.ok) { snpAtualizarAcao(chave, idx, { estado: 'falhou: cancelar recusado (HTTP ' + rc.status + ')' }); snpLog(a.desc + ': o jogo recusou o cancelamento.', true); return; }
+        // lê a VOLTA real na Praça: mostra o erro e calibra o cancelamento
+        var volta = null;
+        for (var t2 = 0; t2 < 5 && !volta; t2++) { await gerEsperar(t2 ? 400 : 150); try { var lp = await snpComandosPraca(a.origemId), porId = null, perto = null;
+          lp.forEach(function (x) { if (!x.chegada) { return; } if (a.cmdId && x.id === a.cmdId && x.volta) { porId = x; } else if (x.volta && x.txt.indexOf(a.destino.coord) !== -1 && Math.abs(x.chegada - aim) < 5000 && (!perto || Math.abs(x.chegada - aim) < Math.abs(perto.chegada - aim))) { perto = x; } });
+          volta = porId || perto; } catch (e) {} }
+        if (volta && volta.temMs && Math.abs(volta.chegada - aim) < 60000) {
+          snpAprender('can', (volta.chegada + a.saidaSrv) / 2 - cancSrv);
+          snpAtualizarAcao(chave, idx, { estado: 'cancelado ✔ volta ' + snpHora(volta.chegada) + ' (' + snpErroTxt(volta.chegada, aim) + ')' });
+          snpLog(a.desc + ': cancelado — volta ' + snpHora(volta.chegada) + ' — alvo ' + snpHora(aim) + ' (' + snpErroTxt(volta.chegada, aim) + ').', true);
+        } else {
+          var vEst = 2 * (cancSrv + snpBCan()) - a.saidaSrv;
+          snpAtualizarAcao(chave, idx, { estado: 'cancelado ✔ volta ~' + snpHora(vEst) });
+          snpLog(a.desc + ': cancelado — volta ~' + snpHora(vEst) + ' (alvo ' + snpHora(aim) + ').', true);
+        }
       }
     } catch (e) { snpAtualizarAcao(chave, idx, { estado: 'falhou: ' + ((e && e.message) || e) }); }
     finally { delete snpEmMemoria[memo]; }
   }
+  // divide as tropas em N partes (pra cancelar várias vezes e cobrir vários espaços do trem)
+  function snpDividir(uni, n) {
+    var partes = []; for (var i = 0; i < n; i++) { partes.push({}); }
+    Object.keys(uni).forEach(function (u) { var q = uni[u], base = Math.floor(q / n), resto = q - base * n; for (var i = 0; i < n; i++) { var x = base + (i < resto ? 1 : 0); if (x > 0) { partes[i][u] = x; } } });
+    return partes.filter(function (pt) { return Object.keys(pt).length; });
+  }
   // monta o plano de um trem: cancelamento (tropas da própria aldeia) + apoio (outras aldeias)
   async function snpPlanejar(tr, cfg, aldeias, ocupadas) {
-    var agora = snpAgora(), acoes = [];
+    var agora = snpAgora(), acoes = [], miras = tr.miras && tr.miras.length ? tr.miras : [{ aim: tr.aim, onde: tr.onde }];
+    var ultima = miras.reduce(function (m, x) { return Math.max(m, x.aim); }, 0), primeira = miras.reduce(function (m, x) { return Math.min(m, x.aim); }, Infinity);
     var alvoV = aldeias.filter(function (v) { return v.coord === tr.alvo; })[0];
     if (!alvoV) { return { erro: 'a aldeia ' + tr.alvo + ' não é sua' }; }
     var outras = aldeias.filter(function (v) { return v.id !== alvoV.id; }).map(function (v) { v._d = nobDist(v, alvoV); return v; }).sort(function (a, b) { return a._d - b._d; });
@@ -13586,48 +13687,134 @@
     if (cfg.cancel && !ocupadas[alvoV.id] && outras.length) {
       var uniC = snpUnidades(cfg, alvoV.tropas);
       var manual = cfg.cancelModo === 'manual';
-      var sendAt = Math.max(agora + snpFolga(), tr.aim - 2 * janela + (manual ? 30000 : 15000));
+      var sendAt = Math.max(agora + snpFolga(), ultima - 2 * janela + (manual ? 30000 : 15000));
       var dest = null;
-      if (uniC && tr.aim - sendAt >= (manual ? 10000 : 2000) && tr.aim - sendAt <= 2 * janela - 5000) {
+      if (uniC && primeira - sendAt - (miras.length - 1) * 700 >= (manual ? 10000 : 2000) && ultima - sendAt <= 2 * janela - 5000) {
         // o destino tem que ser longe o bastante pras tropas AINDA estarem no caminho na hora de cancelar
         var velC = await snpVelocidades(), lentaC = 0; Object.keys(uniC).forEach(function (u) { lentaC = Math.max(lentaC, velC[u] || 0); });
-        var precisa = (tr.aim - sendAt) / 2 + 3000;
+        var precisa = (ultima - sendAt) / 2 + 3000;
         for (var di = 0; di < outras.length && !dest; di++) { if (!lentaC || outras[di]._d * lentaC * 60000 > precisa) { dest = outras[di]; } }
       }
       if (!uniC) { motivos.push('cancelamento: a aldeia ' + alvoV.coord + ' não tem tropa em casa (das escolhidas)'); }
-      else if (!dest && tr.aim - sendAt < (manual ? 10000 : 2000)) { motivos.push('cancelamento: chega cedo demais (' + Math.round((tr.aim - agora) / 1000) + ' s)' + (manual ? ' pro manual — precisa de 10 s+' : '')); }
-      else if (!dest && tr.aim - sendAt > 2 * janela - 5000) { motivos.push('cancelamento: chega depois de 2× o tempo de cancelar'); }
+      else if (!dest && primeira - sendAt < (manual ? 10000 : 2000)) { motivos.push('cancelamento: chega cedo demais (' + Math.round((primeira - agora) / 1000) + ' s)' + (manual ? ' pro manual — precisa de 10 s+' : '')); }
+      else if (!dest && ultima - sendAt > 2 * janela - 5000) { motivos.push('cancelamento: chega depois de 2× o tempo de cancelar'); }
       else if (!dest) { motivos.push('cancelamento: nenhuma aldeia sua longe o bastante pra mandar e cancelar'); }
       if (dest) {
-        acoes.push({ tipo: 'cancel', origemId: alvoV.id, destino: { id: dest.id, x: dest.x, y: dest.y, coord: dest.coord }, unidades: uniC, sendAt: sendAt, estado: 'agendado',
-          manual: manual, desc: 'Cancelamento' + (manual ? ' MANUAL ' : ' ') + alvoV.coord + ' (sai ' + snpHora(sendAt) + ')' });
+        var partes = miras.length > 1 ? snpDividir(uniC, miras.length) : [uniC];
+        partes.forEach(function (pt, j) {
+          var sj = sendAt + j * 700; // cada parte sai 0,7 s depois da outra (cada uma tem seu cancelamento)
+          acoes.push({ tipo: 'cancel', origemId: alvoV.id, destino: { id: dest.id, x: dest.x, y: dest.y, coord: dest.coord }, unidades: pt, sendAt: sj, aim: miras[j].aim, estado: 'agendado',
+            manual: manual, desc: 'Cancelamento' + (manual ? ' MANUAL ' : ' ') + alvoV.coord + (miras.length > 1 ? ' [' + miras[j].onde + ']' : '') + ' (sai ' + snpHora(sj) + ')' });
+        });
         ocupadas[alvoV.id] = 1;
       }
     }
     else if (cfg.cancel && !outras.length) { motivos.push('cancelamento: precisa de pelo menos 2 aldeias'); }
     if (cfg.apoio) {
-      var vel = await snpVelocidades(), n = 0, semTropa = 0, longe = 0;
-      for (var i = 0; i < outras.length && n < Math.max(0, +cfg.maxApoio || 0); i++) {
+      var vel = await snpVelocidades(), n = 0, semTropa = 0, longe = 0, maxAp = Math.max(0, +cfg.maxApoio || 0);
+      for (var i = 0; i < outras.length && n < maxAp; i++) {
         var v = outras[i]; if (ocupadas[v.id]) { continue; }
         var uniA = snpUnidades(cfg, v.tropas); if (!uniA) { semTropa++; continue; }
         var lenta = 0; Object.keys(uniA).forEach(function (u) { lenta = Math.max(lenta, vel[u] || 0); }); if (!lenta) { continue; }
-        var durMs = Math.round(v._d * lenta * 60) * 1000, sA = tr.aim - durMs;
-        if (sA < agora + snpFolga()) { longe++; continue; } // longe demais pra chegar a tempo
-        acoes.push({ tipo: 'apoio', origemId: v.id, destino: { id: alvoV.id, x: alvoV.x, y: alvoV.y, coord: alvoV.coord }, unidades: uniA, sendAt: sA, durMs: durMs, estado: 'agendado',
-          desc: 'Apoio ' + v.coord + ' → ' + alvoV.coord + ' (sai ' + snpHora(sA) + ')' });
+        var mira = miras[n % miras.length]; // TODOS: cada aldeia de apoio cobre um espaço do trem
+        var durMs = Math.round(v._d * lenta * 60) * 1000, sA = mira.aim - durMs;
+        if (sA < agora + snpFolga() + 1500) { longe++; continue; } // longe demais pra chegar a tempo
+        acoes.push({ tipo: 'apoio', origemId: v.id, destino: { id: alvoV.id, x: alvoV.x, y: alvoV.y, coord: alvoV.coord }, unidades: uniA, sendAt: sA, durMs: durMs, aim: mira.aim, estado: 'agendado',
+          desc: 'Apoio ' + v.coord + ' → ' + alvoV.coord + (miras.length > 1 ? ' [' + mira.onde + ']' : '') + ' (sai ~' + snpHora(sA) + ')' });
         ocupadas[v.id] = 1; n++;
       }
       if (!n) { motivos.push('apoio: ' + (outras.length ? (longe ? longe + ' aldeia(s) longe demais pra chegar a tempo' : '') + (longe && semTropa ? ', ' : '') + (semTropa ? semTropa + ' sem tropa em casa' : '') : 'você não tem outra aldeia')); }
     }
     return { acoes: acoes, motivo: motivos.join(' • ') };
   }
+  // 🎯 Calibrar agora: manda 1 tropa como apoio pra sua aldeia mais perto, lê a hora real de saída e cancela na hora — 2 rodadas
+  async function snpCalibrar(aviso) {
+    function dz(t) { try { if (aviso) { aviso(t); } } catch (e) {} }
+    var aldeias = await nobAldeias('0'); if (aldeias.length < 2) { return { erro: 'precisa de pelo menos 2 aldeias' }; }
+    var vel = await snpVelocidades(), ordemU = Object.keys(vel).filter(function (u) { return u !== 'snob' && u !== 'militia'; }).sort(function (a, b) { return vel[b] - vel[a]; });
+    var cur = game_data.village && +game_data.village.id, ori = null, uni = null;
+    aldeias.slice().sort(function (a, b) { return (b.id === cur) - (a.id === cur); }).some(function (v) { var u = ordemU.filter(function (x) { return (v.tropas[x] || 0) > 0; })[0]; if (u) { ori = v; uni = u; return true; } return false; });
+    if (!ori) { return { erro: 'nenhuma aldeia com tropa em casa' }; }
+    var dest = aldeias.filter(function (v) { return v.id !== ori.id; }).sort(function (a, b) { return nobDist(a, ori) - nobDist(b, ori); })[0];
+    var res = { env: [], can: [] };
+    for (var r = 0; r < 2; r++) {
+      dz('rodada ' + (r + 1) + '/2: enviando 1 ' + (NOB_NOME_UN[uni] || uni) + ' de ' + ori.coord + ' pra ' + dest.coord + '...');
+      var antes = {}; (await snpComandosPraca(ori.id)).forEach(function (x) { antes[x.id] = 1; });
+      var o = {}; o[uni] = 1;
+      var prep = await snpPreparar(ori.id, dest, o); if (prep.erro) { return { erro: prep.erro }; }
+      if (prep.durMs < 4000) { return { erro: 'a aldeia mais perto fica a menos de 4 s — não dá pra medir' }; }
+      await gerEsperar(gerEntre(300, 700));
+      var f = await prep.fire(); if (!f.ok) { return { erro: f.erro }; }
+      var cmd = null; for (var t = 0; t < 6 && !cmd; t++) { await gerEsperar(t ? 350 : 150); cmd = await snpAcharComando(ori.id, dest.coord, antes); }
+      if (!cmd || !cmd.temMs) { return { erro: 'não achei o comando na Praça' }; }
+      var saida = cmd.chegada - prep.durMs, be = saida - f.envioSrv; snpAprender('env', be); res.env.push(be);
+      await gerEsperar(gerEntre(900, 1500));
+      var t0 = performance.now(), cs = snpAgora(); await fetch(cmd.cancelUrl, { credentials: 'include' }); snpMedir(t0);
+      var volta = null; for (var t3 = 0; t3 < 5 && !volta; t3++) { await gerEsperar(t3 ? 400 : 200); (await snpComandosPraca(ori.id)).forEach(function (x) { if (x.id === cmd.id && x.chegada && x.temMs) { volta = x; } }); }
+      if (volta) { var bc = (volta.chegada + saida) / 2 - cs; snpAprender('can', bc); res.can.push(bc); }
+      await gerEsperar(gerEntre(800, 1400));
+    }
+    snpLog('🎯 calibrado: ' + snpTextoCalib());
+    return res;
+  }
+  // ---- QUAL ABA EXECUTA: só 1 aba dispara (a "Aba do Snipe", se aberta; senão qualquer aba com o painel).
+  // Se ela recarregar/fechar, outra aba aberta assume em ~1 s e continua os snipes (estado fica salvo).
+  var SNP_EXEC = SNP_CHAVE + '_exec', snpDedicada = false, snpEraExecutor = false, snpBatida = null;
+  try { if (/ork-snipe/.test(location.hash)) { sessionStorage.setItem('ork_snp_ded', '1'); } snpDedicada = sessionStorage.getItem('ork_snp_ded') === '1'; } catch (e) {}
+  function snpLerExec() { try { return JSON.parse(localStorage.getItem(SNP_EXEC) || 'null'); } catch (e) { return null; } }
+  function snpSouExecutor() { var x = snpLerExec(); return !!(x && x.aba === SNP_ABA && Date.now() - x.ts < 3000); }
+  function snpExecTexto() {
+    var x = snpLerExec(), vivo = x && Date.now() - x.ts < 3000;
+    if (!vivo) { return '⏳ nenhuma aba executando agora'; }
+    if (x.aba === SNP_ABA) { return snpDedicada ? '🗗 esta é a ABA DO SNIPE — ela executa os disparos' : '▶ esta aba executa os disparos'; }
+    return x.ded ? '🗗 a ABA DO SNIPE executa os disparos — aqui pode navegar e recarregar à vontade' : '▶ outra aba executa os disparos';
+  }
+  function snpBater() {
+    var c = snpLer();
+    if (!c.ativo) { if (snpEraExecutor) { snpEraExecutor = false; } return; }
+    var x = snpLerExec(), fresco = x && Date.now() - x.ts < 2500, meu = x && x.aba === SNP_ABA;
+    var posso = meu || !fresco || (snpDedicada && !x.ded); // a Aba do Snipe sempre tem prioridade
+    if (posso) { try { localStorage.setItem(SNP_EXEC, JSON.stringify({ aba: SNP_ABA, ts: Date.now(), ded: snpDedicada })); } catch (e) {} }
+    if (posso && !snpEraExecutor) { snpEraExecutor = true; setTimeout(snpAssumir, 350); }
+    else if (!posso && snpEraExecutor) { snpEraExecutor = false; if (snpTimer) { clearTimeout(snpTimer); snpTimer = null; } }
+  }
+  function snpIniciarBatida() {
+    if (snpBatida) { return; }
+    snpBatida = setInterval(snpBater, 700); snpBater();
+    var soltar = function () { try { var x = snpLerExec(); if (x && x.aba === SNP_ABA) { localStorage.setItem(SNP_EXEC, JSON.stringify({ aba: '', ts: 0 })); } } catch (e) {} };
+    window.addEventListener('pagehide', soltar); window.addEventListener('beforeunload', soltar);
+  }
+  // esta aba virou a que executa: retoma o que estava no meio e volta a vigiar
+  async function snpAssumir() {
+    if (!snpSouExecutor()) { return; }
+    var c = snpLer(); if (!c.ativo) { return; }
+    var pend = [];
+    Object.keys(c.planos).forEach(function (k) { (c.planos[k].acoes || []).forEach(function (a, idx) { pend.push([k, idx, a]); }); });
+    for (var i = 0; i < pend.length; i++) {
+      var k = pend[i][0], idx = pend[i][1], a = pend[i][2], aim = a.aim || c.planos[k].aim;
+      if (a.estado === 'agendado' || (a.estado === 'esperando cancelar' && a.cancelUrl)) { snpExecutarAcao(k, idx); }
+      else if (a.estado === 'disparando') { snpAtualizarAcao(k, idx, { estado: 'falhou: a aba recarregou bem na hora do envio — confira a Praça' }); }
+      else if (a.estado === 'cancelando') { snpAtualizarAcao(k, idx, { estado: 'falhou: a aba recarregou bem na hora de cancelar — confira a Praça' }); }
+      else if (/^saiu/.test(a.estado) && a.tipo === 'cancel' && a.cancelAt && a.cancelAt > snpAgora() + 800) {
+        // saiu mas a outra aba caiu antes de achar o cancelar: acha aqui e segue
+        try { var l = await snpComandosPraca(a.origemId), m = null; l.forEach(function (x) { if (x.cancelUrl && x.txt.indexOf(a.destino.coord) !== -1 && (!m || x.id > m.id)) { m = x; } });
+          if (m) { snpAtualizarAcao(k, idx, { estado: 'esperando cancelar', cancelUrl: m.cancelUrl, cmdId: m.id }); snpExecutarAcao(k, idx); } else { snpAtualizarAcao(k, idx, { estado: 'falhou: não achei o comando depois que a aba recarregou' }); } } catch (e) {}
+      }
+      else if (/^saiu/.test(a.estado)) { snpAtualizarAcao(k, idx, { estado: 'falhou: a aba recarregou antes de cancelar' }); }
+      else if (/^manual:/.test(a.estado) && a.cancelAt < Date.now() - 5000) { snpAtualizarAcao(k, idx, { estado: 'enviado ✔ (manual) — ' + a.estado.replace(/^manual:\s*/, '') }); }
+    }
+    var kc = c.calib || {};
+    if (c.calAuto !== false && (!kc.nEnv || kc.origem !== Math.round(performance.timeOrigin))) {
+      var urgente = pend.some(function (p) { return p[2].estado === 'agendado' && p[2].sendAt - snpAgora() < 25000; });
+      if (!urgente) { snpLog('🎯 calibrando nesta aba...'); try { var r = await snpCalibrar(); if (r && r.erro) { snpLog('calibração não deu: ' + r.erro); } } catch (e) {} }
+    }
+    snpCiclo(false);
+  }
   async function snpCiclo(soConferir) {
     if (snpCicloRodando) { return null; }
     var c = snpLer();
     if (!soConferir && !c.ativo) { return null; }
-    if (!soConferir) {
-      try { var tv = JSON.parse(localStorage.getItem(SNP_CHAVE + '_trava') || 'null'); if (tv && tv.aba !== SNP_ABA && Date.now() - tv.ts < snpIntervaloMs(c) * 3) { snpAgendar(); return null; } localStorage.setItem(SNP_CHAVE + '_trava', JSON.stringify({ aba: SNP_ABA, ts: Date.now() })); } catch (e) {}
-    }
+    if (!soConferir && !snpSouExecutor()) { return null; } // outra aba executa
     if (window.__ORK_CAPTCHA_BLOQUEADO__) { if (!soConferir) { snpAgendar(); } return { erro: 'captcha na tela' }; }
     snpCicloRodando = true;
     var res = { trens: [], novos: 0, erro: '' };
@@ -13642,9 +13829,9 @@
           Object.keys(c.planos).forEach(function (k) { (c.planos[k].acoes || []).forEach(function (a) { if (!/^(falhou|cancelado|enviado)/.test(a.estado)) { ocupadas[a.origemId] = 1; } }); });
           for (var i = 0; i < novos.length; i++) {
             var tr = novos[i];
-            if (tr.apertado) { snpMudar(function (cc) { cc.planos[tr.chave] = { alvo: tr.alvo, t1: tr.t1, t2: tr.t2, aim: tr.aim, gap: tr.gap, nobres: tr.nobres, acoes: [], obs: 'pulado: só ' + tr.gap + ' ms de espaço (mínimo ' + (c.minGap || 100) + ' ms)' }; }); snpLog('nobre em ' + tr.alvo + ' com só ' + tr.gap + ' ms de espaço — apertado demais, pulei.', true); continue; }
+            if (tr.apertado) { snpMudar(function (cc) { cc.planos[tr.chave] = { alvo: tr.alvo, t1: tr.t1, t2: tr.t2, aim: tr.aim, gap: tr.gap, nobres: tr.nobres, acoes: [], obs: 'pulado: só ' + tr.gap + ' ms de espaço (mínimo ' + (c.minGap || 50) + ' ms)' }; }); snpLog('nobre em ' + tr.alvo + ' com só ' + tr.gap + ' ms de espaço — apertado demais, pulei.', true); continue; }
             var pl = await snpPlanejar(tr, snpLer(), aldeias, ocupadas);
-            snpMudar(function (cc) { cc.planos[tr.chave] = { alvo: tr.alvo, t1: tr.t1, t2: tr.t2, aim: tr.aim, gap: tr.gap, nobres: tr.nobres, acoes: pl.acoes || [], onde: tr.onde, obs: pl.erro || (pl.acoes && pl.acoes.length ? '' : (pl.motivo || 'sem tropa/tempo pra snipar')) }; });
+            snpMudar(function (cc) { cc.planos[tr.chave] = { alvo: tr.alvo, t1: tr.t1, t2: tr.t2, aim: tr.aim, gap: tr.gap, nobres: tr.nobres, acoes: pl.acoes || [], onde: tr.onde, miras: tr.miras, obs: pl.erro || (pl.acoes && pl.acoes.length ? '' : (pl.motivo || 'sem tropa/tempo pra snipar')) }; });
             res.novos++;
             snpLog('⚠️ TREM: ' + tr.nobres + ' nobre(s) em ' + tr.alvo + ' às ' + snpHora(tr.t1) + ' (espaço ' + tr.gap + ' ms) → ' + ((pl.acoes || []).length ? (pl.acoes.length + ' ação(ões) de snipe pra ' + snpHora(tr.aim) + ' (' + tr.onde + ')') : (pl.erro || pl.motivo || 'sem tropa/tempo pra snipar')), true);
             (pl.acoes || []).forEach(function (a, idx) { snpExecutarAcao(tr.chave, idx); });
@@ -13660,23 +13847,37 @@
   function snpAgendar() {
     var c = snpLer(); if (!c.ativo) { return; }
     snpMostrarBolinha();
+    if (!snpSouExecutor()) { return; }
     if (snpTimer) { clearTimeout(snpTimer); }
     snpTimer = setTimeout(function () { snpCiclo(false); }, snpIntervaloMs(c) + gerEntre(300, 1500));
   }
   function snpParar() {
     snpMudar(function (c) { c.ativo = false; });
+    try { localStorage.setItem(SNP_EXEC, JSON.stringify({ aba: '', ts: 0 })); } catch (e) {}
+    if (snpBatida) { clearInterval(snpBatida); snpBatida = null; } snpEraExecutor = false;
     if (snpTimer) { clearTimeout(snpTimer); snpTimer = null; }
     if (snpRelogio) { clearInterval(snpRelogio); snpRelogio = null; }
     var b = document.getElementById('ork-snp-bolinha'); if (b) { b.remove(); }
   }
   function snpRetomar() {
-    var c = snpLer(); if (!c.ativo) { return; }
-    // ações que ficaram no meio (aba recarregada): retoma as que ainda dá tempo
-    Object.keys(c.planos).forEach(function (k) { (c.planos[k].acoes || []).forEach(function (a, idx) { if (a.estado === 'agendado' || (a.estado === 'esperando cancelar' && a.cancelUrl)) { snpExecutarAcao(k, idx); }
-      else if (/^manual:/.test(a.estado) && a.cancelAt < Date.now() - 5000) { snpAtualizarAcao(k, idx, { estado: 'enviado ✔ (manual) — ' + a.estado.replace(/^manual:\s*/, '') }); } }); });
-    snpMostrarBolinha(); snpCiclo(false);
+    var c = snpLer(); if (!c.ativo) { if (snpDedicada) { snpFaixaDedicada(); } return; }
+    snpMostrarBolinha(); // liga a batida: se esta aba virar a que executa, ela retoma o que estava no meio
+  }
+  function snpAbrirAbaDedicada() {
+    var w = null; try { w = window.open(game_data.link_base_pure + 'overview_villages&mode=incomings&subtype=attacks#ork-snipe', '_blank'); } catch (e) {}
+    if (!w) { try { UI.ErrorMessage('O navegador bloqueou a nova aba — libere pop-ups pro jogo.', 5000); } catch (e) {} }
+  }
+  function snpFaixaDedicada() {
+    if (!snpDedicada || document.getElementById('ork-snp-faixa')) { return; }
+    var f = document.createElement('div'); f.id = 'ork-snp-faixa';
+    f.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999997;background:linear-gradient(100deg,#c0392b,#ff6b5b 50%,#c0392b);color:#fff;font:800 12px "Segoe UI",Arial,sans-serif;text-align:center;padding:5px 8px;box-shadow:0 4px 14px rgba(0,0,0,.4)';
+    f.innerHTML = '🛡️ ABA DO SNIPE — ela faz os disparos. Pode trocar de aba e usar o jogo nas outras à vontade; só NÃO feche nem recarregue esta. <span id="ork-snp-faixa-x" style="cursor:pointer;margin-left:10px;text-decoration:underline;font-weight:700">deixar de ser a aba do snipe</span>';
+    document.body.appendChild(f);
+    try { if (!/^🛡️/.test(document.title)) { document.title = '🛡️ SNIPE — ' + document.title; } } catch (e) {}
+    f.querySelector('#ork-snp-faixa-x').addEventListener('click', function () { try { sessionStorage.removeItem('ork_snp_ded'); } catch (e) {} snpDedicada = false; f.remove(); });
   }
   function snpMostrarBolinha() {
+    snpIniciarBatida(); snpFaixaDedicada();
     if (document.getElementById('ork-snp-bolinha')) { return; }
     var b = document.createElement('div'); b.id = 'ork-snp-bolinha';
     b.style.cssText = 'position:fixed;left:660px;bottom:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
@@ -13689,7 +13890,7 @@
       Object.keys(c.planos).forEach(function (k) { (c.planos[k].acoes || []).forEach(function (a) { if (!/^(falhou|cancelado|enviado)/.test(a.estado)) { ativos++; var t = a.estado === 'agendado' ? a.sendAt : a.cancelAt; if (t && (!prox || t < prox)) { prox = t; } } }); });
       if (ativos && prox) { var s2 = Math.max(0, Math.round((prox - snpAgora()) / 1000)); el.textContent = Math.floor(s2 / 60) + ':' + ('0' + (s2 % 60)).slice(-2); b.style.background = 'linear-gradient(100deg,#c0392b,#ff6b5b 50%,#c0392b)'; b.style.color = '#fff'; }
       else { el.textContent = 'SNIPE'; b.style.background = 'linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a)'; b.style.color = '#1a1400'; }
-      b.title = 'Snipe de Nobres automático' + (ativos ? ' • ' + ativos + ' ação(ões) agendada(s) — NÃO feche/recarregue esta aba' : ' • vigiando os ataques') + ' • latência ~' + Math.round(snpRtt()) + ' ms — clique pra abrir';
+      b.title = 'Snipe de Nobres automático' + (ativos ? ' • ' + ativos + ' ação(ões) agendada(s)' : ' • vigiando os ataques') + ' • ' + snpExecTexto() + ' • latência ~' + Math.round(snpRtt()) + ' ms — clique pra abrir';
     }, 500);
   }
   function snpAbrirModal() {
@@ -13713,7 +13914,7 @@
             '<div style="' + sec + '"><div style="' + stit + '">Como snipar</div>' +
               '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:help" data-dica="As tropas da própria aldeia atacada saem (como apoio pra sua aldeia mais perto) e são canceladas no momento exato pra voltar no meio do trem (depois do Nº nobre que você escolher). Só funciona se o nobre chega dentro de 2× o tempo de cancelamento."><input id="ork-snp-canc" type="checkbox"' + (c.cancel ? ' checked' : '') + ' style="' + ck + '">↩️ Por cancelamento</label>' +
               '<div style="' + lin + ';padding-left:21px"><span data-dica="Automático: o painel envia e cancela sozinho no ms certo. Manual: o painel envia e RENOMEIA o comando com &quot;CANCELAR hh:mm:ss:ms&quot; (hora do servidor, já descontada sua latência) e dá bip 3-2-1; você mesmo cancela na Praça. Bom pra speed, mais controle. Lembre: no manual, cada 100 ms de atraso no clique vira 200 ms na volta.">Cancelar:</span><select id="ork-snp-cmodo" style="' + inp + '"><option value="auto"' + (c.cancelModo !== 'manual' ? ' selected' : '') + '>🤖 Automático (no ms)</option><option value="manual"' + (c.cancelModo === 'manual' ? ' selected' : '') + '>✋ Manual (renomeia com a hora)</option></select>' +
-                '<label style="display:flex;align-items:center;gap:4px;cursor:help" data-dica="No cancelamento manual, toca bip 3, 2, 1 e um bip forte na hora exata de clicar em cancelar."><input id="ork-snp-bip" type="checkbox"' + (c.bip !== false ? ' checked' : '') + ' style="' + ck + '">🔔 bip</label></div>' +
+                '<label style="display:flex;align-items:center;gap:4px;cursor:help;white-space:nowrap" data-dica="No cancelamento manual, toca bip 3, 2, 1 e um bip forte na hora exata de clicar em cancelar."><input id="ork-snp-bip" type="checkbox"' + (c.bip !== false ? ' checked' : '') + ' style="' + ck + '">🔔 bip</label></div>' +
               '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:help;margin-top:5px" data-dica="Sempre automático: tropas das suas outras aldeias (as mais perto primeiro) saem no ms certo pra chegar como apoio no meio do trem (depois do Nº nobre que você escolher)."><input id="ork-snp-apoio" type="checkbox"' + (c.apoio ? ' checked' : '') + ' style="' + ck + '">🛡️ Por apoio de outras aldeias</label>' +
               '<div style="' + lin + '"><span data-dica="Quantas aldeias suas, no máximo, mandam apoio em cada trem.">Aldeias de apoio por trem</span><input id="ork-snp-maxap" type="number" min="0" value="' + (c.maxApoio || 0) + '" style="width:52px;' + inp + ';text-align:center"></div></div>' +
             '<div style="' + sec + '"><div style="' + stit + '">Tropas do snipe</div>' +
@@ -13723,16 +13924,22 @@
               '<button type="button" id="ork-snp-add" style="margin-top:4px;background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:5px;padding:1px 8px;cursor:pointer;font-weight:700;font-size:10px;font-family:inherit">+ tropa</button></div>' +
           '</div><div>' +
             '<div style="' + sec + '"><div style="' + stit + '">Precisão e vigia</div>' +
-              '<div style="' + lin + ';margin-top:0"><span data-dica="Em que ponto do trem a defesa chega. Padrão: depois do 2º nobre (entre o 2º e o 3º). Se ali estiver colado demais, ou o trem tiver menos nobres, ele tenta a posição mais perto que dê.">👑 Snipar</span><select id="ork-snp-apos" style="flex:1;' + inp + '">' +
-                [0, 1, 2, 3, 4].map(function (k) { return '<option value="' + k + '"' + ((c.aposNobre == null ? 2 : +c.aposNobre) === k ? ' selected' : '') + '>' + (k === 0 ? 'antes do 1º nobre (depois da limpeza)' : 'depois do ' + k + 'º nobre (entre o ' + k + 'º e o ' + (k + 1) + 'º)') + '</option>'; }).join('') + '</select></div>' +
-              '<div style="' + lin + '"><span data-dica="Espaço mínimo entre os comandos onde a defesa vai entrar (no ponto escolhido em Snipar). Menor que isso = apertado demais pra precisão de navegador (pulado). Padrão 100 ms.">Espaço mínimo entre nobres</span><input id="ork-snp-gap" type="number" min="20" value="' + (c.minGap || 100) + '" style="width:60px;' + inp + ';text-align:center"><span>ms</span></div>' +
+              '<div style="' + lin + ';margin-top:0"><span data-dica="Em que ponto do trem a defesa chega. Padrão: depois do 2º nobre (entre o 2º e o 3º). Se ali estiver colado demais, ou o trem tiver menos nobres, ele tenta a posição mais perto que dê. TODOS: uma defesa em cada espaço do trem (as tropas do cancelamento são divididas em partes; cada aldeia de apoio cobre um espaço)." style="white-space:nowrap">👑 Snipar</span><select id="ork-snp-apos" style="flex:1;' + inp + '">' +
+                [0, 1, 2, 3, 4, -1].map(function (k) { return '<option value="' + k + '"' + ((c.aposNobre == null ? 2 : +c.aposNobre) === k ? ' selected' : '') + '>' + (k === -1 ? '👑 TODOS os nobres (1 defesa em cada espaço)' : k === 0 ? 'antes do 1º nobre (depois da limpeza)' : 'depois do ' + k + 'º nobre (entre o ' + k + 'º e o ' + (k + 1) + 'º)') + '</option>'; }).join('') + '</select></div>' +
+              '<div style="' + lin + '"><span data-dica="Espaço mínimo entre os comandos onde a defesa vai entrar (no ponto escolhido em Snipar). Menor que isso = apertado demais pra precisão de navegador (pulado). Padrão 50 ms (trem normal de nobres vem a cada 50 ms).">Espaço mínimo entre nobres</span><input id="ork-snp-gap" type="number" min="20" value="' + (c.minGap || 50) + '" style="width:60px;' + inp + ';text-align:center"><span>ms</span></div>' +
               '<div style="' + lin + '"><span data-dica="Até quantos minutos depois de sair o jogo deixa cancelar um comando neste mundo (padrão do jogo: 10).">Tempo pra cancelar (jogo)</span><input id="ork-snp-jan" type="number" min="1" value="' + (c.janelaCancelMin || 10) + '" style="width:52px;' + inp + ';text-align:center"><span>min</span></div>' +
-              '<div style="' + lin + '"><span data-dica="Correção fina, em ms, somada aos disparos. Se os snipes chegarem sempre um pouco ATRASADOS, use um número negativo (ex.: -30); adiantados, positivo. A latência da sua internet já é compensada sozinha.">Ajuste fino</span><input id="ork-snp-aj" type="number" value="' + (c.ajusteMs || 0) + '" style="width:60px;' + inp + ';text-align:center"><span>ms</span><span style="flex:1"></span><span style="color:#777" id="ork-snp-lat">latência ~' + Math.round(snpRtt()) + ' ms</span></div>' +
+              '<div style="' + lin + '"><span data-dica="Correção fina, em ms, somada aos disparos. Normalmente deixe 0: o calibrador já corrige sozinho. Use só se, mesmo calibrado, chegar sempre ATRASADO (número negativo, ex.: -20) ou ADIANTADO (positivo).">Ajuste fino</span><input id="ork-snp-aj" type="number" value="' + (c.ajusteMs || 0) + '" style="width:60px;' + inp + ';text-align:center"><span>ms</span><span style="flex:1"></span><span style="color:#777" id="ork-snp-lat">latência ~' + Math.round(snpRtt()) + ' ms</span></div>' +
+              '<div style="' + lin + ';background:#101810;border:1px solid #1f3a1f;border-radius:6px;padding:4px 6px"><span style="cursor:help" data-dica="O calibrador mede de verdade quanto tempo o seu pedido leva pra valer no servidor (envio e cancelamento), lendo a chegada com ms na Praça. Ele aprende sozinho a cada snipe; o botão Calibrar agora manda 1 tropa como apoio pra sua aldeia mais perto e cancela na hora (2 rodadas, ~10 s, a tropa volta). Calibre de novo depois de recarregar a página.">🎯</span><span id="ork-snp-cal" style="flex:1;color:#9fd49f;font-size:10px">' + gerHtml(snpTextoCalib()) + '</span>' +
+                '<button type="button" id="ork-snp-calb" style="background:#1c2a1c;color:#7ed17e;border:1px solid #2f6b2f;border-radius:5px;padding:2px 8px;cursor:pointer;font-weight:800;font-size:10px;font-family:inherit">🎯 Calibrar agora</button></div>' +
+              '<label style="' + lin + ';cursor:help" data-dica="Ao ligar o snipe, se ainda não calibrou nesta página, calibra sozinho (1 tropa vai e volta)."><input id="ork-snp-calauto" type="checkbox"' + (c.calAuto !== false ? ' checked' : '') + ' style="' + ck + '">Calibrar sozinho ao ligar</label>' +
               '<div style="' + lin + '"><span data-dica="De quanto em quanto tempo ele confere os ataques chegando (mínimo 3 seg). Em speed com ataques de 12–40 s, use 3–5 seg; mundo normal, 15–30 seg.">🔁 Vigiar a cada</span><input id="ork-snp-int" type="number" min="1" value="' + (c.intervalo || 10) + '" style="width:56px;' + inp + ';text-align:center">' +
                 '<select id="ork-snp-uni" style="' + inp + '"><option value="seg"' + (c.intervaloUni !== 'min' ? ' selected' : '') + '>seg</option><option value="min"' + (c.intervaloUni === 'min' ? ' selected' : '') + '>min</option></select></div></div>' +
             '<div style="' + sec + '"><div style="' + stit + '">Trens e snipes</div><div id="ork-snp-lista" style="max-height:170px;overflow:auto;font-size:10.5px;color:#bbb"></div></div>' +
           '</div></div>' +
-          '<div style="font-size:9.5px;color:#a88;margin-top:6px">⚠️ Durante um snipe (bolinha 🛡️ vermelha), não feche nem recarregue esta aba. Precisão real ~±50–150 ms.</div>' +
+          '<div style="display:flex;gap:6px;align-items:center;margin-top:6px;background:#141414;border:1px solid #262626;border-radius:8px;padding:5px 8px">' +
+            '<span id="ork-snp-exec" style="flex:1;font-size:10px;color:#9fd49f">' + gerHtml(snpExecTexto()) + '</span>' +
+            '<button type="button" id="ork-snp-ded" style="background:#2a1010;color:#ff8f80;border:1px solid #4a1c1c;border-radius:6px;padding:3px 9px;cursor:pointer;font-weight:800;font-size:10.5px;font-family:inherit;white-space:nowrap" data-dica="Abre uma aba só pro Snipe (tela de Recebidos). Ela faz os disparos com o ms certo e você usa o jogo nas outras abas à vontade — navegar e recarregar não atrapalha. Pode deixar ela em segundo plano; só não feche nem recarregue ela. Sem essa aba, os disparos rodam numa aba normal: se você recarregar BEM na hora de um disparo, outra aba assume em ~1 s, mas aquele disparo pode se perder.">🗗 Abrir aba do Snipe</button></div>' +
+          '<div style="font-size:9.5px;color:#a88;margin-top:4px">⚠️ Tudo roda por AJAX, por trás. Com a 🗗 aba do Snipe aberta, você pode navegar e recarregar as outras abas à vontade.</div>' +
           '<div style="display:flex;gap:5px;margin-top:7px">' +
             '<button id="ork-snp-conf" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">🔍 Conferir agora (sem snipar)</button>' +
             '<button id="ork-snp-ok" style="flex:1.2;background:' + (c.ativo ? '#2a1010;color:#ff6b6b;border:1px solid #4a1c1c' : 'linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;border:none') + ';border-radius:8px;padding:7px 0;cursor:pointer;font-weight:800;font-size:11px;font-family:inherit">' + (c.ativo ? '⏹ Parar snipe automático' : '🛡️ Ligar snipe automático') + '</button></div>' +
@@ -13769,14 +13976,21 @@
       }); });
     }
     desenharLista();
-    var refresco = setInterval(function () { if (!document.getElementById('ork-modal-snp')) { clearInterval(refresco); return; } desenharLista(); var l = v('ork-snp-lat'); if (l) { l.textContent = 'latência ~' + Math.round(snpRtt()) + ' ms'; } }, 1500);
+    var refresco = setInterval(function () { if (!document.getElementById('ork-modal-snp')) { clearInterval(refresco); return; } desenharLista(); var l = v('ork-snp-lat'); if (l) { l.textContent = 'latência ~' + Math.round(snpRtt()) + ' ms'; } var cl = v('ork-snp-cal'); if (cl && !cl.getAttribute('data-ocupado')) { cl.textContent = snpTextoCalib(); } var ex = v('ork-snp-exec'); if (ex) { ex.textContent = snpExecTexto(); } }, 1500);
+    v('ork-snp-ded').addEventListener('click', function () { var n = ler(); if (!n.ativo) { n.ativo = true; snpGravar(n); snpMostrarBolinha(); } snpAbrirAbaDedicada(); fechar(); });
+    v('ork-snp-calb').addEventListener('click', async function () {
+      var b = this, cl = v('ork-snp-cal'); b.disabled = true; cl.setAttribute('data-ocupado', '1');
+      var r = await snpCalibrar(function (t) { cl.textContent = t; });
+      cl.removeAttribute('data-ocupado'); b.disabled = false;
+      cl.textContent = r && r.erro ? '✖ ' + r.erro : '✔ ' + snpTextoCalib();
+    });
     function ler() {
       var n = snpLer();
       n.cancel = v('ork-snp-canc').checked; n.apoio = v('ork-snp-apoio').checked; n.maxApoio = Math.max(0, parseInt(v('ork-snp-maxap').value, 10) || 0);
       n.modoTropas = (ov.querySelector('input[name="ork-snp-modo"]:checked') || {}).value === 'escolher' ? 'escolher' : 'tudo';
       n.tropas = tropas.filter(function (t) { return t.u; }).map(function (t) { return { u: t.u, n: Math.max(0, Math.floor(+t.n || 0)) }; });
-      n.minGap = Math.max(20, parseInt(v('ork-snp-gap').value, 10) || 100); n.aposNobre = Math.max(0, Math.min(4, parseInt(v('ork-snp-apos').value, 10) || 0)); n.janelaCancelMin = Math.max(1, parseFloat(v('ork-snp-jan').value) || 10);
-      n.ajusteMs = parseInt(v('ork-snp-aj').value, 10) || 0;
+      n.minGap = Math.max(20, parseInt(v('ork-snp-gap').value, 10) || 100); n.aposNobre = Math.max(-1, Math.min(4, parseInt(v('ork-snp-apos').value, 10) || 0)); n.janelaCancelMin = Math.max(1, parseFloat(v('ork-snp-jan').value) || 10);
+      n.ajusteMs = parseInt(v('ork-snp-aj').value, 10) || 0; n.calAuto = v('ork-snp-calauto').checked;
       n.intervaloUni = v('ork-snp-uni').value === 'min' ? 'min' : 'seg'; n.intervalo = Math.max(n.intervaloUni === 'seg' ? 3 : 1, parseFloat(v('ork-snp-int').value) || 10);
       n.cancelModo = v('ork-snp-cmodo').value === 'manual' ? 'manual' : 'auto'; n.bip = v('ork-snp-bip').checked;
       snpGravar(n); return n;
@@ -13794,7 +14008,7 @@
     v('ork-snp-ok').addEventListener('click', function () {
       if (snpLer().ativo) { snpParar(); fechar(); return; }
       var n = ler(); if (!n.cancel && !n.apoio) { v('ork-snp-lista').innerHTML = '<span style="color:#ff6b6b">Ligue o cancelamento, o apoio ou os dois.</span>'; return; }
-      n.ativo = true; snpGravar(n); fechar(); snpMostrarBolinha(); snpCiclo(false);
+      n.ativo = true; snpGravar(n); fechar(); snpMostrarBolinha(); // a batida escolhe a aba que executa (calibra e começa a vigiar)
     });
   }
   function checaSnipe() { return !!(window.game_data && game_data.village && game_data.village.id); }
@@ -14595,7 +14809,7 @@
     try { if (crLerCfg().ativo && crNaTela()) { setTimeout(crRetomar, gerEntre(1200, 2000)); } } catch (e) {}
     try { if (raLer().ativo) { setTimeout(raRetomar, gerEntre(2000, 3500)); } } catch (e) {}
     try { if (etqLer().ativo) { setTimeout(etqRetomar, gerEntre(2500, 4000)); } } catch (e) {}
-    try { if (snpLer().ativo) { setTimeout(snpRetomar, gerEntre(1500, 2500)); } } catch (e) {}
+    try { if (snpLer().ativo) { setTimeout(snpRetomar, gerEntre(400, 800)); } } catch (e) {}
   })();
 
   (function retomarBalanceador() {
