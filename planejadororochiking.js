@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      96.0
+// @version      97.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 96;
+  window.__ORK_VERSAO__ = 97;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -299,18 +299,29 @@
   ============================================================ */
   var ORK_NOVIDADES = [
     {
+      id: '2026-10-01-v97',
+      data: '01/10/2026',
+      titulo: 'Construção Rápida, regras na cunhagem e mais',
+      itens: [
+        '⚡ Construção Rápida (NOVO, seção Conta): marque os edifícios e ele constrói em todas as aldeias de uma vez, na ordem marcada, até o nível escolhido e respeitando a fila.',
+        '🔁 Automático: no Pesquisar em Massa e na Construção Rápida — ligado, roda sozinho sempre que você abrir a tela Pesquisa ou Edifícios, até desligar.',
+        '🪙 Cunhar Moedas: Moedas por aldeia (máximo por ciclo) e Guardar por aldeia (sobra recurso pra formar nobre). Valem no 24/7.',
+        '👑 Noblar Automático: 🗺️ Continentes (ex.: K45, K55), 🏘️ Priorizar com vizinhas (1 a 8 bárbaras coladas) e 🔻 Reduzir regras automaticamente quando as bárbaras acabam.',
+        '🧺 Coletor Hard: 👑 Priorizar recém-nobladas — explora primeiro as bárbaras em volta das aldeias conquistadas nas últimas 48h.',
+        '🌾 Farm Hard: quadro Saque de hoje — mostra se você lidera e quanto está na frente do 2º, ou quanto falta pro 1º.'
+      ]
+    },
+    {
       id: '2026-10-01-v96',
       data: '01/10/2026',
-      titulo: 'Novos: Noblador de Player e Pesquisar em Massa + melhorias',
+      titulo: 'Noblador de Player, Pesquisar em Massa e mais',
       itens: [
-        'Aldeias que você conquistar com o Farm Hard rodando agora entram na rotação sozinhas, sem recarregar a página nem reabrir o farm. Os filtros (CL mín., CP mín.) continuam valendo pra elas.',
-        'Novo botão opcional 📦 Saque mín. p/ ataque (card Modos, desligado por padrão): ligado, a aldeia só manda ataque se as tropas em casa carregam pelo menos o valor escolhido (padrão 8.000). Evita gastar tropa com ataque pequeno (ex.: 10 lanceiros).',
-        'Gerente de Conta lê os modelos de tropas em qualquer idioma (corrigido no servidor espanhol).',
-        'Noblar Automático: novo campo Tipo — Bônus primeiro (depois normais), Qualquer bárbara (a mais perto) ou Só bônus. Nova opção "Espaçamento conta minhas aldeias": desligada, ele pode noblar a bárbara do lado da sua aldeia.',
-        'Noblar Automático: janela em 2 colunas, bem mais baixa — não ocupa mais a tela inteira.',
-        'NOVO: 🔬 Pesquisar em Massa (seção Conta) — pesquisa as tropas no Ferreiro de todas as aldeias de uma vez, pela tela de Pesquisa (1.000 aldeias por página). Ferreiro simples ou de níveis. Botão Conferir antes de mandar.',
-        'NOVO: 🎯 Noblador de Player (seção Ataque e nobres) — digite os nicks, ele acha as aldeias desses jogadores e nobla com a mesma configuração do Noblar Automático. Confere o dono no mapa antes de mandar e nunca nobla você nem a sua tribo. Opcional: 🛡️ Apoio pós-noblagem (a aldeia sua mais perto com as tropas definidas manda apoio pra aldeia conquistada).',
-        'Ataque Mass: modelo Farmar Player agora é 5 exploradores + 10.000 CL + 10.000 CP, sem catapulta; Back Time Player também sem catapulta.'
+        '🎯 Noblador de Player (NOVO): digite os nicks e ele nobla as aldeias desses jogadores, com 🛡️ apoio pós-noblagem opcional. Nunca nobla você nem a sua tribo.',
+        '🔬 Pesquisar em Massa (NOVO): pesquisa no Ferreiro de todas as aldeias de uma vez — ferreiro simples ou de níveis.',
+        '🌾 Farm Hard: aldeias conquistadas entram sozinhas na rotação + botão 📦 Saque mín. por ataque.',
+        '👑 Noblar Automático: campo Tipo (bônus primeiro / qualquer / só bônus), opção de noblar colado nas suas aldeias e janela em 2 colunas.',
+        '⚔️ Ataque Mass: Farmar Player = 5 explor. + 10.000 CL + 10.000 CP, sem catapulta; Back Time Player sem catapulta.',
+        '🏗️ Gerente de Conta: lê os modelos de tropas em qualquer idioma (corrigido no servidor espanhol).'
       ]
     },
     {
@@ -797,7 +808,12 @@
     var maisRecente = ORK_NOVIDADES[0];
     var vista = false;
     try { vista = localStorage.getItem(orkChaveNovidade(maisRecente)) === '1'; } catch (e) {}
-    return vista ? null : maisRecente;
+    if (vista) { return null; }
+    // v97: quem pulou versões vê as últimas não vistas JUNTAS, num popup só (no máximo 3)
+    maisRecente.anteriores = ORK_NOVIDADES.slice(1, 3).filter(function (n) {
+      try { return localStorage.getItem(orkChaveNovidade(n)) !== '1'; } catch (e) { return false; }
+    });
+    return maisRecente;
   }
   // A chave inclui uma "impressão digital" do texto: se a novidade for editada
   // (item novo na mesma entrada), ela volta a aparecer — mesmo que o id seja o mesmo.
@@ -823,7 +839,7 @@
     estilo.textContent =
       '#ork-novidade-overlay{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:2147483000;' +
       'display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}' +
-      '#ork-novidade-card{width:340px;max-width:92vw;max-height:82vh;overflow:auto;' +
+      '#ork-novidade-card{width:440px;max-width:92vw;max-height:86vh;display:flex;flex-direction:column;overflow:hidden;' +
       'background:linear-gradient(165deg,rgba(26,26,26,.98),rgba(8,8,8,.99));' +
       'border:1px solid rgba(255,196,0,.18);border-radius:16px;' +
       'box-shadow:0 24px 60px rgba(0,0,0,.7);color:#ececec;' +
@@ -834,24 +850,35 @@
       '#ork-novidade-x{cursor:pointer;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.12);' +
       'display:flex;align-items:center;justify-content:center;font-size:15px;transition:background .15s}' +
       '#ork-novidade-x:hover{background:rgba(0,0,0,.28)}' +
-      '#ork-novidade-body{padding:15px 16px}' +
+      '#ork-novidade-body{padding:13px 16px 4px;overflow:auto;flex:1;min-height:0}' + '#ork-novidade-pe{padding:8px 16px 14px;border-top:1px solid rgba(255,255,255,.06)}' + '.ork-nv-sec+.ork-nv-sec{margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,196,0,.18)}' + '#ork-novidade-lista li b,.ork-nv-lista li b{color:#ffd84d}' +
       '#ork-novidade-data{font-size:10.5px;color:#8a8a8a;margin-bottom:3px}' +
       '#ork-novidade-titulo{font-size:14px;font-weight:800;color:#ffd84d;margin-bottom:11px}' +
-      '#ork-novidade-lista{list-style:none;margin:0;padding:0}' +
-      '#ork-novidade-lista li{position:relative;padding:0 0 9px 18px;font-size:12px;line-height:1.5;color:#ddd}' +
-      '#ork-novidade-lista li:before{content:"›";position:absolute;left:3px;top:-1px;color:#e8ac0a;font-weight:800}' +
-      '#ork-novidade-btn{width:100%;margin-top:6px;padding:10px;border:none;border-radius:10px;' +
+      '#ork-novidade-lista,.ork-nv-lista{list-style:none;margin:0;padding:0}' +
+      '#ork-novidade-lista li,.ork-nv-lista li{position:relative;padding:0 0 7px 18px;font-size:12px;line-height:1.45;color:#ddd}' +
+      '#ork-novidade-lista li:before,.ork-nv-lista li:before{content:"›";position:absolute;left:3px;top:-1px;color:#e8ac0a;font-weight:800}' +
+      '#ork-novidade-btn{width:100%;margin-top:0;padding:10px;border:none;border-radius:10px;' +
       'background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#1a1400;font-weight:800;font-size:12px;' +
       'cursor:pointer;letter-spacing:.4px;text-transform:uppercase}' +
       '#ork-novidade-btn:hover{filter:brightness(1.07)}';
     document.head.appendChild(estilo);
 
-    var itensHtml = '';
-    for (var i = 0; i < n.itens.length; i++) {
-      var li = document.createElement('li');
-      li.textContent = n.itens[i]; // textContent = seguro, nada de HTML injetado
-      itensHtml += li.outerHTML;
+    // cada item: o que vem antes do primeiro ":" (nome da ferramenta) fica em destaque — tudo via textContent (seguro)
+    function listaHtml(itens) {
+      var h = '';
+      for (var i = 0; i < itens.length; i++) {
+        var li = document.createElement('li'), t = String(itens[i]), k = t.indexOf(':');
+        if (k > 0 && k < 60) { var b = document.createElement('b'); b.textContent = t.slice(0, k + 1); li.appendChild(b); li.appendChild(document.createTextNode(t.slice(k + 1))); }
+        else { li.textContent = t; }
+        h += li.outerHTML;
+      }
+      return h;
     }
+    var itensHtml = listaHtml(n.itens);
+    var antHtml = (n.anteriores || []).map(function (a) {
+      var d = document.createElement('div'); d.textContent = a.titulo; var tt = d.innerHTML;
+      return '<div class="ork-nv-sec"><div style="font-size:10.5px;color:#8a8a8a;margin-bottom:2px">Também da atualização anterior • ' + a.data + '</div>' +
+        '<div style="font-size:12.5px;font-weight:800;color:#ffd84d;margin-bottom:7px">' + tt + '</div><ul class="ork-nv-lista">' + listaHtml(a.itens) + '</ul></div>';
+    }).join('');
 
     var overlay = document.createElement('div');
     overlay.id = 'ork-novidade-overlay';
@@ -859,11 +886,11 @@
       '<div id="ork-novidade-card">' +
         '<div id="ork-novidade-head"><span class="ork-nv-tag">✨ Nova atualização</span></div>' +
         '<div id="ork-novidade-body">' +
-          '<div id="ork-novidade-data">OROCHIKING • ' + n.data + '</div>' +
+          '<div id="ork-novidade-data">OROCHIKING • Versão ' + (window.__ORK_VERSAO__ || '') + ' • ' + n.data + '</div>' +
           '<div id="ork-novidade-titulo"></div>' +
-          '<ul id="ork-novidade-lista">' + itensHtml + '</ul>' +
-          '<button id="ork-novidade-btn">Entendi, fechar</button>' +
+          '<div class="ork-nv-sec"><ul id="ork-novidade-lista">' + itensHtml + '</ul></div>' + antHtml +
         '</div>' +
+        '<div id="ork-novidade-pe"><button id="ork-novidade-btn">Entendi, fechar</button></div>' +
       '</div>';
     document.body.appendChild(overlay);
     // titulo via textContent (evita qualquer HTML no que você digita)
@@ -1159,6 +1186,7 @@
         repetirAlvo: false,
         pularAssistente: true,
         pularEmVoo: true,
+        priorizarRecentes: false,
         repetir: false,
         intervalo: 30,
         aberto: true,
@@ -1365,6 +1393,7 @@
             <p><b>Permite múltiplos ataques no mesmo alvo:</b> desligado = cada bárbara recebe só 1 ataque por ciclo (espalha mais). Ligado = várias aldeias podem mandar na mesma.</p>
             <p><b>Pular alvos já no assistente:</b> ligado = só ataca bárbaras que <b>ainda não têm relatório</b> (as novas). É o modo "explorar". Desligado = ataca qualquer uma no raio.</p>
             <p><b>Pular alvos com ataque a caminho:</b> não manda em bárbara que já tem ataque seu indo.</p>
+            <p><b>👑 Priorizar recém-nobladas:</b> ligado = as bárbaras a até <b>10 campos</b> das aldeias que você conquistou nas <b>últimas 48h</b> vão <b>primeiro</b> (as mais perto da aldeia nova antes), pra aldeia nova entrar logo no Assistente com farm em volta. Pega as conquistas do Noblar Automático / Noblador de Player na hora e as outras pelo arquivo de conquistas do mundo (atualiza ~1x por hora). Use junto com <b>Pular alvos já no assistente</b> pra explorar só as que ainda não têm relatório.</p>
             <p><b>Pausa entre comandos:</b> tempo entre um envio e outro (ms). 250 = 4 por segundo.</p>
             <p><b>Repetir ciclos / Intervalo:</b> repete sozinho a cada X minutos (contados do fim do ciclo).</p>
             <p><b>Pra explorar sempre à frente:</b> Pular alvos já no assistente <b>ligado</b>, Raio 25-40, Máx. comandos/origem 20-30, Intervalo 5-15 min. O log mostra "Aldeias: X" — tem que bater com o total das suas aldeias.</p>
@@ -1384,6 +1413,7 @@
         <label class="chave"><input type="checkbox" id="repetirAlvo"> Permite múltiplos ataques no mesmo alvo</label>
         <label class="chave"><input type="checkbox" id="pularAssistente"> Pular alvos já no assistente</label>
         <label class="chave"><input type="checkbox" id="pularEmVoo"> Pular alvos com ataque a caminho</label>
+        <label class="chave" title="Ligado: as bárbaras a até 10 campos das aldeias que você conquistou nas últimas 48h vão PRIMEIRO (as mais perto da aldeia nova antes). Com Pular alvos já no assistente ligado, ele explora só as que ainda não têm relatório."><input type="checkbox" id="priorizarRecentes"> 👑 Priorizar recém-nobladas</label>
     
         <div class="secao-titulo">⏱️ Cronograma</div>
         <div class="linha"><label>Pausa entre comandos (ms)</label><input type="number" id="pausa" min="100" max="5000"></div>
@@ -1421,7 +1451,7 @@
       $('modelo').value = cfg.modelo === 'b' ? 'b' : 'a';
       $('modelo').addEventListener('change', () => { cfg.modelo = $('modelo').value; salvarConfig(); });
     
-      ['repetirAlvo', 'pularAssistente', 'pularEmVoo', 'repetir', 'detalhado'].forEach((k) => {
+      ['repetirAlvo', 'pularAssistente', 'pularEmVoo', 'priorizarRecentes', 'repetir', 'detalhado'].forEach((k) => {
         $(k).checked = !!cfg[k];
         $(k).addEventListener('change', () => {
           cfg[k] = $(k).checked;
@@ -1705,6 +1735,28 @@
         return donoAtual;
       }
     
+      // v97: suas aldeias conquistadas nas últimas 48h (Noblar/Noblador na hora + conquer.txt do mundo)
+      async function carregarRecentes(todasMinhas) {
+        const limite = Date.now() - 48 * 3600 * 1000;
+        const porId = new Map(todasMinhas.map((v) => [String(v.id), v]));
+        const ids = new Set();
+        try {
+          [typeof nobLer === 'function' ? nobLer() : null, typeof nplLer === 'function' ? nplLer() : null].forEach((c) => {
+            ((c && c.alvos) || []).forEach((a) => { if ((a.status === 'conquistada' || a.status === 'pronta') && (a.quando || 0) >= limite) { ids.add(String(a.id)); } });
+          });
+        } catch (e) {}
+        try {
+          const r = await fetch('/map/conquer.txt', { credentials: 'include' });
+          if (r.ok) {
+            const eu = String(game_data.player.id);
+            (await r.text()).split('\n').forEach((l) => { const p = l.split(','); if (p.length >= 3 && String(p[2]) === eu && (+p[1] || 0) * 1000 >= limite) { ids.add(String(+p[0])); } });
+          }
+        } catch (e) {}
+        const out = [];
+        ids.forEach((id) => { const v = porId.get(id); if (v) { out.push({ id: v.id, x: v.x, y: v.y, coord: v.coord }); } });
+        return out;
+      }
+
       const SETOR = 20;
       const SETORES_POR_PEDIDO = 8;
     
@@ -2074,14 +2126,21 @@
     
           const minhasIds = new Set(origens.map((o) => o.id));
           const minhasCoords = new Set(origens.map((o) => o.coord));
+          const todasMinhas = origens.slice();
           if (String(cfg.grupo) !== '0') {
             try {
-              (await carregarOrigens('0')).forEach((v) => { minhasIds.add(v.id); minhasCoords.add(v.coord); });
+              (await carregarOrigens('0')).forEach((v) => { minhasIds.add(v.id); minhasCoords.add(v.coord); todasMinhas.push(v); });
             } catch (e) { console.warn('[OROCHIKING] lista completa:', e); }
           }
     
+          let recentes = [];
+          if (cfg.priorizarRecentes) {
+            status('👑 Lendo aldeias recém-nobladas...');
+            recentes = await carregarRecentes(todasMinhas);
+            log('👑 Recém-nobladas (48h): ' + recentes.length + (recentes.length ? ' — ' + recentes.slice(0, 8).map((v) => v.coord).join(', ') + (recentes.length > 8 ? '...' : '') : ''));
+          }
           status('🗺️ Carregando barbaras...');
-          let resultado = await carregarBarbarasAoVivo(aptas, minhasIds, minhasCoords);
+          let resultado = await carregarBarbarasAoVivo(aptas.concat(recentes), minhasIds, minhasCoords);
           if (!resultado) {
             det('Map.php indisponível - usando dump.');
             resultado = await carregarBarbaras(minhasIds, minhasCoords);
@@ -2144,7 +2203,21 @@
               pares.push({ origem: o, alvo: a, d });
             });
           });
-          pares.sort((p, q) => p.d - q.d);
+          if (recentes.length) {
+            // bárbara a até 10 campos de uma recém-noblada vai primeiro (a mais perto da aldeia nova antes)
+            const dRec = new Map();
+            pares.forEach((p) => {
+              if (dRec.has(p.alvo.id)) return;
+              let m = Infinity;
+              recentes.forEach((v) => { const d = dist(v, p.alvo); if (d < m) m = d; });
+              dRec.set(p.alvo.id, m <= 10 ? m : Infinity);
+            });
+            pares.sort((p, q) => { const a = dRec.get(p.alvo.id), b = dRec.get(q.alvo.id); if (a !== b) return a - b; return p.d - q.d; });
+            const nPrio = [...new Set(pares.filter((p) => dRec.get(p.alvo.id) !== Infinity).map((p) => p.alvo.id))].length;
+            log('👑 ' + nPrio + ' bárbara(s) em volta das recém-nobladas vão primeiro');
+          } else {
+            pares.sort((p, q) => p.d - q.d);
+          }
     
           const usadosPorOrigem = new Map();
           const alvosUsados = new Set();
@@ -2972,7 +3045,7 @@
   function rodarFarmar() {
     // Farm Hard normal: se o Dormindo não está ativo, volta as configurações normais (caso tenham ficado as do Dormindo)
     try { if (localStorage.getItem('ork_retomar_dormindo') !== '1') { dormRestaurarNormal(); } } catch (e) {}
-    (function(){ var FH_VERSAO = 44; /* Trava de instancia unica COM versao. Antes era so um true/false: se uma copia    ANTIGA do painel ja tivesse rodado na pagina, a nova desistia e reabria o popup    velho, dando a impressao de que a atualizacao nao pegou. Agora, se a copia que    ja esta na pagina for mais antiga, ela e descartada e esta assume. */ if (window.__FarmHardAtivo && !document.getElementById("farmhard-popup")) { /* v83: marcado como aberto mas sem janela (abertura anterior falhou): abre de novo */ window.__FarmHardAtivo = false; } if (window.__FarmHardAtivo) { var versaoAtual = window.__FarmHardVersao || 0; if (versaoAtual >= FH_VERSAO) { if (typeof window.__FarmHardMostrar === "function") { window.__FarmHardMostrar(); } return; } console.warn("[OROCHIKING] Farm Hard v" + versaoAtual + " antigo detectado na pagina — substituindo pela v" + FH_VERSAO + "."); try { var velho = document.getElementById("farmhard-popup"); if (velho) { velho.remove(); } } catch (e) {} try { if (typeof window.__FarmHardParar === "function") { window.__FarmHardParar(); } } catch (e) {} } window.__FarmHardAtivo = true; window.__FarmHardVersao = FH_VERSAO; function _FarmarAS() { /* Script Escrito por ThiioM :) - Ajustado - Farm Hard 1.0 */ /* Lockr Script */ !function(t,e){t.Lockr=function(t,e){"use strict";return e.prefix="",e._getPrefixedKey=function(t,e){return e=e||{},e.noPrefix?t:this.prefix+t},e.set=function(t,e,r){var a=this._getPrefixedKey(t,r);try{localStorage.setItem(a,JSON.stringify({data:e}))}catch(t){}},e.get=function(t,e,r){var a,i=this._getPrefixedKey(t,r);try{a=JSON.parse(localStorage.getItem(i))}catch(t){a=localStorage[i]?{data:localStorage.getItem(i)}:null}return null===a?e:"object"==typeof a&&void 0!==a.data?a.data:e},e}(t,{})}(this); let fhNoCaptcha = false; let CLMinimo = 0; let UltimaCLLida = null; let AldeiasPuladasCL = 0; /* ===== RITMO HUMANO =====    Liga/desliga o farm sozinho em blocos com tempos aleatorios, pra nao rodar    24h no mesmo ritmo (o que grita 'robo' pro servidor). Reaproveita a variavel    Pausado que ja existe: quando 'descansando', o farm so espera, sem perder    estado — os ataques em andamento voltam normalmente. */ let RitmoHumanoOn = false; let rhTimeout = null; let rhDescansando = false; /* Faixas por velocidade (em segundos). Cada ciclo sorteia dentro da faixa, entao    nunca cai no valor exato. Velocidade alta = blocos mais curtos (mais arriscado). */ const rhFaixas = () => { if (VelocidadeFator >= 2) { return { rodaMin: 150, rodaMax: 300, paraMin: 90, paraMax: 180 }; } if (VelocidadeFator >= 1.25) { return { rodaMin: 210, rodaMax: 360, paraMin: 60, paraMax: 150 }; } return { rodaMin: 300, rodaMax: 540, paraMin: 60, paraMax: 240 }; }; const rhSorteia = (min, max) => Math.round((min + Math.random() * (max - min)) * 1000); const rhAgendaProximo = () => { if (!RitmoHumanoOn || !Rodando) { return; } const f = rhFaixas(); if (!rhDescansando) { /* estava rodando -> agora descansa */ rhDescansando = true; Pausado = true; /* avisa que o farm ESTA EM PAUSA — janela livre pra cunhagem */ try { window.__ORK_FARM_EM_PAUSA__ = true; } catch (e) {} const ms = rhSorteia(f.paraMin, f.paraMax); AtualizarStatus('Ritmo humano: descansando ' + Math.round(ms/1000) + 's'); console.log('[OROCHIKING] Ritmo humano: pausa de ' + Math.round(ms/1000) + 's'); rhTimeout = setTimeout(rhAgendaProximo, ms); } else { /* estava descansando -> volta a rodar */ rhDescansando = false; Pausado = false; /* avisa que o farm VOLTOU A RODAR — cunhagem deve segurar */ try { window.__ORK_FARM_EM_PAUSA__ = false; } catch (e) {} const ms = rhSorteia(f.rodaMin, f.rodaMax); AtualizarStatus('Ritmo humano: farmando ' + Math.round(ms/1000) + 's'); console.log('[OROCHIKING] Ritmo humano: rodando ' + Math.round(ms/1000) + 's'); rhTimeout = setTimeout(rhAgendaProximo, ms); } }; const rhLigar = () => { if (RitmoHumanoOn) { return; } RitmoHumanoOn = true; rhDescansando = false; Pausado = false; try { window.__ORK_FARM_EM_PAUSA__ = false; } catch (e) {} const f = rhFaixas(); const ms = rhSorteia(f.rodaMin, f.rodaMax); console.log('[OROCHIKING] Ritmo humano LIGADO — 1o bloco de ' + Math.round(ms/1000) + 's'); if (rhTimeout) { clearTimeout(rhTimeout); } rhTimeout = setTimeout(rhAgendaProximo, ms); }; const rhDesligar = () => { RitmoHumanoOn = false; rhDescansando = false; /* farm nao esta mais gerenciando pausas — nao bloqueia a cunhagem */ try { window.__ORK_FARM_EM_PAUSA__ = true; } catch (e) {} if (rhTimeout) { clearTimeout(rhTimeout); rhTimeout = null; } /* so tira a pausa se foi o ritmo humano que pausou (nao mexe numa pausa manual) */ if (Rodando) { Pausado = false; } console.log('[OROCHIKING] Ritmo humano desligado.'); }; const LerPorVisita = () => { let n = NaN; const el = document.getElementById('fh-porvisita'); if (el) { n = parseInt(el.value, 10); } else { try { n = parseInt(localStorage.getItem('fh_por_visita') || '1', 10); } catch (e) {} } return Math.max(1, Math.min(10, n || 1)); }; let CPMinimo = 0; let UltimaCPLida = null; const FH_MIN_RECURSOS = 150000; let RecursoMinimo = 0; const LerRecursoMinimo = () => { const el = document.getElementById('fh-recmin'); RecursoMinimo = el ? (parseInt(el.value, 10) || 0) : 0; return RecursoMinimo; }; /* v96: SAQUE MÍNIMO POR ATAQUE (opcional, botão no card Modos). Ligado: a aldeia só farma se as tropas em casa carregam pelo menos X de recurso (padrão 8.000) e a bárbara também precisa ter pelo menos X. Evita mandar 10 lanceiros quando o CL mínimo não foi configurado. Desligado = comportamento antigo. */ const FH_CARGA = { spear: 25, sword: 15, axe: 10, archer: 10, light: 80, marcher: 50, heavy: 50, knight: 100 }; let AldeiasPuladasSaque = 0; const SaqueMinAtivo = () => { let on = false, n = 8000; try { on = (localStorage.getItem('fh_saque_min_on') === '1'); } catch (e) {} const el = document.getElementById('fh-saquemin'); if (el && el.value !== '') { n = parseInt(el.value, 10); } else { try { const v = localStorage.getItem('fh_saque_min'); if (v !== null && v !== '') { n = parseInt(v, 10); } } catch (e) {} } n = isNaN(n) ? 8000 : Math.max(0, n); return (on && n > 0) ? n : 0; }; const LerCargaDisponivel = (data) => { try { const doc = new DOMParser().parseFromString(String(data), 'text/html'); const tabela = doc.querySelector('#units_home'); if (!tabela) { return -1; } const linhas = Array.prototype.slice.call(tabela.querySelectorAll('tr')); let mapa = null; for (let l = 0; l < linhas.length && !mapa; l++) { const cels = Array.prototype.slice.call(linhas[l].children); const m = {}; let achou = 0; cels.forEach((c, i) => { const img = c.querySelector('img'); const src = img ? (img.getAttribute('src') || '') : ''; const u = src.match(/unit_([a-z]+)/); if (u) { m[i] = u[1]; achou++; } }); if (achou >= 2) { mapa = m; } } if (!mapa) { return -1; } for (let l = 0; l < linhas.length; l++) { const cels = Array.prototype.slice.call(linhas[l].children); let total = 0, lidas = 0; Object.keys(mapa).forEach((i) => { const c = cels[i]; if (!c || c.tagName === 'TH') { return; } const bruto = String(c.textContent).replace(/[^0-9]/g, ''); if (bruto === '') { return; } lidas++; total += parseInt(bruto, 10) * (FH_CARGA[mapa[i]] || 0); }); if (lidas >= 2) { return total; } } } catch (e) {} return -1; }; const MinimoEfetivo = () => { const base = RecursoMinimo > 0 ? RecursoMinimo : FH_MIN_RECURSOS; return Math.max(base, SaqueMinAtivo()); }; const AtualizarStatusRec = () => { const el = document.getElementById('fh-recmin-status'); if (!el) { return; } if (RecursoMinimo <= 0) { el.style.color = '#8a8a8a'; el.innerText = '150k'; el.title = 'usando o mínimo padrão de 150 mil'; } else { el.style.color = '#7ed17e'; el.innerText = (RecursoMinimo / 1000) + 'k'; el.title = 'só bárbaras com ' + RecursoMinimo.toLocaleString('pt-BR') + '+ de recurso total'; } }; let RelatoriosUsados = new Set(); let AlvosPuladosRepetidos = 0; const MarcarRelatorioUsado = (rid) => { RelatoriosUsados.add(rid); /* relatorio antigo nunca volta (o novo tem outro numero), entao da pra esquecer os mais velhos */ if (RelatoriosUsados.size > 40000) { const manter = Array.from(RelatoriosUsados).slice(-20000); RelatoriosUsados = new Set(manter); } }; const LiberarRelatorio = (rid) => { RelatoriosUsados.delete(rid); }; let MotivosFalha = {}; let UltimoResumoFalha = 0; const RegistrarMotivoFalha = (motivo) => { let m = String(Array.isArray(motivo) ? motivo[0] : motivo).slice(0, 90); MotivosFalha[m] = (MotivosFalha[m] || 0) + 1; /* a cada 30s no maximo, mostra um resumo agrupado no Console (sem inundar de mensagens) */ if (Date.now() - UltimoResumoFalha > 30000) { UltimoResumoFalha = Date.now(); const lista = Object.keys(MotivosFalha).sort((a, b) => MotivosFalha[b] - MotivosFalha[a]).map((k) => MotivosFalha[k] + 'x  ' + k); console.log('[OROCHIKING] Farm Hard - motivos das falhas ate agora:\n  ' + lista.join('\n  ') + '\n  (alvos pulados por ja terem ataque a caminho: ' + AlvosPuladosRepetidos + ')'); } };
+    (function(){ var FH_VERSAO = 45; /* Trava de instancia unica COM versao. Antes era so um true/false: se uma copia    ANTIGA do painel ja tivesse rodado na pagina, a nova desistia e reabria o popup    velho, dando a impressao de que a atualizacao nao pegou. Agora, se a copia que    ja esta na pagina for mais antiga, ela e descartada e esta assume. */ if (window.__FarmHardAtivo && !document.getElementById("farmhard-popup")) { /* v83: marcado como aberto mas sem janela (abertura anterior falhou): abre de novo */ window.__FarmHardAtivo = false; } if (window.__FarmHardAtivo) { var versaoAtual = window.__FarmHardVersao || 0; if (versaoAtual >= FH_VERSAO) { if (typeof window.__FarmHardMostrar === "function") { window.__FarmHardMostrar(); } return; } console.warn("[OROCHIKING] Farm Hard v" + versaoAtual + " antigo detectado na pagina — substituindo pela v" + FH_VERSAO + "."); try { var velho = document.getElementById("farmhard-popup"); if (velho) { velho.remove(); } } catch (e) {} try { if (typeof window.__FarmHardParar === "function") { window.__FarmHardParar(); } } catch (e) {} } window.__FarmHardAtivo = true; window.__FarmHardVersao = FH_VERSAO; function _FarmarAS() { /* Script Escrito por ThiioM :) - Ajustado - Farm Hard 1.0 */ /* Lockr Script */ !function(t,e){t.Lockr=function(t,e){"use strict";return e.prefix="",e._getPrefixedKey=function(t,e){return e=e||{},e.noPrefix?t:this.prefix+t},e.set=function(t,e,r){var a=this._getPrefixedKey(t,r);try{localStorage.setItem(a,JSON.stringify({data:e}))}catch(t){}},e.get=function(t,e,r){var a,i=this._getPrefixedKey(t,r);try{a=JSON.parse(localStorage.getItem(i))}catch(t){a=localStorage[i]?{data:localStorage.getItem(i)}:null}return null===a?e:"object"==typeof a&&void 0!==a.data?a.data:e},e}(t,{})}(this); let fhNoCaptcha = false; let CLMinimo = 0; let UltimaCLLida = null; let AldeiasPuladasCL = 0; /* ===== RITMO HUMANO =====    Liga/desliga o farm sozinho em blocos com tempos aleatorios, pra nao rodar    24h no mesmo ritmo (o que grita 'robo' pro servidor). Reaproveita a variavel    Pausado que ja existe: quando 'descansando', o farm so espera, sem perder    estado — os ataques em andamento voltam normalmente. */ let RitmoHumanoOn = false; let rhTimeout = null; let rhDescansando = false; /* Faixas por velocidade (em segundos). Cada ciclo sorteia dentro da faixa, entao    nunca cai no valor exato. Velocidade alta = blocos mais curtos (mais arriscado). */ const rhFaixas = () => { if (VelocidadeFator >= 2) { return { rodaMin: 150, rodaMax: 300, paraMin: 90, paraMax: 180 }; } if (VelocidadeFator >= 1.25) { return { rodaMin: 210, rodaMax: 360, paraMin: 60, paraMax: 150 }; } return { rodaMin: 300, rodaMax: 540, paraMin: 60, paraMax: 240 }; }; const rhSorteia = (min, max) => Math.round((min + Math.random() * (max - min)) * 1000); const rhAgendaProximo = () => { if (!RitmoHumanoOn || !Rodando) { return; } const f = rhFaixas(); if (!rhDescansando) { /* estava rodando -> agora descansa */ rhDescansando = true; Pausado = true; /* avisa que o farm ESTA EM PAUSA — janela livre pra cunhagem */ try { window.__ORK_FARM_EM_PAUSA__ = true; } catch (e) {} const ms = rhSorteia(f.paraMin, f.paraMax); AtualizarStatus('Ritmo humano: descansando ' + Math.round(ms/1000) + 's'); console.log('[OROCHIKING] Ritmo humano: pausa de ' + Math.round(ms/1000) + 's'); rhTimeout = setTimeout(rhAgendaProximo, ms); } else { /* estava descansando -> volta a rodar */ rhDescansando = false; Pausado = false; /* avisa que o farm VOLTOU A RODAR — cunhagem deve segurar */ try { window.__ORK_FARM_EM_PAUSA__ = false; } catch (e) {} const ms = rhSorteia(f.rodaMin, f.rodaMax); AtualizarStatus('Ritmo humano: farmando ' + Math.round(ms/1000) + 's'); console.log('[OROCHIKING] Ritmo humano: rodando ' + Math.round(ms/1000) + 's'); rhTimeout = setTimeout(rhAgendaProximo, ms); } }; const rhLigar = () => { if (RitmoHumanoOn) { return; } RitmoHumanoOn = true; rhDescansando = false; Pausado = false; try { window.__ORK_FARM_EM_PAUSA__ = false; } catch (e) {} const f = rhFaixas(); const ms = rhSorteia(f.rodaMin, f.rodaMax); console.log('[OROCHIKING] Ritmo humano LIGADO — 1o bloco de ' + Math.round(ms/1000) + 's'); if (rhTimeout) { clearTimeout(rhTimeout); } rhTimeout = setTimeout(rhAgendaProximo, ms); }; const rhDesligar = () => { RitmoHumanoOn = false; rhDescansando = false; /* farm nao esta mais gerenciando pausas — nao bloqueia a cunhagem */ try { window.__ORK_FARM_EM_PAUSA__ = true; } catch (e) {} if (rhTimeout) { clearTimeout(rhTimeout); rhTimeout = null; } /* so tira a pausa se foi o ritmo humano que pausou (nao mexe numa pausa manual) */ if (Rodando) { Pausado = false; } console.log('[OROCHIKING] Ritmo humano desligado.'); }; const LerPorVisita = () => { let n = NaN; const el = document.getElementById('fh-porvisita'); if (el) { n = parseInt(el.value, 10); } else { try { n = parseInt(localStorage.getItem('fh_por_visita') || '1', 10); } catch (e) {} } return Math.max(1, Math.min(10, n || 1)); }; let CPMinimo = 0; let UltimaCPLida = null; const FH_MIN_RECURSOS = 150000; let RecursoMinimo = 0; const LerRecursoMinimo = () => { const el = document.getElementById('fh-recmin'); RecursoMinimo = el ? (parseInt(el.value, 10) || 0) : 0; return RecursoMinimo; }; /* v96: SAQUE MÍNIMO POR ATAQUE (opcional, botão no card Modos). Ligado: a aldeia só farma se as tropas em casa carregam pelo menos X de recurso (padrão 8.000) e a bárbara também precisa ter pelo menos X. Evita mandar 10 lanceiros quando o CL mínimo não foi configurado. Desligado = comportamento antigo. */ const FH_CARGA = { spear: 25, sword: 15, axe: 10, archer: 10, light: 80, marcher: 50, heavy: 50, knight: 100 }; let AldeiasPuladasSaque = 0; const SaqueMinAtivo = () => { let on = false, n = 8000; try { on = (localStorage.getItem('fh_saque_min_on') === '1'); } catch (e) {} const el = document.getElementById('fh-saquemin'); if (el && el.value !== '') { n = parseInt(el.value, 10); } else { try { const v = localStorage.getItem('fh_saque_min'); if (v !== null && v !== '') { n = parseInt(v, 10); } } catch (e) {} } n = isNaN(n) ? 8000 : Math.max(0, n); return (on && n > 0) ? n : 0; }; const LerCargaDisponivel = (data) => { try { const doc = new DOMParser().parseFromString(String(data), 'text/html'); const tabela = doc.querySelector('#units_home'); if (!tabela) { return -1; } const linhas = Array.prototype.slice.call(tabela.querySelectorAll('tr')); let mapa = null; for (let l = 0; l < linhas.length && !mapa; l++) { const cels = Array.prototype.slice.call(linhas[l].children); const m = {}; let achou = 0; cels.forEach((c, i) => { const img = c.querySelector('img'); const src = img ? (img.getAttribute('src') || '') : ''; const u = src.match(/unit_([a-z]+)/); if (u) { m[i] = u[1]; achou++; } }); if (achou >= 2) { mapa = m; } } if (!mapa) { return -1; } for (let l = 0; l < linhas.length; l++) { const cels = Array.prototype.slice.call(linhas[l].children); let total = 0, lidas = 0; Object.keys(mapa).forEach((i) => { const c = cels[i]; if (!c || c.tagName === 'TH') { return; } const bruto = String(c.textContent).replace(/[^0-9]/g, ''); if (bruto === '') { return; } lidas++; total += parseInt(bruto, 10) * (FH_CARGA[mapa[i]] || 0); }); if (lidas >= 2) { return total; } } } catch (e) {} return -1; }; const MinimoEfetivo = () => { const base = RecursoMinimo > 0 ? RecursoMinimo : FH_MIN_RECURSOS; return Math.max(base, SaqueMinAtivo()); }; const AtualizarStatusRec = () => { const el = document.getElementById('fh-recmin-status'); if (!el) { return; } if (RecursoMinimo <= 0) { el.style.color = '#8a8a8a'; el.innerText = '150k'; el.title = 'usando o mínimo padrão de 150 mil'; } else { el.style.color = '#7ed17e'; el.innerText = (RecursoMinimo / 1000) + 'k'; el.title = 'só bárbaras com ' + RecursoMinimo.toLocaleString('pt-BR') + '+ de recurso total'; } }; let RelatoriosUsados = new Set(); let AlvosPuladosRepetidos = 0; const MarcarRelatorioUsado = (rid) => { RelatoriosUsados.add(rid); /* relatorio antigo nunca volta (o novo tem outro numero), entao da pra esquecer os mais velhos */ if (RelatoriosUsados.size > 40000) { const manter = Array.from(RelatoriosUsados).slice(-20000); RelatoriosUsados = new Set(manter); } }; const LiberarRelatorio = (rid) => { RelatoriosUsados.delete(rid); }; let MotivosFalha = {}; let UltimoResumoFalha = 0; const RegistrarMotivoFalha = (motivo) => { let m = String(Array.isArray(motivo) ? motivo[0] : motivo).slice(0, 90); MotivosFalha[m] = (MotivosFalha[m] || 0) + 1; /* a cada 30s no maximo, mostra um resumo agrupado no Console (sem inundar de mensagens) */ if (Date.now() - UltimoResumoFalha > 30000) { UltimoResumoFalha = Date.now(); const lista = Object.keys(MotivosFalha).sort((a, b) => MotivosFalha[b] - MotivosFalha[a]).map((k) => MotivosFalha[k] + 'x  ' + k); console.log('[OROCHIKING] Farm Hard - motivos das falhas ate agora:\n  ' + lista.join('\n  ') + '\n  (alvos pulados por ja terem ataque a caminho: ' + AlvosPuladosRepetidos + ')'); } };
     const LerCLMinimo = () => { const el = document.getElementById('fh-clmin'); CLMinimo = el ? (parseInt(el.value, 10) || 0) : 0; return CLMinimo; }; const LerCPMinimo = () => { const el = document.getElementById('fh-cpmin'); CPMinimo = el ? (parseInt(el.value, 10) || 0) : 0; return CPMinimo; };
     const AtualizarStatusCP = () => { const el = document.getElementById('fh-cpmin-status'); if (!el) { return; } if (CPMinimo <= 0) { el.style.color = '#8a8a8a'; el.innerText = 'off'; el.title = ''; return; } if (UltimaCPLida === null) { el.style.color = '#ffb347'; el.innerText = '...'; el.title = 'lendo cavalaria pesada'; return; } if (UltimaCPLida === -1) { el.style.color = '#ff8a6b'; el.innerText = 'erro'; el.title = 'nao consegui ler a CP do seu mundo'; return; } el.style.color = '#7ed17e'; el.innerText = UltimaCPLida + ''; el.title = 'CP lida: ' + UltimaCPLida; }; const AtualizarStatusCL = () => { const el = document.getElementById('fh-clmin-status'); if (!el) { return; } if (CLMinimo <= 0) { el.style.color = '#8a8a8a'; el.innerText = 'off'; el.title = ''; return; } if (UltimaCLLida === null) { el.style.color = '#ffb347'; el.innerText = '...'; el.title = 'lendo cavalaria'; return; } if (UltimaCLLida === -1) { el.style.color = '#ff8a6b'; el.innerText = 'erro'; el.title = 'nao consegui ler a CL do seu mundo'; return; } el.style.color = '#7ed17e'; el.innerText = UltimaCLLida + ''; el.title = 'CL lida: ' + UltimaCLLida + ' | aldeias puladas: ' + AldeiasPuladasCL; };
     /* Le a cavalaria leve disponivel NA ALDEIA a partir da tabela
@@ -3020,7 +3093,7 @@
       /unit_light\./i, /cavalaria leve|light cavalry|leichte kavallerie/i);
     const LerCavalariaPesadaDisponivel = (data) => LerUnidadeDisponivel(data,
       /unit_heavy\./i, /cavalaria pesada|heavy cavalry|schwere kavallerie|paladino a cavalo/i);
-    let TemArqueiro = $.inArray('archer', game_data.units) > -1; let TemPaladino = $.inArray('knight', game_data.units) > -1; let Ids = []; let Grupos = []; let Ponteiros = []; let GrupoAtual = 0; let NumGrupos = 1; let Rodando = false; let Pausado = false; let Iniciado = false; let AtaquesEnviados = 0, AtaquesFalhados = 0, AtaquesPendentes = 0; let fhRankIntervalo = null; let fhTentativasIds = 0; let VelocidadeFator = (window.__ORK_FREIO__ ? 1.25 : 1); const NUM_FILAS = 5; const apenasnumeros = string => parseInt(string.replace(/[^0-9]/g, '')); const aleatorio = (inferior, superior) => Math.round(parseInt(inferior) + (Math.random() * (superior - inferior))); /* Quantas filas ficam ativas de acordo com a velocidade - quanto mais devagar, menos filas simultaneas (menos parece robo) */ const FilasParaVelocidade = (fator) => { if (fator <= 0.5) { return 1; } if (fator <= 1) { return 2; } if (fator <= 1.25) { return 3; } if (fator <= 1.5) { return 4; } return 5; }; const MontarGrupos = (n) => { Grupos = []; Ponteiros = []; let total = Ids.length; const elTot = document.getElementById("fh-total-aldeias"); if (elTot) { elTot.innerText = "(" + total + " aldeias)"; } if (total === 0 || n < 1) { return; } let base = Math.floor(total / n); let resto = total % n; let idx = 0; for (let g = 0; g < n; g++) { let tamanho = base + (g < resto ? 1 : 0); if (tamanho > 0) { Grupos.push(Ids.slice(idx, idx + tamanho)); Ponteiros.push(0); } idx += tamanho; } GrupoAtual = 0; }; const ProximaAldeia = () => { if (Grupos.length === 0) { return null; } let tentativas = 0; while (tentativas < Grupos.length) { let grupo = Grupos[GrupoAtual]; if (!grupo || grupo.length === 0) { GrupoAtual = (GrupoAtual + 1) % Grupos.length; tentativas++; continue; } let id_ = grupo[Ponteiros[GrupoAtual]]; Ponteiros[GrupoAtual]++; if (Ponteiros[GrupoAtual] >= grupo.length) { Ponteiros[GrupoAtual] = 0; } GrupoAtual = (GrupoAtual + 1) % Grupos.length; return id_; } return null; }; /* ===== POPUP Farm Hard 1.0 ===== */ const fhEstilo = document.createElement("style"); fhEstilo.innerHTML = `#farmhard-popup{position:fixed;top:70px;right:20px;width:600px;max-width:calc(100vw - 20px);background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;box-shadow:0 14px 34px rgba(0,0,0,0.75),0 0 0 1px rgba(255,196,0,0.12);font-family:"Segoe UI",Arial,Helvetica,sans-serif;color:#eee;z-index:999999;overflow:hidden}#farmhard-popup.fh-minimizado{width:360px}#farmhard-popup.fh-minimizado #farmhard-body{display:none}#farmhard-header{background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:7px 10px 7px 12px;display:flex;align-items:center;gap:10px;cursor:move}.fh-hl{white-space:nowrap}.fh-hr{display:flex;gap:2px}#fh-title-main{font-size:13px;font-weight:800;letter-spacing:1.1px}#fh-title-version{font-size:8.5px;background:#141200;color:#FFC400;padding:1px 6px;border-radius:9px;margin-left:6px;font-weight:700;vertical-align:middle}#farmhard-status{flex:1;min-width:0;text-align:center;font-size:10px;font-weight:700;color:#3d3000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#farmhard-header span.fh-close{cursor:pointer;font-weight:bold;font-size:15px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:0.15s;color:#141200}#farmhard-header span.fh-close:hover{background:rgba(0,0,0,0.18)}#farmhard-body{padding:9px;max-height:calc(100vh - 110px);overflow-y:auto}#farmhard-rank{display:flex;align-items:center;gap:9px;background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:6px 10px;margin-bottom:8px}#farmhard-rank-label{font-size:9.5px;color:#FFC400;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;white-space:nowrap}#farmhard-rank-track{flex:1;height:9px;background:#0a0a0a;border:1px solid #2c2c2c;border-radius:6px;overflow:hidden}#farmhard-rank-fill{height:100%;width:0%;background:linear-gradient(90deg,#FFB800,#FFEB99);box-shadow:0 0 8px rgba(255,196,0,0.55);transition:width 0.5s ease}#farmhard-rank-texto{font-size:9.5px;color:#aaa;white-space:nowrap}#fh-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.fh-col{display:flex;flex-direction:column;gap:8px}.fh-card{background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:7px 9px}.fh-card-tit{font-size:9.5px;color:#888;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;cursor:default}#farmhard-speed-opcoes{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}.fh-vel{background:#1c1c1c;border:1px solid #333;border-radius:7px;padding:4px 1px;color:#ddd;font-weight:800;font-size:10.5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:1px;transition:0.15s;font-family:inherit}.fh-vel:hover{border-color:#665400}.fh-vel.ativa{border-color:#FFC400;background:#241f08;color:#fff}.fh-vel-tag{font-size:7.5px;font-weight:700;white-space:nowrap}#fh-rot{display:grid;grid-template-columns:1fr 1fr;gap:4px}.fh-opcao{position:relative;display:flex;align-items:center;gap:6px;background:#1c1c1c;border:1px solid #2c2c2c;border-radius:7px;padding:4px 7px;font-size:10.5px;color:#ccc;cursor:pointer;transition:0.15s}.fh-opcao:hover{border-color:#665400;background:#1c1a10}.fh-opcao.ativa{border-color:#FFC400;background:#241f08;color:#fff}.fh-badge{width:16px;height:16px;flex-shrink:0;border-radius:50%;background:#2c2c2c;color:#999;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center}.fh-opcao.ativa .fh-badge{background:#FFC400;color:#141200}.fh-opcao input{position:absolute;opacity:0;width:0;height:0}.fh-filtro-linha{display:flex;align-items:center;gap:6px;margin-bottom:4px}.fh-filtro-linha:last-child{margin-bottom:0}.fh-filtro-label{font-size:10.5px;color:#bbb;flex:1;white-space:nowrap;cursor:help}.fh-filtro-num{width:70px;background:#111;border:1px solid rgba(255,255,255,.12);color:#ececec;border-radius:6px;padding:2px 6px;font-size:11px}.fh-filtro-num:focus{outline:none;border-color:#e8ac0a}.fh-filtro-status{font-size:9.5px;color:#8a8a8a;min-width:36px;text-align:right}.fh-ritmo-btn{border:1px solid rgba(255,255,255,.14);background:#1c1c1c;color:#8a8a8a;border-radius:14px;padding:2px 12px;font-size:9.5px;font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:.4px;transition:all .15s;min-width:48px}.fh-ritmo-btn:hover{filter:brightness(1.15)}.fh-ritmo-btn.on{background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#1a1400;border-color:transparent}#fh-rodape{display:flex;align-items:center;gap:8px;margin-top:8px}#farmhard-contador{display:flex;align-items:center;gap:4px;background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:4px 8px;flex:1}.fh-cont-item{display:flex;align-items:baseline;justify-content:center;gap:5px;flex:1}.fh-cont-item span{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.4px}#farmhard-contador b{color:#FFC400;font-size:15px}#farmhard-botoes{display:flex;gap:6px}#farmhard-botoes button{padding:8px 16px;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:11px;transition:0.15s;font-family:inherit}#fh-iniciar{background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;box-shadow:0 3px 10px rgba(255,184,0,0.35)}#fh-iniciar:hover{filter:brightness(1.08)}#fh-pausar{background:#232323;color:#FFC400;border:1px solid #3a3a3a !important}#fh-pausar:hover{background:#2b2b2b}#fh-fechar{background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c !important}#fh-fechar:hover{background:#341313}@media (max-width:640px){#fh-grid{grid-template-columns:1fr}#fh-rodape{flex-direction:column;align-items:stretch}#farmhard-botoes button{flex:1}#farmhard-rank-texto{display:none}}`; document.head.appendChild(fhEstilo); const fhHtml = `<div id="farmhard-popup"><div id="farmhard-header"><div class="fh-hl"><span id="fh-title-main">FARM HARD</span><span id="fh-title-version">4.4</span></div><div id="farmhard-status">Parado</div><div class="fh-hr"><span class="fh-close" id="fh-min" title="Minimizar">&ndash;</span><span class="fh-close" id="fh-x" title="Fechar">&times;</span></div></div><div id="farmhard-body"><div id="farmhard-rank"><div id="farmhard-rank-label">Top 1 Mundial</div><div id="farmhard-rank-track"><div id="farmhard-rank-fill"></div></div><div id="farmhard-rank-texto">Carregando...</div></div><div id="fh-grid"><div class="fh-col"><div class="fh-card"><div class="fh-card-tit">Velocidade de envio</div><div id="farmhard-speed-opcoes"><button class="fh-vel" data-fator="0.5">0.5x<span class="fh-vel-tag" style="color:#7ec8ff">Durma em Paz</span></button><button class="fh-vel ativa" data-fator="1">1x<span class="fh-vel-tag" style="color:#8a8a8a">Normal</span></button><button class="fh-vel" data-fator="1.25">1.25x<span class="fh-vel-tag" style="color:#7ed17e">Baixo risco</span></button><button class="fh-vel" data-fator="1.5">1.5x<span class="fh-vel-tag" style="color:#ffb347">Risco moderado</span></button><button class="fh-vel" data-fator="2">2x<span class="fh-vel-tag" style="color:#ff5f5f">Arriscado</span></button><button class="fh-vel" data-fator="2.5">2.5x<span class="fh-vel-tag" style="color:#ff2d2d">Muito arriscado</span></button></div></div><div class="fh-card"><div class="fh-card-tit">Rotação <span id="fh-total-aldeias" style="color:#FFC400;font-weight:800">(carregando aldeias...)</span></div><div id="fh-rot"><label class="fh-opcao ativa" title="Fila única (ex: 1 a 100)"><span class="fh-badge">1</span><span>Normal</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="1" checked></label><label class="fh-opcao" title="ex: 1-50 / 51-100"><span class="fh-badge">2</span><span>2 grupos</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="2"></label><label class="fh-opcao" title="ex: 1-30 / 31-60 / 61-100"><span class="fh-badge">3</span><span>3 grupos</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="3"></label><label class="fh-opcao" title="ex: 1-25 / 26-50 / 51-75 / 76-100"><span class="fh-badge">4</span><span>4 grupos</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="4"></label></div></div></div><div class="fh-col"><div class="fh-card" id="fh-clmin-box"><div class="fh-card-tit" title="CL/CP: farma se a aldeia tiver a leve OU a pesada mínima. Rec: só bárbara com recurso total acima do valor. 0 = off.">Filtros <span style="color:#555">(0 = off)</span></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Cavalaria leve mínima na aldeia pra ela farmar (vale OU com a CP)">CL mín. por aldeia</span><input type="number" id="fh-clmin" class="fh-filtro-num" min="0" step="10" value="0"><span id="fh-clmin-status" class="fh-filtro-status">off</span></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Cavalaria pesada mínima na aldeia pra ela farmar (vale OU com a CL)">CP mín. por aldeia</span><input type="number" id="fh-cpmin" class="fh-filtro-num" min="0" step="10" value="0"><span id="fh-cpmin-status" class="fh-filtro-status">off</span></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Só ataca bárbara com pelo menos esse recurso total. 0 = padrão de 150k">Rec. mín. da bárbara</span><input type="number" id="fh-recmin" class="fh-filtro-num" min="0" step="10000" value="0"><span id="fh-recmin-status" class="fh-filtro-status">150k</span></div></div><div class="fh-card"><div class="fh-card-tit">Modos</div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Farma em blocos com pausas curtas e aleatórias — reduz captcha.">🕒 Ritmo humano</span><button type="button" id="fh-ritmo-btn" class="fh-ritmo-btn">off</button></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Desligado (padrão): ataca a bárbara mais PERTO que passa nos filtros (distância do Assistente) — se a perto não tem recurso suficiente, vai pra próxima. Ligado: ataca a mais RICA, mesmo que esteja longe.">💰 Priorizar a mais rica</span><button type="button" id="fh-modon-btn" class="fh-ritmo-btn">off</button></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Quantos ataques cada aldeia manda por visita. 1 = como sempre foi (1 leitura da página + 1 ataque). 2 a 10 = lê a página uma vez e manda vários em sequência (as mais perto primeiro), parando se a tropa acabar. Mesmo ritmo de pedidos, mais saques por pedido — pra testar se reduz o captcha.">⚡ Ataques por visita</span><input type="number" id="fh-porvisita" class="fh-filtro-num" min="1" max="10" step="1" value="1"></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Desligado (padrão): farma como sempre. Ligado: a aldeia só manda ataque se as tropas em casa carregam pelo menos esse valor (padrão 8.000) e a bárbara tem pelo menos isso de recurso. Evita gastar tropa com ataque pequeno (ex.: 10 lanceiros) quando o CL mínimo não foi configurado.">📦 Saque mín. p/ ataque</span><input type="number" id="fh-saquemin" class="fh-filtro-num" min="0" step="1000" value="8000"><button type="button" id="fh-saque-btn" class="fh-ritmo-btn">off</button></div></div></div></div><div id="fh-rodape"><div id="farmhard-contador"><div class="fh-cont-item"><span>Enviados</span><b id="farmhard-contador-valor">0</b></div><div class="fh-cont-item"><span>Falhados</span><b id="farmhard-contador-falhas" style="color:#ff6b6b">0</b></div><div class="fh-cont-item"><span>Pendentes</span><b id="farmhard-contador-pend" style="color:#7ec8ff">0</b></div></div><div id="farmhard-botoes"><button id="fh-iniciar">Iniciar</button><button id="fh-pausar">Pausar</button><button id="fh-fechar">Fechar</button></div></div></div></div>`; const fhWrap = document.createElement("div"); fhWrap.innerHTML = fhHtml; document.body.appendChild(fhWrap.firstChild); (() => { const el = document.getElementById('fh-porvisita'); if (!el) { return; } try { const v = localStorage.getItem('fh_por_visita'); if (v) { el.value = v; } } catch (e) {} el.addEventListener('input', () => { try { localStorage.setItem('fh_por_visita', String(LerPorVisita())); } catch (e) {} }); })(); (() => { const bm = document.getElementById("fh-min"); if (!bm) { return; } let fhMin = false; try { fhMin = localStorage.getItem("fh_minimizado") === "1"; } catch (e) {} const aplicar = () => { const p = document.getElementById("farmhard-popup"); if (p) { p.classList.toggle("fh-minimizado", fhMin); } bm.innerHTML = fhMin ? "+" : "&ndash;"; bm.title = fhMin ? "Expandir" : "Minimizar"; }; aplicar(); bm.addEventListener("mousedown", (e) => { e.stopPropagation(); }); bm.addEventListener("click", (e) => { e.stopPropagation(); fhMin = !fhMin; aplicar(); try { localStorage.setItem("fh_minimizado", fhMin ? "1" : "0"); } catch (e2) {} }); })(); const AtualizarStatus = (texto) => { const el = document.getElementById("farmhard-status"); if (el) { el.innerText = texto; } }; const AtualizarContador = () => { const el = document.getElementById("farmhard-contador-valor"); if (el) { el.innerText = AtaquesEnviados; } const elF = document.getElementById("farmhard-contador-falhas"); if (elF) { elF.innerText = AtaquesFalhados; } const elP = document.getElementById("farmhard-contador-pend"); if (elP) { elP.innerText = AtaquesPendentes; } }; const AtualizarBarraRanking = (meu, top) => { let pct = Math.min(100, (meu / top) * 100); const fill = document.getElementById("farmhard-rank-fill"); const texto = document.getElementById("farmhard-rank-texto"); if (fill) { fill.style.width = pct.toFixed(4) + "%"; } if (texto) { texto.innerText = meu.toLocaleString("pt-BR") + " / " + top.toLocaleString("pt-BR") + " (" + pct.toFixed(4) + "%)"; } }; const BuscarRanking = () => { $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&mode=awards&group=0", type: "GET", headers: { "Upgrade-Insecure-Requests": 1 }, success: (data) => { let labelAlvo = null; let $doc = $(data); $doc.find("*").each( function() { if (labelAlvo !== null) { return false; } let txt = $(this).text(); if (txt) { txt = txt.replace(/\s+/g, " ").trim(); } if (txt && ["saqueador de recursos do dia","saqueador de recursos do dia!","looter of the day","resource looter of the day","pluenderer des tages","plunderer of the day","saqueador del dia","pilleur du jour","saccheggiatore del giorno","plunderaar van de dag","lupiezca dnia","jefe saqueador"].indexOf(txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")) !== -1) { let escopo = this.parentElement; for (let up = 0; up < 5 && escopo; up++) { let pb = $(escopo).find(".progress-bar .label").first(); if (pb.length) { labelAlvo = pb; return false; } escopo = escopo.parentElement; } } }); if (labelAlvo) { let texto = labelAlvo.text().replace(/\s+/g, ""); let partes = texto.split("/"); if (partes.length === 2) { let meu = parseInt(partes[0].replace(/[^0-9]/g, '')); let top = parseInt(partes[1].replace(/[^0-9]/g, '')); if (!isNaN(meu) && !isNaN(top) && top > 0) { Lockr.set('FarmHard_Meu', meu); Lockr.set('FarmHard_Top', top); AtualizarBarraRanking(meu, top); } } } else { const texto = document.getElementById("farmhard-rank-texto"); if (texto) { texto.innerText = "Conquista nao encontrada"; } } }, error: () => { const texto = document.getElementById("farmhard-rank-texto"); if (texto) { texto.innerText = "Erro ao buscar ranking"; } } }); }; let fhMeuCache = Lockr.get('FarmHard_Meu'); let fhTopCache = Lockr.get('FarmHard_Top'); if (fhMeuCache && fhTopCache) { AtualizarBarraRanking(fhMeuCache, fhTopCache); } BuscarRanking(); fhRankIntervalo = setInterval(BuscarRanking, 60000); window.__FarmHardMostrar = () => { const p = document.getElementById("farmhard-popup"); if (p) { p.style.display = "block"; } }; const fhHeader = document.getElementById("farmhard-header"); let fhArrastando = false, fhOffX = 0, fhOffY = 0; fhHeader.addEventListener("mousedown", (e) => { fhArrastando = true; const rect = document.getElementById("farmhard-popup").getBoundingClientRect(); fhOffX = e.clientX - rect.left; fhOffY = e.clientY - rect.top; }); document.addEventListener("mousemove", (e) => { if (!fhArrastando) { return; } const p = document.getElementById("farmhard-popup"); if (!p) { return; } p.style.left = (e.clientX - fhOffX) + "px"; p.style.top = (e.clientY - fhOffY) + "px"; p.style.right = "auto"; }); document.addEventListener("mouseup", () => { fhArrastando = false; }); document.querySelectorAll(".fh-vel").forEach((btn) => { btn.addEventListener("click", () => { VelocidadeFator = parseFloat(btn.getAttribute("data-fator")); /* Freio ligado: piso de 1.25x (o freio agora prioriza farm + cunhagem coordenados,    entao o farm roda num ritmo util mas ainda cauteloso, nao no minimo absoluto).    Se voce escolher menos que 1.25x com o freio ligado, sobe pra 1.25x. */ if (window.__ORK_FREIO__ && VelocidadeFator < 1.25) { VelocidadeFator = 1.25; AtualizarStatus("FREIO: velocidade minima 1.25x"); console.log("[OROCHIKING] Freio: Farm Hard no piso de 1.25x."); } document.querySelectorAll(".fh-vel").forEach((b) => { b.classList.remove("ativa"); }); btn.classList.add("ativa"); }); }); /* Filtro de CL minima: salva a preferencia e atualiza o status ao digitar */ (() => { const elCl = document.getElementById("fh-clmin"); if (!elCl) { return; } try { const salvo = localStorage.getItem("fh_cl_minimo"); if (salvo !== null) { elCl.value = salvo; } } catch (e) {} LerCLMinimo(); AtualizarStatusCL(); const elCp = document.getElementById("fh-cpmin"); if (elCp) { try { const sp = localStorage.getItem("fh_cp_minimo"); if (sp !== null) { elCp.value = sp; } } catch (e) {} LerCPMinimo(); AtualizarStatusCP(); elCp.addEventListener("input", () => { LerCPMinimo(); try { localStorage.setItem("fh_cp_minimo", String(CPMinimo)); } catch (e) {} if (CPMinimo <= 0) { UltimaCPLida = null; } AtualizarStatusCP(); }); } elCl.addEventListener("input", () => { LerCLMinimo(); try { localStorage.setItem("fh_cl_minimo", String(CLMinimo)); } catch (e) {} if (CLMinimo <= 0) { UltimaCLLida = null; AldeiasPuladasCL = 0; } AtualizarStatusCL(); }); })(); (() => { const btnR = document.getElementById('fh-ritmo-btn'); if (btnR) { try { if (localStorage.getItem('fh_ritmo_humano') === '1') { btnR.classList.add('on'); btnR.innerText = 'on'; } } catch (e) {} btnR.addEventListener('click', () => { const ligar = !btnR.classList.contains('on'); btnR.classList.toggle('on', ligar); btnR.innerText = ligar ? 'on' : 'off'; try { localStorage.setItem('fh_ritmo_humano', ligar ? '1' : '0'); } catch (e) {} if (ligar) { if (Rodando) { rhLigar(); } } else { rhDesligar(); } }); } (() => { const btnS = document.getElementById('fh-saque-btn'); const inS = document.getElementById('fh-saquemin'); if (!btnS) { return; } try { if (localStorage.getItem('fh_saque_min_on') === '1') { btnS.classList.add('on'); btnS.innerText = 'on'; } const v = localStorage.getItem('fh_saque_min'); if (inS && v !== null && v !== '') { inS.value = v; } } catch (e) {} if (inS) { inS.addEventListener('input', () => { try { localStorage.setItem('fh_saque_min', String(inS.value)); } catch (e) {} }); } btnS.addEventListener('click', () => { const ligar = !btnS.classList.contains('on'); btnS.classList.toggle('on', ligar); btnS.innerText = ligar ? 'on' : 'off'; AldeiasPuladasSaque = 0; try { localStorage.setItem('fh_saque_min_on', ligar ? '1' : '0'); } catch (e) {} AtualizarStatus(ligar ? ('Saque mínimo por ataque: ' + (SaqueMinAtivo() || 0)) : 'Saque mínimo por ataque desligado'); }); })(); (() => { const btnN = document.getElementById('fh-modon-btn'); if (!btnN) { return; } try { if (localStorage.getItem('fh_prioriza_rica') === '1') { btnN.classList.add('on'); btnN.innerText = 'on'; } } catch (e) {} btnN.addEventListener('click', () => { const ligar = !btnN.classList.contains('on'); btnN.classList.toggle('on', ligar); btnN.innerText = ligar ? 'on' : 'off'; try { localStorage.setItem('fh_prioriza_rica', ligar ? '1' : '0'); } catch (e) {} AtualizarStatus(ligar ? 'Priorizando a bárbara mais rica' : 'Priorizando a bárbara mais perto'); console.log('[OROCHIKING] Farm Hard: ' + (ligar ? 'priorizando a MAIS RICA' : 'priorizando a MAIS PERTO (padrão)')); }); })(); (() => { const elR = document.getElementById('fh-recmin'); if (!elR) { return; } try { const salvo = localStorage.getItem('fh_recurso_minimo'); if (salvo !== null) { elR.value = salvo; } } catch (e) {} LerRecursoMinimo(); AtualizarStatusRec(); elR.addEventListener('input', () => { LerRecursoMinimo(); try { localStorage.setItem('fh_recurso_minimo', String(RecursoMinimo)); } catch (e) {} AtualizarStatusRec(); }); })(); })(); /* Pegar ID das Aldeias */ $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&id=" + game_data.player.id, data: {}, type: "GET", headers: { "Upgrade-Insecure-Requests": 1 }, success: (data) => { let _ids = data.match(/(data-id="(\d+)")+/g); if (_ids) { for (let x of _ids) { x = x.replace(/[^0-9]/g, ''); Ids.push(x); } } if (data.match(/Player\.getAllVillages/)) { $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&ajax=fetch_villages&player_id=" + game_data.player.id, data: {}, type: "GET", dataType: "json", success: (data) => { let _ids_ = data.villages ? data.villages.match(/(data-id="(\d+)")+/g) : null; if (_ids_) { for (let r of _ids_) { r = r.replace(/[^0-9]/g, ''); Ids.push(r); } } MontarGrupos(NumGrupos); }, error: () => { MontarGrupos(NumGrupos); } }); } else { MontarGrupos(NumGrupos); } }, error: () => { AtualizarStatus("Erro ao buscar aldeias"); } }); /* v96: ALDEIAS NOVAS SEM RECARREGAR. Antes a lista de aldeias era lida uma vez só ao abrir o Farm Hard; aldeia noblada depois nunca entrava na rotação. Agora: cada página do Assistente que o farm já baixa traz o total de aldeias do jogador; se o total mudar, relê a lista (1 pedido, no máx. 1x por minuto) e encaixa as novas na rotação sem reiniciar. Também confere sozinho a cada ~10 min. */ let fhUltimaBuscaIds = Date.now(); let fhBuscandoIds = false; let fhTotalVisto = null; let fhProxConferencia = aleatorio(480000, 720000); const fhMesclarIds = (lista) => { const novos = []; const vistos = {}; lista.forEach((x) => { if (!vistos[x]) { vistos[x] = 1; novos.push(x); } }); if (!novos.length) { return; } const atuais = {}; Ids.forEach((x) => { atuais[x] = 1; }); const add = novos.filter((x) => !atuais[x]); const rem = Ids.filter((x) => !vistos[x]); if (!add.length && !rem.length) { return; } if (rem.length) { Ids = Ids.filter((x) => vistos[x]); for (let g = 0; g < Grupos.length; g++) { Grupos[g] = Grupos[g].filter((x) => vistos[x]); if (Ponteiros[g] >= Grupos[g].length) { Ponteiros[g] = 0; } } } add.forEach((x) => { Ids.push(x); if (Grupos.length) { let menor = 0; for (let g = 1; g < Grupos.length; g++) { if (Grupos[g].length < Grupos[menor].length) { menor = g; } } Grupos[menor].push(x); } }); if (!Grupos.length) { MontarGrupos(NumGrupos); } const elTot = document.getElementById('fh-total-aldeias'); if (elTot) { elTot.innerText = '(' + Ids.length + ' aldeias)'; } if (add.length) { AtualizarStatus('+' + add.length + ' aldeia(s) nova(s) na rotação (' + Ids.length + ' no total)'); } }; const fhAtualizarIds = () => { if (fhBuscandoIds || Date.now() - fhUltimaBuscaIds < 60000 || window.__ORK_CAPTCHA_BLOQUEADO__) { return; } fhBuscandoIds = true; fhUltimaBuscaIds = Date.now(); fhProxConferencia = aleatorio(480000, 720000); const lista = []; const pegar = (txt) => { const m = String(txt || '').match(/(data-id="(\d+)")+/g); if (m) { m.forEach((x) => lista.push(x.replace(/[^0-9]/g, ''))); } }; const fim = () => { fhBuscandoIds = false; try { fhMesclarIds(lista); } catch (e) {} }; $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&id=" + game_data.player.id, type: "GET", success: (data) => { pegar(data); if (String(data).match(/Player\.getAllVillages/)) { $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&ajax=fetch_villages&player_id=" + game_data.player.id, type: "GET", dataType: "json", success: (j) => { pegar(j && j.villages); fim(); }, error: fim }); } else { fim(); } }, error: () => { fhBuscandoIds = false; } }); }; const fhConferirTotal = (data) => { try { const m = String(data).match(/"player":\{[^{}]*?"villages":"?(\d+)/); if (m) { const tot = parseInt(m[1], 10); if (fhTotalVisto === null) { fhTotalVisto = tot; const unicos = {}; Ids.forEach((x) => { unicos[x] = 1; }); if (tot !== Object.keys(unicos).length) { fhAtualizarIds(); } } else if (tot !== fhTotalVisto) { fhTotalVisto = tot; fhAtualizarIds(); } } if (Date.now() - fhUltimaBuscaIds > fhProxConferencia) { fhAtualizarIds(); } } catch (e) {} }; /* Função Enviar Atk Botão C - AS */ const EnviarAtaque_ = (Relatorio_id_, id_, aoTerminar) => { AtaquesPendentes++; AtualizarContador(); $.ajax({ url: "/game.php?village=" + id_ + "&screen=am_farm&mode=farm&ajaxaction=farm_from_report&json=1&&h=" + csrf_token + "&client_time=" + Math.round(Timing.getCurrentServerTime() / 1e3), data: { report_id: Relatorio_id_ }, type: "POST", dataType: "json", headers: { "TribalWars-Ajax": 1 }, success: (resp, textStatus, xhr) => { AtaquesPendentes--; const okEnvio = !!(xhr && xhr.status === 200 && resp && !resp.error); if (okEnvio) { AtaquesEnviados++; } else { AtaquesFalhados++; /* falhou: libera o relatorio pra essa barbara poder ser atacada de novo */ LiberarRelatorio(Relatorio_id_); RegistrarMotivoFalha(resp && resp.error ? resp.error : ('HTTP ' + (xhr ? xhr.status : '?'))); } AtualizarContador(); if (aoTerminar) { try { aoTerminar(okEnvio); } catch (e) {} } }, error: (xhr) => { AtaquesPendentes--; AtaquesFalhados++; LiberarRelatorio(Relatorio_id_); RegistrarMotivoFalha('rede ' + (xhr && xhr.status ? xhr.status : 'sem resposta')); AtualizarContador(); if (aoTerminar) { try { aoTerminar(false); } catch (e) {} } } }); }; class Alvo { constructor(Relatorio_id_, Madeira, Argila, Ferro, Distancia) { this.Relatorio_id_ = Relatorio_id_; this.Madeira = Madeira; this.Argila = Argila; this.Ferro = Ferro; this.Distancia = (typeof Distancia === 'number' ? Distancia : 999999); } get Recursos() { return this.Madeira + this.Argila + this.Ferro; } } /* Cada fila tem um indice fixo - se a velocidade atual pede menos filas do que o indice desta, ela so espera (nao farma) ate a velocidade subir de novo */ const Trabalhador = (indiceFila) => { if (!Rodando) { return; } if (window.__ORK_CAPTCHA_BLOQUEADO__) { if (!fhNoCaptcha) { fhNoCaptcha = true; AtualizarStatus('Captcha — pausado (volta sozinho)'); } setTimeout(() => Trabalhador(indiceFila), 1500); return; } if (fhNoCaptcha) { fhNoCaptcha = false; AtualizarStatus('Rodando (' + Ids.length + ' aldeias, ' + Grupos.length + ' grupos)'); } if (Pausado) { setTimeout(() => Trabalhador(indiceFila), 300); return; } let filasAtivas = FilasParaVelocidade(VelocidadeFator); if (indiceFila >= filasAtivas) { setTimeout(() => Trabalhador(indiceFila), 1000); return; } if (Grupos.length === 0) { MontarGrupos(NumGrupos); } if (Grupos.length === 0) { setTimeout(() => Trabalhador(indiceFila), 300); return; } let inicio = Date.now(); let id_ = ProximaAldeia(); if (!id_) { setTimeout(() => Trabalhador(indiceFila), 300); return; } $.ajax({ url: "/game.php?village=" + id_ + "&screen=am_farm", type: "GET", headers: { "Upgrade-Insecure-Requests": 1 }, success: (data) => { fhConferirTotal(data); LerCLMinimo(); LerCPMinimo(); LerRecursoMinimo(); /* Filtro de cavalaria: pula a aldeia se ela nao tiver a CL minima NEM a CP minima.    Ou seja, basta cumprir UM dos dois pra farmar (permite mesclar CL com CP,    como em aldeias que tem pesada junto com lanca). So bloqueia quando a leitura    funcionou (-1 = markup nao lido, nao bloqueia). */ if (CLMinimo > 0 || CPMinimo > 0) { const clDisponivel = (CLMinimo > 0) ? LerCavalariaDisponivel(data) : -1; const cpDisponivel = (CPMinimo > 0) ? LerCavalariaPesadaDisponivel(data) : -1; if (CLMinimo > 0) { UltimaCLLida = clDisponivel; AtualizarStatusCL(); } if (CPMinimo > 0) { UltimaCPLida = cpDisponivel; AtualizarStatusCP(); } const clOk = (CLMinimo > 0) && (clDisponivel === -1 || clDisponivel >= CLMinimo); const cpOk = (CPMinimo > 0) && (cpDisponivel === -1 || cpDisponivel >= CPMinimo); /* passa se qualquer criterio ativo foi cumprido (ou nao pode ser lido) */ const podeFarmar = clOk || cpOk; if (!podeFarmar) { AldeiasPuladasCL++; AtualizarStatusCL(); AtualizarStatusCP(); let gastoPulo = Date.now() - inicio; let alvoIntervaloPulo = Math.round(1000 / VelocidadeFator); let minimoPulo = Math.max(75, Math.round(150 / VelocidadeFator)); let basePulo = Math.max(minimoPulo, alvoIntervaloPulo - gastoPulo); let esperaPulo = aleatorio(Math.round(basePulo * 0.85), Math.round(basePulo * 1.15)); setTimeout(() => Trabalhador(indiceFila), esperaPulo); return; } } /* v96: saque mínimo por ataque — só farma se as tropas em casa carregam o mínimo */ let cargaVisita = -1; const saqueMinV = SaqueMinAtivo(); if (saqueMinV > 0) { cargaVisita = LerCargaDisponivel(data); if (cargaVisita !== -1 && cargaVisita < saqueMinV) { AldeiasPuladasSaque++; try { const bS = document.getElementById('fh-saque-btn'); if (bS) { bS.title = AldeiasPuladasSaque + ' visita(s) pulada(s): tropa em casa carregava menos de ' + saqueMinV + ' (última: ' + cargaVisita + ')'; } } catch (e) {} let gastoS = Date.now() - inicio; let baseS = Math.max(Math.max(75, Math.round(150 / VelocidadeFator)), Math.round(1000 / VelocidadeFator) - gastoS); setTimeout(() => Trabalhador(indiceFila), aleatorio(Math.round(baseS * 0.85), Math.round(baseS * 1.15))); return; } } let Alvos = []; let array = []; /* v83: a lista Alvos_Muralha não era usada e só crescia no navegador */ $(data).find('tr[id^=village_]').each( function(e) { let id = $(this).attr('id').match(/village_(\d+)/)[1]; let coord = $(this).find('td').eq(3).text().match(/(\d+)\|(\d+)/g); let Relatorio_id_ = $(this).find('td').eq(3).find('a').attr('href').match(/view=(\d+)/)[1]; /* distancia que o proprio Assistente mostra (td[7]), ex '1', '1.4', '3'.    Usada so quando o modo N1-N8 esta ligado, pra priorizar as mais perto. */ let Distancia = parseFloat(String($(this).find('td').eq(7).text()).replace(',', '.')); if (isNaN(Distancia)) { Distancia = 999999; } let Madeira = apenasnumeros($(this).find('td').eq(5).find('span.nowrap').eq(0).text()); let Argila = apenasnumeros($(this).find('td').eq(5).find('span.nowrap').eq(1).text()); let Ferro = apenasnumeros($(this).find('td').eq(5).find('span.nowrap').eq(2).text()); let Muralha = apenasnumeros($(this).find('td').eq(6).text()); /* PROTEÇÃO PRA MUNDO NOVO / QUALQUER RODADA:    Antes, se uma linha não tivesse o botão C (comum em bárbara nunca atacada    numa rodada recém-aberta), o .attr("class") vinha undefined e o .match()    QUEBRAVA a passada inteira — o farm parava de achar alvos. Agora:    1) pega o botão C com segurança (string vazia se não existir);    2) considera o alvo válido se o C existe E não está desabilitado;    3) Muralha pode ser NaN em layout diferente — tratamos como 0, não trava. */ var _btnC = $(this).find('a.farm_icon.farm_icon_c'); var _classeC = (_btnC.length ? (_btnC.attr('class') || '') : ''); var _cAtivo = (_btnC.length > 0 && _classeC.indexOf('farm_icon_disabled') === -1); var _muralhaNum = isNaN(Muralha) ? 0 : Muralha; if( $(this).find('td').eq(5).find('span').eq(0).text() !== "?" ) { if (_cAtivo) { if (_muralhaNum > 0) { let aux = [ id, "&", coord, "&", _muralhaNum ]; if(array.indexOf(aux.join('')) === -1 ) { array.push(aux.join('')); } } Alvos.push(new Alvo(Relatorio_id_, Madeira, Argila, Ferro, Distancia)); } } }); if (Alvos.length !== 0) { /* ESCOLHA DO ALVO — tres correcoes:    (1) antes exigia madeira, argila E ferro >= 50 mil ao mesmo tempo, pulando barbaras ricas        com recurso desigual; agora vale o TOTAL (mesmo minimo de 150 mil que ja existia na pratica);    (2) antes pegava o PRIMEIRO da lista; agora pega o MAIS RICO;    (3) antes varias aldeias batiam na mesma barbara usando o MESMO relatorio velho (o relatorio so        atualiza quando o ataque chega), e so o primeiro ataque trazia recurso. Agora cada relatorio        e usado uma unica vez: quando o ataque chega, sai um relatorio novo e o alvo volta a valer. */ /* v59: ATAQUES POR VISITA. Com 1 = exatamente como antes. Com 2 a 10: le a pagina da aldeia UMA vez e manda ate N ataques em sequencia (as mais perto, ou as mais ricas com o botao ligado), parando na primeira recusa (ex: tropa acabou). O ritmo de PEDIDOS por segundo continua o mesmo — so que mais pedidos viram saque. */ const porVisita = LerPorVisita(); if (porVisita > 1) { let minRecM = MinimoEfetivo(); let ricaM = false; try { ricaM = (localStorage.getItem('fh_prioriza_rica') === '1'); } catch (e) {} let listaM = Alvos.filter((a) => { if (a.Recursos < minRecM) { return false; } if (RelatoriosUsados.has(a.Relatorio_id_)) { AlvosPuladosRepetidos++; return false; } return true; }); listaM.sort((a, b) => ricaM ? (b.Recursos - a.Recursos) : ((a.Distancia - b.Distancia) || (b.Recursos - a.Recursos))); listaM = listaM.slice(0, porVisita); listaM.forEach((a) => MarcarRelatorioUsado(a.Relatorio_id_)); let enviadosVisita = 0; const fimVisita = () => { let gasto = Date.now() - inicio; let alvoIntervalo = Math.round(Math.round(1000 / VelocidadeFator) * Math.max(1, (1 + enviadosVisita) / 2)); let minimo = Math.max(75, Math.round(150 / VelocidadeFator)); let base = Math.max(minimo, alvoIntervalo - gasto); let espera = aleatorio(Math.round(base * 0.85), Math.round(base * 1.15)); setTimeout(() => Trabalhador(indiceFila), espera); }; const soltarResto = (i) => { for (let k = i; k < listaM.length; k++) { LiberarRelatorio(listaM[k].Relatorio_id_); } }; const proximoM = (i) => { if (i >= listaM.length) { fimVisita(); return; } if (!Rodando || Pausado || window.__ORK_CAPTCHA_BLOQUEADO__) { soltarResto(i); fimVisita(); return; } if (saqueMinV > 0 && cargaVisita !== -1 && cargaVisita < saqueMinV) { soltarResto(i); fimVisita(); return; } EnviarAtaque_(listaM[i].Relatorio_id_, id_, (ok) => { if (ok) { enviadosVisita++; if (cargaVisita !== -1) { cargaVisita -= listaM[i].Recursos; } setTimeout(() => proximoM(i + 1), aleatorio(250, 600)); } else { soltarResto(i + 1); fimVisita(); } }); }; proximoM(0); return; } let melhor = null; let minRec = MinimoEfetivo(); /* modoDistancia ligado (Farmar N1-N8): escolhe o alvo MAIS PROXIMO (a distancia    que o proprio Assistente mostra). Desligado (padrao, rodadas de conquistador):    escolhe o MAIS RICO, exatamente como antes. Todo o resto (filtros CL/CP/recurso,    botao C, 1 ataque por relatorio) e identico nos dois modos. */ /* v51: PADRAO = a barbara MAIS PERTO (distancia do Assistente) que passa nos filtros de recurso e ainda nao tem ataque a caminho pelo mesmo relatorio. Igual era antes da v31. Empate de distancia: a mais rica. So com o botao 'Priorizar a mais rica' ligado ele volta a escolher pela riqueza. */ let modoRica = false; try { modoRica = (localStorage.getItem('fh_prioriza_rica') === '1'); } catch (e) {} for (let t = 0; t < Alvos.length; t++) { if (Alvos[t].Recursos < minRec) { continue; } if (RelatoriosUsados.has(Alvos[t].Relatorio_id_)) { AlvosPuladosRepetidos++; continue; } if (melhor === null) { melhor = Alvos[t]; } else if (modoRica) { if (Alvos[t].Recursos > melhor.Recursos) { melhor = Alvos[t]; } } else { if (Alvos[t].Distancia < melhor.Distancia || (Alvos[t].Distancia === melhor.Distancia && Alvos[t].Recursos > melhor.Recursos)) { melhor = Alvos[t]; } } } if (melhor !== null) { MarcarRelatorioUsado(melhor.Relatorio_id_); EnviarAtaque_(melhor.Relatorio_id_, id_); } } let gasto = Date.now() - inicio; let alvoIntervalo = Math.round(1000 / VelocidadeFator); let minimo = Math.max(75, Math.round(150 / VelocidadeFator)); let base = Math.max(minimo, alvoIntervalo - gasto); let espera = aleatorio(Math.round(base * 0.85), Math.round(base * 1.15)); setTimeout(() => Trabalhador(indiceFila), espera); }, error: () => { let gasto = Date.now() - inicio; let alvoIntervalo = Math.round(1000 / VelocidadeFator); let minimo = Math.max(75, Math.round(150 / VelocidadeFator)); let base = Math.max(minimo, alvoIntervalo - gasto); let espera = aleatorio(Math.round(base * 0.85), Math.round(base * 1.15)); setTimeout(() => Trabalhador(indiceFila), espera); } }); }; const IniciarFilas = () => { AtualizarStatus("Rodando (" + Ids.length + " aldeias, " + Grupos.length + " grupos)"); for (let l = 0; l < NUM_FILAS; l++) { setTimeout(() => Trabalhador(l), l * 150); } }; const __ids = () => { if (Ids[0] !== undefined) { if (Grupos.length === 0) { MontarGrupos(NumGrupos); } IniciarFilas(); } else { fhTentativasIds++; if (fhTentativasIds > 20) { AtualizarStatus("Erro: aldeias nao carregaram. Feche e abra novamente."); return; } setTimeout(__ids, 1000); } }; document.getElementById("fh-iniciar").onclick = () => { Rodando = true; Pausado = false; /* Freio ligado forca o Ritmo Humano: as pausas do farm sao a janela em que a    cunhagem pode rodar sem competir com ele. */ try { const b = document.getElementById("fh-ritmo-btn"); if (window.__ORK_FREIO__ && b && !b.classList.contains("on")) { b.classList.add("on"); b.innerText = "on"; try { localStorage.setItem("fh_ritmo_humano","1"); } catch(e){} } if ((window.__ORK_FREIO__ || (b && b.classList.contains("on")))) { rhLigar(); } } catch (e) {} document.getElementById("fh-pausar").innerText = "Pausar"; AtualizarStatus("Iniciando..."); if (!Iniciado) { Iniciado = true; fhTentativasIds = 0; setTimeout(__ids, 500); } else { AtualizarStatus("Rodando..."); } }; document.getElementById("fh-pausar").onclick = () => { if (!Rodando) { return; } Pausado = !Pausado; document.getElementById("fh-pausar").innerText = Pausado ? "Continuar" : "Pausar"; AtualizarStatus(Pausado ? "Pausado" : "Rodando..."); }; const FecharTudo = () => { Rodando = false; try { window.__ORK_FARM_EM_PAUSA__ = true; } catch (e) {} rhDesligar(); if (fhRankIntervalo) { clearInterval(fhRankIntervalo); } const p = document.getElementById("farmhard-popup"); if (p) { p.remove(); } window.__FarmHardAtivo = false; }; document.getElementById("fh-fechar").onclick = FecharTudo; document.getElementById("fh-x").onclick = FecharTudo; document.querySelectorAll(".fh-opcao-input").forEach((el) => { el.addEventListener("change", (ev) => { NumGrupos = parseInt(ev.target.value); MontarGrupos(NumGrupos); document.querySelectorAll(".fh-opcao").forEach((o) => { o.classList.remove("ativa"); }); ev.target.closest(".fh-opcao").classList.add("ativa"); }); }); } _FarmarAS(); })();
+    let TemArqueiro = $.inArray('archer', game_data.units) > -1; let TemPaladino = $.inArray('knight', game_data.units) > -1; let Ids = []; let Grupos = []; let Ponteiros = []; let GrupoAtual = 0; let NumGrupos = 1; let Rodando = false; let Pausado = false; let Iniciado = false; let AtaquesEnviados = 0, AtaquesFalhados = 0, AtaquesPendentes = 0; let fhRankIntervalo = null; let fhTentativasIds = 0; let VelocidadeFator = (window.__ORK_FREIO__ ? 1.25 : 1); const NUM_FILAS = 5; const apenasnumeros = string => parseInt(string.replace(/[^0-9]/g, '')); const aleatorio = (inferior, superior) => Math.round(parseInt(inferior) + (Math.random() * (superior - inferior))); /* Quantas filas ficam ativas de acordo com a velocidade - quanto mais devagar, menos filas simultaneas (menos parece robo) */ const FilasParaVelocidade = (fator) => { if (fator <= 0.5) { return 1; } if (fator <= 1) { return 2; } if (fator <= 1.25) { return 3; } if (fator <= 1.5) { return 4; } return 5; }; const MontarGrupos = (n) => { Grupos = []; Ponteiros = []; let total = Ids.length; const elTot = document.getElementById("fh-total-aldeias"); if (elTot) { elTot.innerText = "(" + total + " aldeias)"; } if (total === 0 || n < 1) { return; } let base = Math.floor(total / n); let resto = total % n; let idx = 0; for (let g = 0; g < n; g++) { let tamanho = base + (g < resto ? 1 : 0); if (tamanho > 0) { Grupos.push(Ids.slice(idx, idx + tamanho)); Ponteiros.push(0); } idx += tamanho; } GrupoAtual = 0; }; const ProximaAldeia = () => { if (Grupos.length === 0) { return null; } let tentativas = 0; while (tentativas < Grupos.length) { let grupo = Grupos[GrupoAtual]; if (!grupo || grupo.length === 0) { GrupoAtual = (GrupoAtual + 1) % Grupos.length; tentativas++; continue; } let id_ = grupo[Ponteiros[GrupoAtual]]; Ponteiros[GrupoAtual]++; if (Ponteiros[GrupoAtual] >= grupo.length) { Ponteiros[GrupoAtual] = 0; } GrupoAtual = (GrupoAtual + 1) % Grupos.length; return id_; } return null; }; /* ===== POPUP Farm Hard 1.0 ===== */ const fhEstilo = document.createElement("style"); fhEstilo.innerHTML = `#farmhard-popup{position:fixed;top:70px;right:20px;width:600px;max-width:calc(100vw - 20px);background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;box-shadow:0 14px 34px rgba(0,0,0,0.75),0 0 0 1px rgba(255,196,0,0.12);font-family:"Segoe UI",Arial,Helvetica,sans-serif;color:#eee;z-index:999999;overflow:hidden}#farmhard-popup.fh-minimizado{width:360px}#farmhard-popup.fh-minimizado #farmhard-body{display:none}#farmhard-header{background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:7px 10px 7px 12px;display:flex;align-items:center;gap:10px;cursor:move}.fh-hl{white-space:nowrap}.fh-hr{display:flex;gap:2px}#fh-title-main{font-size:13px;font-weight:800;letter-spacing:1.1px}#fh-title-version{font-size:8.5px;background:#141200;color:#FFC400;padding:1px 6px;border-radius:9px;margin-left:6px;font-weight:700;vertical-align:middle}#farmhard-status{flex:1;min-width:0;text-align:center;font-size:10px;font-weight:700;color:#3d3000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#farmhard-header span.fh-close{cursor:pointer;font-weight:bold;font-size:15px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:0.15s;color:#141200}#farmhard-header span.fh-close:hover{background:rgba(0,0,0,0.18)}#farmhard-body{padding:9px;max-height:calc(100vh - 110px);overflow-y:auto}#farmhard-rank{display:flex;flex-direction:column;gap:3px;background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:6px 10px;margin-bottom:8px}.fh-rank-topo{display:flex;align-items:center;gap:7px}#fh-rank-hora{font-size:9px;color:#7ed17e;border:1px solid #2f4a2f;border-radius:9px;padding:0 6px}#fh-rank-badge{font-size:9px;font-weight:800;border-radius:9px;padding:1px 8px;background:#1f3320;color:#7ed17e}#fh-rank-badge.atras{background:#3a1a1a;color:#ff8a8a}#fh-rank-badge:empty,#fh-rank-hora:empty{display:none}.fh-rank-linha{display:flex;align-items:center;gap:8px}.fh-rank-nome{font-size:9.5px;color:#bbb;width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fh-rank-val{font-size:9.5px;color:#ddd;min-width:84px;text-align:right;font-variant-numeric:tabular-nums}.fh-rank-trk2{flex:1;height:7px;background:#0a0a0a;border:1px solid #2c2c2c;border-radius:6px;overflow:hidden}#fh-rank-fill2{height:100%;width:0%;background:#6b6b6b;transition:width 0.5s ease}#farmhard-rank-label{font-size:9.5px;color:#FFC400;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;white-space:nowrap}#farmhard-rank-track{flex:1;height:7px;background:#0a0a0a;border:1px solid #2c2c2c;border-radius:6px;overflow:hidden}#farmhard-rank-fill{height:100%;width:0%;background:linear-gradient(90deg,#FFB800,#FFEB99);box-shadow:0 0 8px rgba(255,196,0,0.55);transition:width 0.5s ease}#farmhard-rank-texto{font-size:10px;color:#ccc}#fh-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.fh-col{display:flex;flex-direction:column;gap:8px}.fh-card{background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:7px 9px}.fh-card-tit{font-size:9.5px;color:#888;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px;cursor:default}#farmhard-speed-opcoes{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}.fh-vel{background:#1c1c1c;border:1px solid #333;border-radius:7px;padding:4px 1px;color:#ddd;font-weight:800;font-size:10.5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:1px;transition:0.15s;font-family:inherit}.fh-vel:hover{border-color:#665400}.fh-vel.ativa{border-color:#FFC400;background:#241f08;color:#fff}.fh-vel-tag{font-size:7.5px;font-weight:700;white-space:nowrap}#fh-rot{display:grid;grid-template-columns:1fr 1fr;gap:4px}.fh-opcao{position:relative;display:flex;align-items:center;gap:6px;background:#1c1c1c;border:1px solid #2c2c2c;border-radius:7px;padding:4px 7px;font-size:10.5px;color:#ccc;cursor:pointer;transition:0.15s}.fh-opcao:hover{border-color:#665400;background:#1c1a10}.fh-opcao.ativa{border-color:#FFC400;background:#241f08;color:#fff}.fh-badge{width:16px;height:16px;flex-shrink:0;border-radius:50%;background:#2c2c2c;color:#999;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center}.fh-opcao.ativa .fh-badge{background:#FFC400;color:#141200}.fh-opcao input{position:absolute;opacity:0;width:0;height:0}.fh-filtro-linha{display:flex;align-items:center;gap:6px;margin-bottom:4px}.fh-filtro-linha:last-child{margin-bottom:0}.fh-filtro-label{font-size:10.5px;color:#bbb;flex:1;white-space:nowrap;cursor:help}.fh-filtro-num{width:70px;background:#111;border:1px solid rgba(255,255,255,.12);color:#ececec;border-radius:6px;padding:2px 6px;font-size:11px}.fh-filtro-num:focus{outline:none;border-color:#e8ac0a}.fh-filtro-status{font-size:9.5px;color:#8a8a8a;min-width:36px;text-align:right}.fh-ritmo-btn{border:1px solid rgba(255,255,255,.14);background:#1c1c1c;color:#8a8a8a;border-radius:14px;padding:2px 12px;font-size:9.5px;font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:.4px;transition:all .15s;min-width:48px}.fh-ritmo-btn:hover{filter:brightness(1.15)}.fh-ritmo-btn.on{background:linear-gradient(100deg,#e8ac0a,#ffdc63);color:#1a1400;border-color:transparent}#fh-rodape{display:flex;align-items:center;gap:8px;margin-top:8px}#farmhard-contador{display:flex;align-items:center;gap:4px;background:#161616;border:1px solid #2c2c2c;border-radius:8px;padding:4px 8px;flex:1}.fh-cont-item{display:flex;align-items:baseline;justify-content:center;gap:5px;flex:1}.fh-cont-item span{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.4px}#farmhard-contador b{color:#FFC400;font-size:15px}#farmhard-botoes{display:flex;gap:6px}#farmhard-botoes button{padding:8px 16px;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:11px;transition:0.15s;font-family:inherit}#fh-iniciar{background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;box-shadow:0 3px 10px rgba(255,184,0,0.35)}#fh-iniciar:hover{filter:brightness(1.08)}#fh-pausar{background:#232323;color:#FFC400;border:1px solid #3a3a3a !important}#fh-pausar:hover{background:#2b2b2b}#fh-fechar{background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c !important}#fh-fechar:hover{background:#341313}@media (max-width:640px){#fh-grid{grid-template-columns:1fr}#fh-rodape{flex-direction:column;align-items:stretch}#farmhard-botoes button{flex:1}}`; document.head.appendChild(fhEstilo); const fhHtml = `<div id="farmhard-popup"><div id="farmhard-header"><div class="fh-hl"><span id="fh-title-main">FARM HARD</span><span id="fh-title-version">4.4</span></div><div id="farmhard-status">Parado</div><div class="fh-hr"><span class="fh-close" id="fh-min" title="Minimizar">&ndash;</span><span class="fh-close" id="fh-x" title="Fechar">&times;</span></div></div><div id="farmhard-body"><div id="farmhard-rank"><div class="fh-rank-topo"><div id="farmhard-rank-label">Saque de hoje</div><span id="fh-rank-hora"></span><span style="flex:1"></span><span id="fh-rank-badge"></span></div><div id="farmhard-rank-texto">Carregando...</div><div class="fh-rank-linha"><span class="fh-rank-nome">Você</span><div id="farmhard-rank-track"><div id="farmhard-rank-fill"></div></div><span class="fh-rank-val" id="fh-rank-v1"></span></div><div class="fh-rank-linha" id="fh-rank-linha2"><span class="fh-rank-nome" id="fh-rank-l2">Segundo</span><div class="fh-rank-trk2"><div id="fh-rank-fill2"></div></div><span class="fh-rank-val" id="fh-rank-v2"></span></div></div><div id="fh-grid"><div class="fh-col"><div class="fh-card"><div class="fh-card-tit">Velocidade de envio</div><div id="farmhard-speed-opcoes"><button class="fh-vel" data-fator="0.5">0.5x<span class="fh-vel-tag" style="color:#7ec8ff">Durma em Paz</span></button><button class="fh-vel ativa" data-fator="1">1x<span class="fh-vel-tag" style="color:#8a8a8a">Normal</span></button><button class="fh-vel" data-fator="1.25">1.25x<span class="fh-vel-tag" style="color:#7ed17e">Baixo risco</span></button><button class="fh-vel" data-fator="1.5">1.5x<span class="fh-vel-tag" style="color:#ffb347">Risco moderado</span></button><button class="fh-vel" data-fator="2">2x<span class="fh-vel-tag" style="color:#ff5f5f">Arriscado</span></button><button class="fh-vel" data-fator="2.5">2.5x<span class="fh-vel-tag" style="color:#ff2d2d">Muito arriscado</span></button></div></div><div class="fh-card"><div class="fh-card-tit">Rotação <span id="fh-total-aldeias" style="color:#FFC400;font-weight:800">(carregando aldeias...)</span></div><div id="fh-rot"><label class="fh-opcao ativa" title="Fila única (ex: 1 a 100)"><span class="fh-badge">1</span><span>Normal</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="1" checked></label><label class="fh-opcao" title="ex: 1-50 / 51-100"><span class="fh-badge">2</span><span>2 grupos</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="2"></label><label class="fh-opcao" title="ex: 1-30 / 31-60 / 61-100"><span class="fh-badge">3</span><span>3 grupos</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="3"></label><label class="fh-opcao" title="ex: 1-25 / 26-50 / 51-75 / 76-100"><span class="fh-badge">4</span><span>4 grupos</span><input type="radio" name="fh-opcao" class="fh-opcao-input" value="4"></label></div></div></div><div class="fh-col"><div class="fh-card" id="fh-clmin-box"><div class="fh-card-tit" title="CL/CP: farma se a aldeia tiver a leve OU a pesada mínima. Rec: só bárbara com recurso total acima do valor. 0 = off.">Filtros <span style="color:#555">(0 = off)</span></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Cavalaria leve mínima na aldeia pra ela farmar (vale OU com a CP)">CL mín. por aldeia</span><input type="number" id="fh-clmin" class="fh-filtro-num" min="0" step="10" value="0"><span id="fh-clmin-status" class="fh-filtro-status">off</span></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Cavalaria pesada mínima na aldeia pra ela farmar (vale OU com a CL)">CP mín. por aldeia</span><input type="number" id="fh-cpmin" class="fh-filtro-num" min="0" step="10" value="0"><span id="fh-cpmin-status" class="fh-filtro-status">off</span></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Só ataca bárbara com pelo menos esse recurso total. 0 = padrão de 150k">Rec. mín. da bárbara</span><input type="number" id="fh-recmin" class="fh-filtro-num" min="0" step="10000" value="0"><span id="fh-recmin-status" class="fh-filtro-status">150k</span></div></div><div class="fh-card"><div class="fh-card-tit">Modos</div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Farma em blocos com pausas curtas e aleatórias — reduz captcha.">🕒 Ritmo humano</span><button type="button" id="fh-ritmo-btn" class="fh-ritmo-btn">off</button></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Desligado (padrão): ataca a bárbara mais PERTO que passa nos filtros (distância do Assistente) — se a perto não tem recurso suficiente, vai pra próxima. Ligado: ataca a mais RICA, mesmo que esteja longe.">💰 Priorizar a mais rica</span><button type="button" id="fh-modon-btn" class="fh-ritmo-btn">off</button></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Quantos ataques cada aldeia manda por visita. 1 = como sempre foi (1 leitura da página + 1 ataque). 2 a 10 = lê a página uma vez e manda vários em sequência (as mais perto primeiro), parando se a tropa acabar. Mesmo ritmo de pedidos, mais saques por pedido — pra testar se reduz o captcha.">⚡ Ataques por visita</span><input type="number" id="fh-porvisita" class="fh-filtro-num" min="1" max="10" step="1" value="1"></div><div class="fh-filtro-linha"><span class="fh-filtro-label" title="Desligado (padrão): farma como sempre. Ligado: a aldeia só manda ataque se as tropas em casa carregam pelo menos esse valor (padrão 8.000) e a bárbara tem pelo menos isso de recurso. Evita gastar tropa com ataque pequeno (ex.: 10 lanceiros) quando o CL mínimo não foi configurado.">📦 Saque mín. p/ ataque</span><input type="number" id="fh-saquemin" class="fh-filtro-num" min="0" step="1000" value="8000"><button type="button" id="fh-saque-btn" class="fh-ritmo-btn">off</button></div></div></div></div><div id="fh-rodape"><div id="farmhard-contador"><div class="fh-cont-item"><span>Enviados</span><b id="farmhard-contador-valor">0</b></div><div class="fh-cont-item"><span>Falhados</span><b id="farmhard-contador-falhas" style="color:#ff6b6b">0</b></div><div class="fh-cont-item"><span>Pendentes</span><b id="farmhard-contador-pend" style="color:#7ec8ff">0</b></div></div><div id="farmhard-botoes"><button id="fh-iniciar">Iniciar</button><button id="fh-pausar">Pausar</button><button id="fh-fechar">Fechar</button></div></div></div></div>`; const fhWrap = document.createElement("div"); fhWrap.innerHTML = fhHtml; document.body.appendChild(fhWrap.firstChild); (() => { const el = document.getElementById('fh-porvisita'); if (!el) { return; } try { const v = localStorage.getItem('fh_por_visita'); if (v) { el.value = v; } } catch (e) {} el.addEventListener('input', () => { try { localStorage.setItem('fh_por_visita', String(LerPorVisita())); } catch (e) {} }); })(); (() => { const bm = document.getElementById("fh-min"); if (!bm) { return; } let fhMin = false; try { fhMin = localStorage.getItem("fh_minimizado") === "1"; } catch (e) {} const aplicar = () => { const p = document.getElementById("farmhard-popup"); if (p) { p.classList.toggle("fh-minimizado", fhMin); } bm.innerHTML = fhMin ? "+" : "&ndash;"; bm.title = fhMin ? "Expandir" : "Minimizar"; }; aplicar(); bm.addEventListener("mousedown", (e) => { e.stopPropagation(); }); bm.addEventListener("click", (e) => { e.stopPropagation(); fhMin = !fhMin; aplicar(); try { localStorage.setItem("fh_minimizado", fhMin ? "1" : "0"); } catch (e2) {} }); })(); const AtualizarStatus = (texto) => { const el = document.getElementById("farmhard-status"); if (el) { el.innerText = texto; } }; const AtualizarContador = () => { const el = document.getElementById("farmhard-contador-valor"); if (el) { el.innerText = AtaquesEnviados; } const elF = document.getElementById("farmhard-contador-falhas"); if (elF) { elF.innerText = AtaquesFalhados; } const elP = document.getElementById("farmhard-contador-pend"); if (elP) { elP.innerText = AtaquesPendentes; } }; const AtualizarBarraRanking = (meu, top) => { if (typeof AtualizarPainelSaque === "function") { AtualizarPainelSaque({ meu: meu, outro: top, posicao: meu >= top ? 1 : 0, nomeOutro: "" }); if (meu >= top) { const t = document.getElementById("farmhard-rank-texto"); if (t) { t.innerText = "Você é o líder do saque de hoje"; } const l2 = document.getElementById("fh-rank-linha2"); if (l2) { l2.style.display = "none"; } } return; } let pct = Math.min(100, (meu / top) * 100); const fill = document.getElementById("farmhard-rank-fill"); const texto = document.getElementById("farmhard-rank-texto"); if (fill) { fill.style.width = pct.toFixed(4) + "%"; } if (texto) { texto.innerText = meu.toLocaleString("pt-BR") + " / " + top.toLocaleString("pt-BR") + " (" + pct.toFixed(4) + "%)"; } }; /* v97: SAQUE DE HOJE — quanto você está na frente do 2º (se é o líder) ou atrás do 1º. Lê o ranking diário de saque do jogo (screen=ranking&mode=in_a_day&type=loot_res); se não der, volta pra conquista "Saqueador de recursos do dia". */ const fhFmt = (n) => Number(n || 0).toLocaleString("pt-BR"); const AtualizarPainelSaque = (d) => { const el = (id) => document.getElementById(id); if (el("fh-rank-linha2")) { el("fh-rank-linha2").style.display = ""; } const meu = d.meu || 0, outro = d.outro || 0, lider = d.posicao === 1; const maior = Math.max(meu, outro, 1); if (el("farmhard-rank-fill")) { el("farmhard-rank-fill").style.width = (meu / maior * 100).toFixed(2) + "%"; } if (el("fh-rank-fill2")) { el("fh-rank-fill2").style.width = (outro / maior * 100).toFixed(2) + "%"; } if (el("fh-rank-v1")) { el("fh-rank-v1").innerText = fhFmt(meu); } if (el("fh-rank-v2")) { el("fh-rank-v2").innerText = fhFmt(outro); } if (el("fh-rank-l2")) { el("fh-rank-l2").innerText = lider ? "Segundo" : "1º lugar"; el("fh-rank-l2").title = d.nomeOutro || ""; } if (el("fh-rank-hora")) { el("fh-rank-hora").innerText = "às " + new Date().toLocaleTimeString("pt-BR").slice(0, 5); } const b = el("fh-rank-badge"); if (b) { b.innerText = lider ? "Líder" : (d.posicao ? d.posicao + "º lugar" : "atrás"); b.classList.toggle("atras", !lider); } const t = el("farmhard-rank-texto"); if (t) { if (lider) { t.innerHTML = outro > 0 ? 'Você está na frente por <b style="color:#7ed17e">' + fhFmt(meu - outro) + '</b> — ' + (meu / outro).toFixed(1).replace(".", ",") + 'x o saque do segundo colocado' : 'Você é o líder do saque de hoje'; } else { t.innerHTML = 'Faltam <b style="color:#ff8a8a">' + fhFmt(Math.max(0, outro - meu)) + '</b> pra passar o 1º' + (d.nomeOutro ? ' (' + $("<span>").text(d.nomeOutro).html() + ')' : '') + (meu > 0 ? ' — ele tem ' + (outro / meu).toFixed(1).replace(".", ",") + 'x o seu saque' : ''); } } }; const BuscarRankingDia = (aoFalhar) => { $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=ranking&mode=in_a_day&type=loot_res", type: "GET", success: (data) => { try { const doc = new DOMParser().parseFromString(String(data), "text/html"); const linhas = []; doc.querySelectorAll("tr").forEach((tr) => { const a = tr.querySelector('a[href*="info_player"]'); if (!a) { return; } const idm = (a.getAttribute("href") || "").match(/[?&]id=(\d+)/); const tds = Array.prototype.slice.call(tr.querySelectorAll("td")); if (tds.length < 3) { return; } const pos = parseInt((tds[0].textContent || "").replace(/[^0-9]/g, ""), 10); let valor = -1; tds.slice(1).forEach((td) => { const tx = (td.textContent || "").trim(); if (/^[\d.,\s]+$/.test(tx) && tx.replace(/[^0-9]/g, "") !== "") { const v = parseInt(tx.replace(/[^0-9]/g, ""), 10); if (v > valor) { valor = v; } } }); if (!isNaN(pos) && valor >= 0) { linhas.push({ pos: pos, id: idm ? idm[1] : "", nome: (a.textContent || "").trim(), valor: valor }); } }); linhas.sort((x, y) => x.pos - y.pos); if (!linhas.length) { aoFalhar(); return; } const eu = String(game_data.player.id); let minha = linhas.filter((l) => l.id === eu)[0]; const primeiro = linhas[0], segundo = linhas[1]; let d; if (minha && minha.pos === 1) { d = { meu: minha.valor, outro: segundo ? segundo.valor : 0, posicao: 1, nomeOutro: segundo ? segundo.nome : "" }; } else { if (!minha) { aoFalhar(); return; } d = { meu: minha.valor, outro: primeiro.valor, posicao: minha.pos, nomeOutro: primeiro.nome }; } Lockr.set("FarmHard_SaqueDia", d); AtualizarPainelSaque(d); } catch (e) { aoFalhar(); } }, error: aoFalhar }); }; const BuscarRanking = () => { BuscarRankingDia(BuscarRankingConquista); }; const BuscarRankingConquista = () => { $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&mode=awards&group=0", type: "GET", headers: { "Upgrade-Insecure-Requests": 1 }, success: (data) => { let labelAlvo = null; let $doc = $(data); $doc.find("*").each( function() { if (labelAlvo !== null) { return false; } let txt = $(this).text(); if (txt) { txt = txt.replace(/\s+/g, " ").trim(); } if (txt && ["saqueador de recursos do dia","saqueador de recursos do dia!","looter of the day","resource looter of the day","pluenderer des tages","plunderer of the day","saqueador del dia","pilleur du jour","saccheggiatore del giorno","plunderaar van de dag","lupiezca dnia","jefe saqueador"].indexOf(txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")) !== -1) { let escopo = this.parentElement; for (let up = 0; up < 5 && escopo; up++) { let pb = $(escopo).find(".progress-bar .label").first(); if (pb.length) { labelAlvo = pb; return false; } escopo = escopo.parentElement; } } }); if (labelAlvo) { let texto = labelAlvo.text().replace(/\s+/g, ""); let partes = texto.split("/"); if (partes.length === 2) { let meu = parseInt(partes[0].replace(/[^0-9]/g, '')); let top = parseInt(partes[1].replace(/[^0-9]/g, '')); if (!isNaN(meu) && !isNaN(top) && top > 0) { Lockr.set('FarmHard_Meu', meu); Lockr.set('FarmHard_Top', top); AtualizarBarraRanking(meu, top); } } } else { const texto = document.getElementById("farmhard-rank-texto"); if (texto) { texto.innerText = "Conquista nao encontrada"; } } }, error: () => { const texto = document.getElementById("farmhard-rank-texto"); if (texto) { texto.innerText = "Erro ao buscar ranking"; } } }); }; let fhMeuCache = Lockr.get('FarmHard_Meu'); let fhTopCache = Lockr.get('FarmHard_Top'); let fhDiaCache = Lockr.get('FarmHard_SaqueDia'); if (fhDiaCache && fhDiaCache.meu != null) { AtualizarPainelSaque(fhDiaCache); } else if (fhMeuCache && fhTopCache) { AtualizarBarraRanking(fhMeuCache, fhTopCache); } BuscarRanking(); fhRankIntervalo = setInterval(BuscarRanking, 60000); window.__FarmHardMostrar = () => { const p = document.getElementById("farmhard-popup"); if (p) { p.style.display = "block"; } }; const fhHeader = document.getElementById("farmhard-header"); let fhArrastando = false, fhOffX = 0, fhOffY = 0; fhHeader.addEventListener("mousedown", (e) => { fhArrastando = true; const rect = document.getElementById("farmhard-popup").getBoundingClientRect(); fhOffX = e.clientX - rect.left; fhOffY = e.clientY - rect.top; }); document.addEventListener("mousemove", (e) => { if (!fhArrastando) { return; } const p = document.getElementById("farmhard-popup"); if (!p) { return; } p.style.left = (e.clientX - fhOffX) + "px"; p.style.top = (e.clientY - fhOffY) + "px"; p.style.right = "auto"; }); document.addEventListener("mouseup", () => { fhArrastando = false; }); document.querySelectorAll(".fh-vel").forEach((btn) => { btn.addEventListener("click", () => { VelocidadeFator = parseFloat(btn.getAttribute("data-fator")); /* Freio ligado: piso de 1.25x (o freio agora prioriza farm + cunhagem coordenados,    entao o farm roda num ritmo util mas ainda cauteloso, nao no minimo absoluto).    Se voce escolher menos que 1.25x com o freio ligado, sobe pra 1.25x. */ if (window.__ORK_FREIO__ && VelocidadeFator < 1.25) { VelocidadeFator = 1.25; AtualizarStatus("FREIO: velocidade minima 1.25x"); console.log("[OROCHIKING] Freio: Farm Hard no piso de 1.25x."); } document.querySelectorAll(".fh-vel").forEach((b) => { b.classList.remove("ativa"); }); btn.classList.add("ativa"); }); }); /* Filtro de CL minima: salva a preferencia e atualiza o status ao digitar */ (() => { const elCl = document.getElementById("fh-clmin"); if (!elCl) { return; } try { const salvo = localStorage.getItem("fh_cl_minimo"); if (salvo !== null) { elCl.value = salvo; } } catch (e) {} LerCLMinimo(); AtualizarStatusCL(); const elCp = document.getElementById("fh-cpmin"); if (elCp) { try { const sp = localStorage.getItem("fh_cp_minimo"); if (sp !== null) { elCp.value = sp; } } catch (e) {} LerCPMinimo(); AtualizarStatusCP(); elCp.addEventListener("input", () => { LerCPMinimo(); try { localStorage.setItem("fh_cp_minimo", String(CPMinimo)); } catch (e) {} if (CPMinimo <= 0) { UltimaCPLida = null; } AtualizarStatusCP(); }); } elCl.addEventListener("input", () => { LerCLMinimo(); try { localStorage.setItem("fh_cl_minimo", String(CLMinimo)); } catch (e) {} if (CLMinimo <= 0) { UltimaCLLida = null; AldeiasPuladasCL = 0; } AtualizarStatusCL(); }); })(); (() => { const btnR = document.getElementById('fh-ritmo-btn'); if (btnR) { try { if (localStorage.getItem('fh_ritmo_humano') === '1') { btnR.classList.add('on'); btnR.innerText = 'on'; } } catch (e) {} btnR.addEventListener('click', () => { const ligar = !btnR.classList.contains('on'); btnR.classList.toggle('on', ligar); btnR.innerText = ligar ? 'on' : 'off'; try { localStorage.setItem('fh_ritmo_humano', ligar ? '1' : '0'); } catch (e) {} if (ligar) { if (Rodando) { rhLigar(); } } else { rhDesligar(); } }); } (() => { const btnS = document.getElementById('fh-saque-btn'); const inS = document.getElementById('fh-saquemin'); if (!btnS) { return; } try { if (localStorage.getItem('fh_saque_min_on') === '1') { btnS.classList.add('on'); btnS.innerText = 'on'; } const v = localStorage.getItem('fh_saque_min'); if (inS && v !== null && v !== '') { inS.value = v; } } catch (e) {} if (inS) { inS.addEventListener('input', () => { try { localStorage.setItem('fh_saque_min', String(inS.value)); } catch (e) {} }); } btnS.addEventListener('click', () => { const ligar = !btnS.classList.contains('on'); btnS.classList.toggle('on', ligar); btnS.innerText = ligar ? 'on' : 'off'; AldeiasPuladasSaque = 0; try { localStorage.setItem('fh_saque_min_on', ligar ? '1' : '0'); } catch (e) {} AtualizarStatus(ligar ? ('Saque mínimo por ataque: ' + (SaqueMinAtivo() || 0)) : 'Saque mínimo por ataque desligado'); }); })(); (() => { const btnN = document.getElementById('fh-modon-btn'); if (!btnN) { return; } try { if (localStorage.getItem('fh_prioriza_rica') === '1') { btnN.classList.add('on'); btnN.innerText = 'on'; } } catch (e) {} btnN.addEventListener('click', () => { const ligar = !btnN.classList.contains('on'); btnN.classList.toggle('on', ligar); btnN.innerText = ligar ? 'on' : 'off'; try { localStorage.setItem('fh_prioriza_rica', ligar ? '1' : '0'); } catch (e) {} AtualizarStatus(ligar ? 'Priorizando a bárbara mais rica' : 'Priorizando a bárbara mais perto'); console.log('[OROCHIKING] Farm Hard: ' + (ligar ? 'priorizando a MAIS RICA' : 'priorizando a MAIS PERTO (padrão)')); }); })(); (() => { const elR = document.getElementById('fh-recmin'); if (!elR) { return; } try { const salvo = localStorage.getItem('fh_recurso_minimo'); if (salvo !== null) { elR.value = salvo; } } catch (e) {} LerRecursoMinimo(); AtualizarStatusRec(); elR.addEventListener('input', () => { LerRecursoMinimo(); try { localStorage.setItem('fh_recurso_minimo', String(RecursoMinimo)); } catch (e) {} AtualizarStatusRec(); }); })(); })(); /* Pegar ID das Aldeias */ $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&id=" + game_data.player.id, data: {}, type: "GET", headers: { "Upgrade-Insecure-Requests": 1 }, success: (data) => { let _ids = data.match(/(data-id="(\d+)")+/g); if (_ids) { for (let x of _ids) { x = x.replace(/[^0-9]/g, ''); Ids.push(x); } } if (data.match(/Player\.getAllVillages/)) { $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&ajax=fetch_villages&player_id=" + game_data.player.id, data: {}, type: "GET", dataType: "json", success: (data) => { let _ids_ = data.villages ? data.villages.match(/(data-id="(\d+)")+/g) : null; if (_ids_) { for (let r of _ids_) { r = r.replace(/[^0-9]/g, ''); Ids.push(r); } } MontarGrupos(NumGrupos); }, error: () => { MontarGrupos(NumGrupos); } }); } else { MontarGrupos(NumGrupos); } }, error: () => { AtualizarStatus("Erro ao buscar aldeias"); } }); /* v96: ALDEIAS NOVAS SEM RECARREGAR. Antes a lista de aldeias era lida uma vez só ao abrir o Farm Hard; aldeia noblada depois nunca entrava na rotação. Agora: cada página do Assistente que o farm já baixa traz o total de aldeias do jogador; se o total mudar, relê a lista (1 pedido, no máx. 1x por minuto) e encaixa as novas na rotação sem reiniciar. Também confere sozinho a cada ~10 min. */ let fhUltimaBuscaIds = Date.now(); let fhBuscandoIds = false; let fhTotalVisto = null; let fhProxConferencia = aleatorio(480000, 720000); const fhMesclarIds = (lista) => { const novos = []; const vistos = {}; lista.forEach((x) => { if (!vistos[x]) { vistos[x] = 1; novos.push(x); } }); if (!novos.length) { return; } const atuais = {}; Ids.forEach((x) => { atuais[x] = 1; }); const add = novos.filter((x) => !atuais[x]); const rem = Ids.filter((x) => !vistos[x]); if (!add.length && !rem.length) { return; } if (rem.length) { Ids = Ids.filter((x) => vistos[x]); for (let g = 0; g < Grupos.length; g++) { Grupos[g] = Grupos[g].filter((x) => vistos[x]); if (Ponteiros[g] >= Grupos[g].length) { Ponteiros[g] = 0; } } } add.forEach((x) => { Ids.push(x); if (Grupos.length) { let menor = 0; for (let g = 1; g < Grupos.length; g++) { if (Grupos[g].length < Grupos[menor].length) { menor = g; } } Grupos[menor].push(x); } }); if (!Grupos.length) { MontarGrupos(NumGrupos); } const elTot = document.getElementById('fh-total-aldeias'); if (elTot) { elTot.innerText = '(' + Ids.length + ' aldeias)'; } if (add.length) { AtualizarStatus('+' + add.length + ' aldeia(s) nova(s) na rotação (' + Ids.length + ' no total)'); } }; const fhAtualizarIds = () => { if (fhBuscandoIds || Date.now() - fhUltimaBuscaIds < 60000 || window.__ORK_CAPTCHA_BLOQUEADO__) { return; } fhBuscandoIds = true; fhUltimaBuscaIds = Date.now(); fhProxConferencia = aleatorio(480000, 720000); const lista = []; const pegar = (txt) => { const m = String(txt || '').match(/(data-id="(\d+)")+/g); if (m) { m.forEach((x) => lista.push(x.replace(/[^0-9]/g, ''))); } }; const fim = () => { fhBuscandoIds = false; try { fhMesclarIds(lista); } catch (e) {} }; $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&id=" + game_data.player.id, type: "GET", success: (data) => { pegar(data); if (String(data).match(/Player\.getAllVillages/)) { $.ajax({ url: "/game.php?village=" + game_data.village.id + "&screen=info_player&ajax=fetch_villages&player_id=" + game_data.player.id, type: "GET", dataType: "json", success: (j) => { pegar(j && j.villages); fim(); }, error: fim }); } else { fim(); } }, error: () => { fhBuscandoIds = false; } }); }; const fhConferirTotal = (data) => { try { const m = String(data).match(/"player":\{[^{}]*?"villages":"?(\d+)/); if (m) { const tot = parseInt(m[1], 10); if (fhTotalVisto === null) { fhTotalVisto = tot; const unicos = {}; Ids.forEach((x) => { unicos[x] = 1; }); if (tot !== Object.keys(unicos).length) { fhAtualizarIds(); } } else if (tot !== fhTotalVisto) { fhTotalVisto = tot; fhAtualizarIds(); } } if (Date.now() - fhUltimaBuscaIds > fhProxConferencia) { fhAtualizarIds(); } } catch (e) {} }; /* Função Enviar Atk Botão C - AS */ const EnviarAtaque_ = (Relatorio_id_, id_, aoTerminar) => { AtaquesPendentes++; AtualizarContador(); $.ajax({ url: "/game.php?village=" + id_ + "&screen=am_farm&mode=farm&ajaxaction=farm_from_report&json=1&&h=" + csrf_token + "&client_time=" + Math.round(Timing.getCurrentServerTime() / 1e3), data: { report_id: Relatorio_id_ }, type: "POST", dataType: "json", headers: { "TribalWars-Ajax": 1 }, success: (resp, textStatus, xhr) => { AtaquesPendentes--; const okEnvio = !!(xhr && xhr.status === 200 && resp && !resp.error); if (okEnvio) { AtaquesEnviados++; } else { AtaquesFalhados++; /* falhou: libera o relatorio pra essa barbara poder ser atacada de novo */ LiberarRelatorio(Relatorio_id_); RegistrarMotivoFalha(resp && resp.error ? resp.error : ('HTTP ' + (xhr ? xhr.status : '?'))); } AtualizarContador(); if (aoTerminar) { try { aoTerminar(okEnvio); } catch (e) {} } }, error: (xhr) => { AtaquesPendentes--; AtaquesFalhados++; LiberarRelatorio(Relatorio_id_); RegistrarMotivoFalha('rede ' + (xhr && xhr.status ? xhr.status : 'sem resposta')); AtualizarContador(); if (aoTerminar) { try { aoTerminar(false); } catch (e) {} } } }); }; class Alvo { constructor(Relatorio_id_, Madeira, Argila, Ferro, Distancia) { this.Relatorio_id_ = Relatorio_id_; this.Madeira = Madeira; this.Argila = Argila; this.Ferro = Ferro; this.Distancia = (typeof Distancia === 'number' ? Distancia : 999999); } get Recursos() { return this.Madeira + this.Argila + this.Ferro; } } /* Cada fila tem um indice fixo - se a velocidade atual pede menos filas do que o indice desta, ela so espera (nao farma) ate a velocidade subir de novo */ const Trabalhador = (indiceFila) => { if (!Rodando) { return; } if (window.__ORK_CAPTCHA_BLOQUEADO__) { if (!fhNoCaptcha) { fhNoCaptcha = true; AtualizarStatus('Captcha — pausado (volta sozinho)'); } setTimeout(() => Trabalhador(indiceFila), 1500); return; } if (fhNoCaptcha) { fhNoCaptcha = false; AtualizarStatus('Rodando (' + Ids.length + ' aldeias, ' + Grupos.length + ' grupos)'); } if (Pausado) { setTimeout(() => Trabalhador(indiceFila), 300); return; } let filasAtivas = FilasParaVelocidade(VelocidadeFator); if (indiceFila >= filasAtivas) { setTimeout(() => Trabalhador(indiceFila), 1000); return; } if (Grupos.length === 0) { MontarGrupos(NumGrupos); } if (Grupos.length === 0) { setTimeout(() => Trabalhador(indiceFila), 300); return; } let inicio = Date.now(); let id_ = ProximaAldeia(); if (!id_) { setTimeout(() => Trabalhador(indiceFila), 300); return; } $.ajax({ url: "/game.php?village=" + id_ + "&screen=am_farm", type: "GET", headers: { "Upgrade-Insecure-Requests": 1 }, success: (data) => { fhConferirTotal(data); LerCLMinimo(); LerCPMinimo(); LerRecursoMinimo(); /* Filtro de cavalaria: pula a aldeia se ela nao tiver a CL minima NEM a CP minima.    Ou seja, basta cumprir UM dos dois pra farmar (permite mesclar CL com CP,    como em aldeias que tem pesada junto com lanca). So bloqueia quando a leitura    funcionou (-1 = markup nao lido, nao bloqueia). */ if (CLMinimo > 0 || CPMinimo > 0) { const clDisponivel = (CLMinimo > 0) ? LerCavalariaDisponivel(data) : -1; const cpDisponivel = (CPMinimo > 0) ? LerCavalariaPesadaDisponivel(data) : -1; if (CLMinimo > 0) { UltimaCLLida = clDisponivel; AtualizarStatusCL(); } if (CPMinimo > 0) { UltimaCPLida = cpDisponivel; AtualizarStatusCP(); } const clOk = (CLMinimo > 0) && (clDisponivel === -1 || clDisponivel >= CLMinimo); const cpOk = (CPMinimo > 0) && (cpDisponivel === -1 || cpDisponivel >= CPMinimo); /* passa se qualquer criterio ativo foi cumprido (ou nao pode ser lido) */ const podeFarmar = clOk || cpOk; if (!podeFarmar) { AldeiasPuladasCL++; AtualizarStatusCL(); AtualizarStatusCP(); let gastoPulo = Date.now() - inicio; let alvoIntervaloPulo = Math.round(1000 / VelocidadeFator); let minimoPulo = Math.max(75, Math.round(150 / VelocidadeFator)); let basePulo = Math.max(minimoPulo, alvoIntervaloPulo - gastoPulo); let esperaPulo = aleatorio(Math.round(basePulo * 0.85), Math.round(basePulo * 1.15)); setTimeout(() => Trabalhador(indiceFila), esperaPulo); return; } } /* v96: saque mínimo por ataque — só farma se as tropas em casa carregam o mínimo */ let cargaVisita = -1; const saqueMinV = SaqueMinAtivo(); if (saqueMinV > 0) { cargaVisita = LerCargaDisponivel(data); if (cargaVisita !== -1 && cargaVisita < saqueMinV) { AldeiasPuladasSaque++; try { const bS = document.getElementById('fh-saque-btn'); if (bS) { bS.title = AldeiasPuladasSaque + ' visita(s) pulada(s): tropa em casa carregava menos de ' + saqueMinV + ' (última: ' + cargaVisita + ')'; } } catch (e) {} let gastoS = Date.now() - inicio; let baseS = Math.max(Math.max(75, Math.round(150 / VelocidadeFator)), Math.round(1000 / VelocidadeFator) - gastoS); setTimeout(() => Trabalhador(indiceFila), aleatorio(Math.round(baseS * 0.85), Math.round(baseS * 1.15))); return; } } let Alvos = []; let array = []; /* v83: a lista Alvos_Muralha não era usada e só crescia no navegador */ $(data).find('tr[id^=village_]').each( function(e) { let id = $(this).attr('id').match(/village_(\d+)/)[1]; let coord = $(this).find('td').eq(3).text().match(/(\d+)\|(\d+)/g); let Relatorio_id_ = $(this).find('td').eq(3).find('a').attr('href').match(/view=(\d+)/)[1]; /* distancia que o proprio Assistente mostra (td[7]), ex '1', '1.4', '3'.    Usada so quando o modo N1-N8 esta ligado, pra priorizar as mais perto. */ let Distancia = parseFloat(String($(this).find('td').eq(7).text()).replace(',', '.')); if (isNaN(Distancia)) { Distancia = 999999; } let Madeira = apenasnumeros($(this).find('td').eq(5).find('span.nowrap').eq(0).text()); let Argila = apenasnumeros($(this).find('td').eq(5).find('span.nowrap').eq(1).text()); let Ferro = apenasnumeros($(this).find('td').eq(5).find('span.nowrap').eq(2).text()); let Muralha = apenasnumeros($(this).find('td').eq(6).text()); /* PROTEÇÃO PRA MUNDO NOVO / QUALQUER RODADA:    Antes, se uma linha não tivesse o botão C (comum em bárbara nunca atacada    numa rodada recém-aberta), o .attr("class") vinha undefined e o .match()    QUEBRAVA a passada inteira — o farm parava de achar alvos. Agora:    1) pega o botão C com segurança (string vazia se não existir);    2) considera o alvo válido se o C existe E não está desabilitado;    3) Muralha pode ser NaN em layout diferente — tratamos como 0, não trava. */ var _btnC = $(this).find('a.farm_icon.farm_icon_c'); var _classeC = (_btnC.length ? (_btnC.attr('class') || '') : ''); var _cAtivo = (_btnC.length > 0 && _classeC.indexOf('farm_icon_disabled') === -1); var _muralhaNum = isNaN(Muralha) ? 0 : Muralha; if( $(this).find('td').eq(5).find('span').eq(0).text() !== "?" ) { if (_cAtivo) { if (_muralhaNum > 0) { let aux = [ id, "&", coord, "&", _muralhaNum ]; if(array.indexOf(aux.join('')) === -1 ) { array.push(aux.join('')); } } Alvos.push(new Alvo(Relatorio_id_, Madeira, Argila, Ferro, Distancia)); } } }); if (Alvos.length !== 0) { /* ESCOLHA DO ALVO — tres correcoes:    (1) antes exigia madeira, argila E ferro >= 50 mil ao mesmo tempo, pulando barbaras ricas        com recurso desigual; agora vale o TOTAL (mesmo minimo de 150 mil que ja existia na pratica);    (2) antes pegava o PRIMEIRO da lista; agora pega o MAIS RICO;    (3) antes varias aldeias batiam na mesma barbara usando o MESMO relatorio velho (o relatorio so        atualiza quando o ataque chega), e so o primeiro ataque trazia recurso. Agora cada relatorio        e usado uma unica vez: quando o ataque chega, sai um relatorio novo e o alvo volta a valer. */ /* v59: ATAQUES POR VISITA. Com 1 = exatamente como antes. Com 2 a 10: le a pagina da aldeia UMA vez e manda ate N ataques em sequencia (as mais perto, ou as mais ricas com o botao ligado), parando na primeira recusa (ex: tropa acabou). O ritmo de PEDIDOS por segundo continua o mesmo — so que mais pedidos viram saque. */ const porVisita = LerPorVisita(); if (porVisita > 1) { let minRecM = MinimoEfetivo(); let ricaM = false; try { ricaM = (localStorage.getItem('fh_prioriza_rica') === '1'); } catch (e) {} let listaM = Alvos.filter((a) => { if (a.Recursos < minRecM) { return false; } if (RelatoriosUsados.has(a.Relatorio_id_)) { AlvosPuladosRepetidos++; return false; } return true; }); listaM.sort((a, b) => ricaM ? (b.Recursos - a.Recursos) : ((a.Distancia - b.Distancia) || (b.Recursos - a.Recursos))); listaM = listaM.slice(0, porVisita); listaM.forEach((a) => MarcarRelatorioUsado(a.Relatorio_id_)); let enviadosVisita = 0; const fimVisita = () => { let gasto = Date.now() - inicio; let alvoIntervalo = Math.round(Math.round(1000 / VelocidadeFator) * Math.max(1, (1 + enviadosVisita) / 2)); let minimo = Math.max(75, Math.round(150 / VelocidadeFator)); let base = Math.max(minimo, alvoIntervalo - gasto); let espera = aleatorio(Math.round(base * 0.85), Math.round(base * 1.15)); setTimeout(() => Trabalhador(indiceFila), espera); }; const soltarResto = (i) => { for (let k = i; k < listaM.length; k++) { LiberarRelatorio(listaM[k].Relatorio_id_); } }; const proximoM = (i) => { if (i >= listaM.length) { fimVisita(); return; } if (!Rodando || Pausado || window.__ORK_CAPTCHA_BLOQUEADO__) { soltarResto(i); fimVisita(); return; } if (saqueMinV > 0 && cargaVisita !== -1 && cargaVisita < saqueMinV) { soltarResto(i); fimVisita(); return; } EnviarAtaque_(listaM[i].Relatorio_id_, id_, (ok) => { if (ok) { enviadosVisita++; if (cargaVisita !== -1) { cargaVisita -= listaM[i].Recursos; } setTimeout(() => proximoM(i + 1), aleatorio(250, 600)); } else { soltarResto(i + 1); fimVisita(); } }); }; proximoM(0); return; } let melhor = null; let minRec = MinimoEfetivo(); /* modoDistancia ligado (Farmar N1-N8): escolhe o alvo MAIS PROXIMO (a distancia    que o proprio Assistente mostra). Desligado (padrao, rodadas de conquistador):    escolhe o MAIS RICO, exatamente como antes. Todo o resto (filtros CL/CP/recurso,    botao C, 1 ataque por relatorio) e identico nos dois modos. */ /* v51: PADRAO = a barbara MAIS PERTO (distancia do Assistente) que passa nos filtros de recurso e ainda nao tem ataque a caminho pelo mesmo relatorio. Igual era antes da v31. Empate de distancia: a mais rica. So com o botao 'Priorizar a mais rica' ligado ele volta a escolher pela riqueza. */ let modoRica = false; try { modoRica = (localStorage.getItem('fh_prioriza_rica') === '1'); } catch (e) {} for (let t = 0; t < Alvos.length; t++) { if (Alvos[t].Recursos < minRec) { continue; } if (RelatoriosUsados.has(Alvos[t].Relatorio_id_)) { AlvosPuladosRepetidos++; continue; } if (melhor === null) { melhor = Alvos[t]; } else if (modoRica) { if (Alvos[t].Recursos > melhor.Recursos) { melhor = Alvos[t]; } } else { if (Alvos[t].Distancia < melhor.Distancia || (Alvos[t].Distancia === melhor.Distancia && Alvos[t].Recursos > melhor.Recursos)) { melhor = Alvos[t]; } } } if (melhor !== null) { MarcarRelatorioUsado(melhor.Relatorio_id_); EnviarAtaque_(melhor.Relatorio_id_, id_); } } let gasto = Date.now() - inicio; let alvoIntervalo = Math.round(1000 / VelocidadeFator); let minimo = Math.max(75, Math.round(150 / VelocidadeFator)); let base = Math.max(minimo, alvoIntervalo - gasto); let espera = aleatorio(Math.round(base * 0.85), Math.round(base * 1.15)); setTimeout(() => Trabalhador(indiceFila), espera); }, error: () => { let gasto = Date.now() - inicio; let alvoIntervalo = Math.round(1000 / VelocidadeFator); let minimo = Math.max(75, Math.round(150 / VelocidadeFator)); let base = Math.max(minimo, alvoIntervalo - gasto); let espera = aleatorio(Math.round(base * 0.85), Math.round(base * 1.15)); setTimeout(() => Trabalhador(indiceFila), espera); } }); }; const IniciarFilas = () => { AtualizarStatus("Rodando (" + Ids.length + " aldeias, " + Grupos.length + " grupos)"); for (let l = 0; l < NUM_FILAS; l++) { setTimeout(() => Trabalhador(l), l * 150); } }; const __ids = () => { if (Ids[0] !== undefined) { if (Grupos.length === 0) { MontarGrupos(NumGrupos); } IniciarFilas(); } else { fhTentativasIds++; if (fhTentativasIds > 20) { AtualizarStatus("Erro: aldeias nao carregaram. Feche e abra novamente."); return; } setTimeout(__ids, 1000); } }; document.getElementById("fh-iniciar").onclick = () => { Rodando = true; Pausado = false; /* Freio ligado forca o Ritmo Humano: as pausas do farm sao a janela em que a    cunhagem pode rodar sem competir com ele. */ try { const b = document.getElementById("fh-ritmo-btn"); if (window.__ORK_FREIO__ && b && !b.classList.contains("on")) { b.classList.add("on"); b.innerText = "on"; try { localStorage.setItem("fh_ritmo_humano","1"); } catch(e){} } if ((window.__ORK_FREIO__ || (b && b.classList.contains("on")))) { rhLigar(); } } catch (e) {} document.getElementById("fh-pausar").innerText = "Pausar"; AtualizarStatus("Iniciando..."); if (!Iniciado) { Iniciado = true; fhTentativasIds = 0; setTimeout(__ids, 500); } else { AtualizarStatus("Rodando..."); } }; document.getElementById("fh-pausar").onclick = () => { if (!Rodando) { return; } Pausado = !Pausado; document.getElementById("fh-pausar").innerText = Pausado ? "Continuar" : "Pausar"; AtualizarStatus(Pausado ? "Pausado" : "Rodando..."); }; const FecharTudo = () => { Rodando = false; try { window.__ORK_FARM_EM_PAUSA__ = true; } catch (e) {} rhDesligar(); if (fhRankIntervalo) { clearInterval(fhRankIntervalo); } const p = document.getElementById("farmhard-popup"); if (p) { p.remove(); } window.__FarmHardAtivo = false; }; document.getElementById("fh-fechar").onclick = FecharTudo; document.getElementById("fh-x").onclick = FecharTudo; document.querySelectorAll(".fh-opcao-input").forEach((el) => { el.addEventListener("change", (ev) => { NumGrupos = parseInt(ev.target.value); MontarGrupos(NumGrupos); document.querySelectorAll(".fh-opcao").forEach((o) => { o.classList.remove("ativa"); }); ev.target.closest(".fh-opcao").classList.add("ativa"); }); }); } _FarmarAS(); })();
   }
 
   function checaFarmDormindo() {
@@ -6363,6 +6436,39 @@
     return window.__ORK_FARM_EM_PAUSA__ === true;        // freio: só na pausa do farm
   }
 
+  /* v96: REGRAS DA CUNHAGEM (opcionais, padrão 0 = como sempre foi)
+     - Moedas por aldeia: no máximo X moedas por aldeia em cada ciclo (0 = tudo que der)
+     - Guardar por aldeia: deixa o recurso de X moedas sem cunhar (sobra recurso pra formar nobre)
+     Funciona assim: o "Selecionar" do jogo preenche cada aldeia com o máximo possível; antes de clicar
+     em Cunhar, cada caixinha é ajustada pela regra. Salvas no navegador (valem também no 24/7). */
+  var CUNHAR_REGRAS = 'ork_cunhar_regras';
+  function lerRegrasCunhar() {
+    try { var r = JSON.parse(localStorage.getItem(CUNHAR_REGRAS) || 'null'); if (r) { return { max: Math.max(0, +r.max || 0), guardar: Math.max(0, +r.guardar || 0) }; } } catch (e) {}
+    return { max: 0, guardar: 0 };
+  }
+  function gravarRegrasCunhar(r) { try { localStorage.setItem(CUNHAR_REGRAS, JSON.stringify(r)); } catch (e) {} }
+  function aplicarRegrasCunhar(regras) {
+    if (!regras.max && !regras.guardar) { return { ok: true, aldeias: 0, antes: 0, depois: 0 }; }
+    var sels = [].slice.call(document.querySelectorAll('#coin_overview_table select'));
+    if (!sels.length) { sels = [].slice.call(document.querySelectorAll('select.select_coins')); }
+    // só caixinhas de quantidade (opções numéricas)
+    sels = sels.filter(function (s) { return s.options.length && [].every.call(s.options, function (o) { return /^\d+$/.test(String(o.value)); }); });
+    if (!sels.length) { return { ok: false, aldeias: 0, antes: 0, depois: 0 }; }
+    var out = { ok: true, aldeias: sels.length, antes: 0, depois: 0 };
+    sels.forEach(function (s) {
+      var atual = parseInt(s.value, 10) || 0, alvo = Math.max(0, atual - regras.guardar);
+      if (regras.max > 0) { alvo = Math.min(alvo, regras.max); }
+      out.antes += atual;
+      if (alvo !== atual) {
+        var melhor = 0; [].forEach.call(s.options, function (o) { var v = +o.value; if (v <= alvo && v > melhor) { melhor = v; } });
+        s.value = String(melhor);
+        try { if (window.jQuery) { window.jQuery(s).trigger('change'); } else { s.dispatchEvent(new Event('change', { bubbles: true })); } } catch (e) {}
+        alvo = melhor;
+      }
+      out.depois += alvo;
+    });
+    return out;
+  }
   function clicarCunhar() {
     // No freio, se o farm está farmando agora, segura — tenta de novo em alguns segundos
     if (!cunhagemPodeAgir()) {
@@ -6376,6 +6482,18 @@
       if (selectCoins) {
         var anchor = document.getElementById('select_anchor_top');
         if (anchor) anchor.click();
+        var regras = lerRegrasCunhar();
+        var ar = aplicarRegrasCunhar(regras);
+        if (!ar.ok) {
+          // regra ligada mas não achei as caixinhas: NÃO cunha (senão gastaria o recurso que era pra guardar)
+          console.warn('[OROCHIKING] Cunhagem: regras ligadas (máx ' + regras.max + ', guardar ' + regras.guardar + ') mas não achei as quantidades por aldeia — não cunhei pra não gastar o recurso guardado.');
+          atualizarStatusCunhar('Cunhagem: não achei as quantidades por aldeia pra aplicar as regras — não cunhei.');
+          return false;
+        }
+        if (ar.aldeias) {
+          console.log('[OROCHIKING] Cunhagem com regras: ' + ar.aldeias + ' aldeia(s), ' + ar.antes + ' → ' + ar.depois + ' moeda(s) (máx/aldeia ' + (regras.max || 'tudo') + ', guardar ' + regras.guardar + ').');
+          if (!ar.depois) { atualizarStatusCunhar('Cunhagem: nenhuma moeda depois das regras (tudo guardado).'); return true; }
+        }
         var botao = document.querySelector('#coin_overview_table .mint_multi_button');
         if (botao) botao.click();
         return true;
@@ -6534,10 +6652,17 @@
       'border-radius:16px;padding:20px 22px;width:280px;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75)">' +
         '<div style="font-weight:800;color:#ffd84d;margin-bottom:10px">🪙 Cunhar Moedas Automático</div>' +
         '<div style="font-size:11.5px;color:#9a9a9a;margin-bottom:10px">Cunha agora e recarrega a página no intervalo abaixo, repetindo sozinho:</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:8px">' +
+          '<label style="flex:1;font-size:10.5px;color:#bbb" data-dica="No máximo quantas moedas cada aldeia cunha por ciclo. 0 = tudo que der (como sempre foi).">Moedas por aldeia<br>' +
+            '<input id="ork-cunhar-max" type="number" min="0" value="' + lerRegrasCunhar().max + '" style="width:100%;box-sizing:border-box;margin-top:3px;background:#111;border:1px solid #444;color:#eee;padding:7px 8px;border-radius:6px;font-size:12.5px"></label>' +
+          '<label style="flex:1;font-size:10.5px;color:#bbb" data-dica="Deixa em cada aldeia o recurso equivalente a essa quantidade de moedas, sem cunhar — sobra recurso pra formar nobre. Ex.: 5 = cunha tudo menos 5 moedas por aldeia. 0 = não guarda nada.">Guardar por aldeia<br>' +
+            '<input id="ork-cunhar-guardar" type="number" min="0" value="' + lerRegrasCunhar().guardar + '" style="width:100%;box-sizing:border-box;margin-top:3px;background:#111;border:1px solid #444;color:#eee;padding:7px 8px;border-radius:6px;font-size:12.5px"></label>' +
+        '</div>' +
+        '<div style="font-size:10.5px;color:#888;margin-bottom:6px">Repetir a cada:</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:12px">' +
           '<input id="ork-cunhar-valor" type="number" min="1" value="3" ' +
-            'style="flex:1;box-sizing:border-box;background:#111;border:1px solid #444;color:#eee;padding:8px 9px;border-radius:6px;font-size:12.5px">' +
-          '<select id="ork-cunhar-unidade" style="flex:1;background:#111;border:1px solid #444;color:#eee;padding:8px 9px;border-radius:6px;font-size:12.5px">' +
+            'style="flex:1;min-width:0;box-sizing:border-box;background:#111;border:1px solid #444;color:#eee;padding:8px 9px;border-radius:6px;font-size:12.5px">' +
+          '<select id="ork-cunhar-unidade" style="flex:1;min-width:0;box-sizing:border-box;background:#111;border:1px solid #444;color:#eee;padding:8px 9px;border-radius:6px;font-size:12.5px">' +
             '<option value="min" selected>minutos</option>' +
             '<option value="seg">segundos</option>' +
           '</select>' +
@@ -6551,11 +6676,13 @@
       '</div>';
     document.body.appendChild(overlay);
 
-    function fechar() { overlay.remove(); }
+    var balaoCun = null; try { balaoCun = autoLigarDicas(overlay); } catch (e) {}
+    function fechar() { try { if (balaoCun) { balaoCun.remove(); } } catch (e) {} overlay.remove(); }
     document.getElementById('ork-cunhar-cancelar').addEventListener('click', fechar);
     document.getElementById('ork-cunhar-iniciar').addEventListener('click', function () {
       var valor = parseFloat(document.getElementById('ork-cunhar-valor').value) || 3;
       var unidade = document.getElementById('ork-cunhar-unidade').value;
+      gravarRegrasCunhar({ max: Math.max(0, parseInt(document.getElementById('ork-cunhar-max').value, 10) || 0), guardar: Math.max(0, parseInt(document.getElementById('ork-cunhar-guardar').value, 10) || 0) });
       var intervaloMs = Math.max(5000, unidade === 'seg' ? valor * 1000 : valor * 60000);
       gravarConfigCunhar({ ativo: true, intervaloMs: intervaloMs });
       fechar();
@@ -10083,7 +10210,7 @@
   function nobLer() {
     // padrão (quem nunca mexeu vê isso; o que a pessoa mudar e salvar fica valendo pra ela)
     var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 10, escolta: 'light', escoltas: [{ u: 'spear', n: 122 }, { u: 'light', n: 22 }], nobres: 1, intervaloUni: 'seg', reforco: 0, raio: 1000,
-      maxSimult: 0, intervaloMin: 22, pontosMin: 0, pontosMax: 13000, priorizarBonus: true, soBonus: false, espacoMinhas: true,
+      maxSimult: 0, intervaloMin: 22, pontosMin: 0, pontosMax: 13000, priorizarBonus: true, soBonus: false, espacoMinhas: true, continentes: '', vizMin: 0, reduzirAuto: false,
       bonusTipos: NOB_BONUS.map(function (b) { return b[0]; }), pesquisar: true, recrutarEsp: 10, explorarQtd: 10, vizinhasMin: 1, envioMin: 2, envioMax: 4, produzir: true, produzirMax: 1, produzirRaio: 25,
       refs: [], prodMin: 0.7, prodMax: 1.5,
       alvos: [], explorados: [], proximoEm: 0, ultimo: null };
@@ -10108,6 +10235,17 @@
       return m;
     });
     return out;
+  }
+  // v97: continentes (K45 = x 500-599, y 400-499: 1º dígito = centena do Y, 2º = centena do X)
+  function nobLerConts(texto) {
+    var out = [], vistos = {};
+    String(texto || '').replace(/[kK]\s*(\d)(\d)/g, function (m, cy, cx) { var k = cy + cx; if (!vistos[k]) { vistos[k] = 1; out.push({ ky: +cy, kx: +cx, nome: 'K' + k, x: (+cx) * 100 + 50, y: (+cy) * 100 + 50 }); } return m; });
+    return out;
+  }
+  function nobNoCont(b, conts) {
+    if (!conts || !conts.length) { return true; }
+    var ky = Math.floor(b.y / 100), kx = Math.floor(b.x / 100);
+    return conts.some(function (k) { return k.ky === ky && k.kx === kx; });
   }
   // distância da bárbara até a referência mais perto
   function nobDistRef(b, refs) {
@@ -10341,14 +10479,16 @@
     // v87: com coordenadas de referência, o mapa é lido em volta DELAS (de perto pra longe),
     // e não em volta das suas aldeias — assim os nobres vão pra região que você escolheu (ex.: a borda).
     var refs = (cfg.refs || []);
-    var centrosBase = refs.length ? refs : comNobre;
+    var contsL = nobLerConts(cfg.continentes);
+    var centrosBase = contsL.length ? contsL : (refs.length ? refs : comNobre);
+    if (contsL.length) { passos = [25, 50, 75]; nobLog('lendo o mapa dos continentes ' + contsL.map(function (k) { return k.nome; }).join(', ') + '.'); }
     if (refs.length && comNobre.length) { nobLog('lendo o mapa a partir de ' + refs.length + ' coordenada(s) de referência: ' + refs.map(function (r) { return r.x + '|' + r.y; }).join(', ') + '.'); }
     for (var i = 0; i < passos.length; i++) {
       if (parar && parar()) { break; }
       if (!comNobre.length) { break; }
       busca = await nobBuscarBarbaras(centrosBase.map(function (a) { return { x: a.x, y: a.y, r: passos[i] }; }), parar);
       lidosTot += busca.lidos;
-      p = nobPlanejar(cfg, origens, busca.lista, distMax, passos[i]);
+      p = nobPlanejar(cfg, origens, busca.lista, distMax, contsL.length ? Infinity : passos[i]);
       if (p.cheio) { break; }
     }
     busca.lidos = lidosTot;
@@ -10530,9 +10670,13 @@
         }
       }
     });
-    var semBarb = cands.filter(function (a) { return !a._nb; }).length;
-    cands = cands.filter(function (a) { return a._nb > 0; });
-    if ((cfg.refs || []).length) {
+    var contsP = nobLerConts(cfg.continentes);
+    var semBarb = contsP.length ? 0 : cands.filter(function (a) { return !a._nb; }).length;
+    if (contsP.length) {
+      cands.forEach(function (a) { a._dr = nobDistRef(a, contsP); });
+      cands.sort(function (a, b) { return a._dr - b._dr; });
+    } else { cands = cands.filter(function (a) { return a._nb > 0; }); }
+    if (contsP.length) {} else if ((cfg.refs || []).length) {
       // v87: com referência, forma primeiro nas academias mais perto das coordenadas de referência
       cands.forEach(function (a) { a._dr = nobDistRef(a, cfg.refs); });
       cands.sort(function (a, b) { return (a._dr - b._dr) || (b._nb - a._nb); });
@@ -10588,8 +10732,10 @@
     function gastar(o, n) { nobAlocarEscolta(o.tropas, esc, n).forEach(function (e) { o.tropas.snob -= 1; if (e) { o.tropas[e.u] -= e.n; } }); }
     // pontos que os alvos novos precisam respeitar (espaçamento): suas aldeias + alvos em andamento
     var fixos = (cfg.espacoMinhas === false ? [] : aldeias.map(function (a) { return { x: a.x, y: a.y }; })).concat(cfg.alvos.filter(function (a) { return a.status === 'caminho' || a.status === 'reenviar'; }));
+    var conts = nobLerConts(cfg.continentes);
     var cand = barbs.filter(function (b) {
       if (ocupadas[b.id]) { return false; }
+      if (!nobNoCont(b, conts)) { return false; }
       if (b.pontos < (cfg.pontosMin || 0) || b.pontos > (cfg.pontosMax || 99999)) { return false; }
       var bon = b.bonus && (tipos[b.bonus] || !NOB_BONUS.some(function (x) { return x[0] === b.bonus; }));
       if (cfg.soBonus && !bon) { return false; }
@@ -10599,6 +10745,14 @@
     cand.forEach(function (b) {
       var m = Infinity; origens.forEach(function (o) { var d = nobDist(o, b); if (d < m) { m = d; } }); b._d = m;
     });
+    // v97: bárbaras vizinhas (as 8 casas em volta). Com "Priorizar com vizinhas" ligado, quem tem pelo menos N vem primeiro.
+    var vizMin = Math.max(0, Math.min(8, +cfg.vizMin || 0));
+    var ondeBarb = {}; barbs.forEach(function (b) { ondeBarb[b.x + '|' + b.y] = 1; });
+    cand.forEach(function (b) {
+      var n = 0;
+      for (var dx = -1; dx <= 1; dx++) { for (var dy = -1; dy <= 1; dy++) { if ((dx || dy) && ondeBarb[(b.x + dx) + '|' + (b.y + dy)]) { n++; } } }
+      b._viz = n; b._vizOk = vizMin > 0 && n >= vizMin ? 1 : 0;
+    });
     var refs = cfg.refs || [];
     if (refs.length) {
       // v87: o mapa foi lido em volta das referências (raioLido = até onde já leu em volta delas).
@@ -10607,6 +10761,8 @@
       cand.forEach(function (b) { b._dr = nobDistRef(b, refs); });
       cand = cand.filter(function (b) { return b._d <= raio && b._dr <= (raioLido || Infinity); });
       cand.sort(function (a, b) {
+        if (a._vizOk !== b._vizOk) { return b._vizOk - a._vizOk; }
+        if (a._vizOk && a._viz !== b._viz) { return b._viz - a._viz; }
         var fa = Math.floor(a._dr / 5), fb = Math.floor(b._dr / 5);
         if (fa !== fb) { return fa - fb; }
         if (cfg.priorizarBonus && a._bon !== b._bon) { return a._bon ? -1 : 1; }
@@ -10615,7 +10771,7 @@
     } else {
       var raioOk = Math.min(raio, raioLido || raio);
       cand = cand.filter(function (b) { return b._d <= raioOk; });
-      cand.sort(function (a, b) { if (cfg.priorizarBonus && a._bon !== b._bon) { return a._bon ? -1 : 1; } return a._d - b._d; });
+      cand.sort(function (a, b) { if (a._vizOk !== b._vizOk) { return b._vizOk - a._vizOk; } if (a._vizOk && a._viz !== b._viz) { return b._viz - a._viz; } if (cfg.priorizarBonus && a._bon !== b._bon) { return a._bon ? -1 : 1; } return a._d - b._d; });
     }
     var plano = [], motivos = { espaco: 0, semOrigem: 0 };
     // primeiro: reforço nas bárbaras que não caíram na última leva
@@ -10639,12 +10795,27 @@
         .sort(function (p, q) { return nobDist(p, b) - nobDist(q, b); })[0];
       if (!o) { motivos.semOrigem++; continue; }
       gastar(o, precisa);
-      plano.push({ alvo: b, origem: o, nobres: precisa, dist: nobDist(o, b), dRef: refs.length ? b._dr : null });
+      plano.push({ alvo: b, origem: o, nobres: precisa, dist: nobDist(o, b), dRef: refs.length ? b._dr : null, viz: b._viz });
     }
     var novos = plano.filter(function (x) { return !x.reforco; }).length;
     return { plano: plano, origens: origens.length, candidatas: cand.length, vagas: vagas, raio: raio, motivos: motivos, cheio: novos >= capNovos, capacidade: capNovos };
   }
 
+  /* v97: REDUZIR REGRAS AUTOMATICAMENTE — quando sobra nobre em casa e nenhuma bárbara cabe nas regras,
+     tenta de novo com regras cada vez mais soltas (a cada ciclo começa das regras normais):
+     1) aceita bárbara sem bônus (bônus ainda vem primeiro)  2) sem "Priorizar com vizinhas"
+     3) espaçamento cai aos poucos até 1 (coladas)  4) espaçamento deixa de contar as suas aldeias.
+     Continentes, pontos e Dist. máxima NUNCA mudam. */
+  function nobNiveisReducao(cfg) {
+    var niveis = [], base = JSON.parse(JSON.stringify(cfg)), esp = Math.max(1, +cfg.espacamento || 1);
+    function add(mud, txt) { var n = JSON.parse(JSON.stringify(niveis.length ? niveis[niveis.length - 1].cfg : base)); for (var k in mud) { n[k] = mud[k]; } niveis.push({ cfg: n, txt: txt }); }
+    if (cfg.soBonus) { add({ soBonus: false, priorizarBonus: true }, 'aceita bárbara sem bônus (bônus ainda primeiro)'); }
+    if (+cfg.vizMin > 0) { add({ vizMin: 0 }, 'sem priorizar vizinhas'); }
+    var passos = [Math.round(esp * 0.75), Math.round(esp * 0.5), Math.round(esp * 0.25), 1].filter(function (v, i, arr) { return v >= 1 && v < esp && arr.indexOf(v) === i; });
+    passos.forEach(function (e) { add({ espacamento: e }, 'espaçamento ' + e); });
+    if (cfg.espacoMinhas !== false) { add({ espacoMinhas: false }, 'espaçamento sem contar suas aldeias'); }
+    return niveis;
+  }
   /* ---------- ciclo ---------- */
   // externo = chamado pelo 24/7: roda 1 ciclo com a configuração salva (mesmo com o Nobre desligado) e não agenda o próximo
   async function nobRodarCiclo(simular, externo) {
@@ -10693,8 +10864,17 @@
       if (!simular) { nobSalvarEstado(cfg); }
       // 2) novos envios (primeiro, sempre)
       var prog = await nobBuscaProgressiva(cfg, origensBase, raio, distMax, parar);
-      var p = prog.plano, busca = prog.busca;
-      retorno = { plano: p, busca: busca, aldeias: todas.length, origensLidas: origensBase.length, distMax: distMax };
+      var p = prog.plano, busca = prog.busca, relax = '';
+      var novosP = function (pp) { return pp.plano.filter(function (x) { return !x.reforco; }).length; };
+      if (cfg.reduzirAuto && !novosP(p) && p.capacidade > 0 && p.vagas > 0) {
+        var niveisR = nobNiveisReducao(cfg), raioR = (cfg.continentes && nobLerConts(cfg.continentes).length) ? Infinity : (busca.raioLido || raio);
+        for (var nr = 0; nr < niveisR.length; nr++) {
+          var pr = nobPlanejar(niveisR[nr].cfg, origensBase, busca.lista, distMax, raioR);
+          if (novosP(pr)) { p = pr; relax = niveisR.slice(0, nr + 1).map(function (x) { return x.txt; }).join(' → '); break; }
+        }
+        nobLog(relax ? '🔻 sem bárbara nas regras normais — reduzi: ' + relax + ' (' + novosP(p) + ' alvo(s)).' : '🔻 sem bárbara mesmo com as regras reduzidas ao mínimo (dentro da Dist. máxima/continentes/pontos).');
+      }
+      retorno = { plano: p, busca: busca, aldeias: todas.length, origensLidas: origensBase.length, distMax: distMax, relax: relax };
       if (!simular && !p.plano.length) {
         var comNobreCasa = origensBase.filter(function (a) { return (a.tropas.snob || 0) >= 1; }).length;
         nobLog('nenhum nobre enviado neste ciclo — ' + comNobreCasa + ' aldeia(s) com nobre em casa, ' + p.origens + ' com nobre + alguma escolta completa (' + nobTextoEscolta(cfg.escoltas || []) + ' por nobre)' +
@@ -10948,11 +11128,21 @@
                 '<option value="bonus"' + (c.priorizarBonus && !c.soBonus ? ' selected' : '') + '>Bônus primeiro, depois normais</option>' +
                 '<option value="qualquer"' + (!c.priorizarBonus && !c.soBonus ? ' selected' : '') + '>Qualquer bárbara (a mais perto)</option>' +
                 '<option value="so"' + (c.soBonus ? ' selected' : '') + '>Só com bônus</option></select></div>' +
+            '<div style="display:flex;gap:4px;margin:0 0 4px;align-items:center">' +
+              '<span style="font-size:10.5px;color:#bbb;cursor:help;white-space:nowrap" data-dica="Conta quantas bárbaras estão COLADAS na bárbara (as 8 casas em volta, como no mapa). Ligado: as que têm pelo menos esse número de vizinhas bárbaras vêm PRIMEIRO (entre elas, a com MAIS vizinhas) — a aldeia conquistada já nasce com farm do lado. As outras continuam valendo depois delas. Desligado = como sempre foi.">🏘️ Priorizar com vizinhas</span>' +
+              '<select id="ork-nob-viz8" style="flex:1;' + inp + ';padding:3px 5px">' +
+                '<option value="0"' + (!(+c.vizMin) ? ' selected' : '') + '>desligado</option>' +
+                [1, 2, 3, 4, 5, 6, 7, 8].map(function (n) { return '<option value="' + n + '"' + (+c.vizMin === n ? ' selected' : '') + '>pelo menos ' + n + ' bárbara' + (n > 1 ? 's' : '') + ' ao lado</option>'; }).join('') +
+              '</select></div>' +
+            '<label style="' + ck + ';margin-bottom:4px" data-dica="Desligado (padrão): usa sempre as regras acima — quando as bárbaras que cabem nelas acabarem, para de noblar. Ligado: quando sobrar nobre em casa e nenhuma bárbara couber, ele afrouxa sozinho, passo a passo, até achar alvo: 1) aceita bárbara sem bônus (as bônus continuam vindo primeiro), 2) desliga Priorizar com vizinhas, 3) diminui o espaçamento aos poucos até 1 (coladas), 4) para de contar as suas aldeias no espaçamento. A cada ciclo tenta primeiro com as regras normais. Continentes, pontos e Dist. máxima nunca mudam."><input id="ork-nob-reduz" type="checkbox"' + (c.reduzirAuto ? ' checked' : '') + ' style="' + chk + '">🔻 Reduzir regras automaticamente</label>' +
             '<label style="' + ck + ';margin-bottom:4px" data-dica="Ligado (como sempre foi): a bárbara precisa estar a pelo menos o Espaçamento de TODAS as suas aldeias e dos outros alvos — bárbara colada na sua aldeia é ignorada. Desligado: o espaçamento vale só entre os alvos novos, então ele pode noblar a bárbara do lado da sua aldeia."><input id="ork-nob-espmin" type="checkbox"' + (c.espacoMinhas !== false ? ' checked' : '') + ' style="' + chk + '">Espaçamento conta minhas aldeias</label>' +
             '<div id="ork-nob-tipos" style="display:flex;flex-wrap:wrap;gap:3px">' + NOB_BONUS.map(function (b) {
               return '<label title="' + gerHtml(b[1]) + '" style="font-size:10px;color:#ccc;background:#0e0e0e;border:1px solid #2a2a2a;border-radius:10px;padding:2px 6px;cursor:pointer;display:flex;align-items:center;gap:3px">' +
                 '<input type="checkbox" data-t="' + b[0] + '"' + (tiposSel[b[0]] ? ' checked' : '') + ' style="margin:0;width:11px;height:11px;accent-color:#e8ac0a">' + b[1].replace('Todos os recursos', 'Todos') + '</label>';
             }).join('') + '</div>' +
+            '<div style="display:flex;gap:6px;align-items:center;background:#111;border:1px solid #242424;border-radius:6px;padding:4px 6px;margin-top:5px">' +
+              '<span style="font-size:10.5px;color:#bbb;cursor:help;white-space:nowrap" data-dica="OPCIONAL. Escreva os continentes onde quer noblar (ex.: K45, K55). Preenchido, ele SÓ nobla bárbaras dentro deles — ótimo pra ir pra um continente sem farmador forte. Continua valendo tudo: espaçamento (num continente onde você ainda não tem aldeia, ele já escolhe os alvos com o espaçamento entre eles), pontos, bônus e a Dist. máxima da aldeia que manda o nobre. A Academia forma nobre primeiro nas aldeias mais perto desses continentes. Vazio = qualquer lugar (como sempre foi).">🗺️ Continentes</span>' +
+              '<input id="ork-nob-cont" type="text" placeholder="ex.: K45, K55 (vazio = qualquer)" value="' + gerHtml(c.continentes || '') + '" style="flex:1;' + inp + ';padding:3px 6px"></div>' +
             '<div style="background:#111;border:1px solid #242424;border-radius:6px;padding:4px 6px;margin-top:5px">' +
               '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="OPCIONAL. Sem nenhuma coordenada, ele pega as bárbaras mais perto das SUAS aldeias que têm nobre. Com uma ou mais coordenadas (ex.: um ponto na borda do seu continente), ele lê o mapa em volta DELAS e escolhe primeiro as bárbaras mais perto da referência — ótimo pra expandir pra borda. A bárbara ainda precisa estar dentro da Dist. máxima de uma aldeia sua com nobre. Com Priorizar bônus, o bônus vence entre as bárbaras na mesma faixa de 5 campos da referência. Pode colar várias de uma vez (500|500 510|480). A Academia também forma nobre primeiro nas aldeias mais perto da referência.">📍 Coordenadas de referência (opcional)</span>' +
                 '<button type="button" id="ork-nob-refadd" style="background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:5px;padding:1px 8px;cursor:pointer;font-weight:700;font-size:10px;font-family:inherit">+ coord</button></div>' +
@@ -11083,6 +11273,9 @@
       n.explorarQtd = Math.max(0, Math.min(30, parseInt(v('ork-nob-exp').value, 10) || 0));
       n.vizinhasMin = Math.max(0, parseFloat(v('ork-nob-viz').value) || 0);
       n.refs = nobLerCoords(refsTxt.join(' '));
+      n.reduzirAuto = v('ork-nob-reduz').checked;
+      n.vizMin = Math.max(0, Math.min(8, parseInt(v('ork-nob-viz8').value, 10) || 0));
+      n.continentes = nobLerConts(v('ork-nob-cont').value).map(function (k) { return k.nome; }).join(', ');
       n.prodMin = Math.max(0.3, parseFloat(v('ork-nob-prmin').value) || 0.7);
       n.prodMax = Math.max(n.prodMin, parseFloat(v('ork-nob-prmax').value) || 1.5);
       return n;
@@ -11099,7 +11292,7 @@
       if (!r || r.erro || !r.plano) { box.innerHTML = '<div style="color:#ff6b6b;font-size:11px">Erro ao simular: ' + gerHtml((r && r.erro) || 'desconhecido') + '</div>'; return; }
       var p = r.plano, td = 'padding:3px 4px;font-size:11px;';
       var linhas = p.plano.map(function (it) {
-        return '<tr style="border-top:1px solid #222"><td style="' + td + 'color:#ddd">' + it.alvo.x + '|' + it.alvo.y + '</td><td style="' + td + 'color:#FFC400">' + (it.alvo.bonus ? nobNomeBonus(it.alvo.bonus) : '—') + '</td>' +
+        return '<tr style="border-top:1px solid #222"><td style="' + td + 'color:#ddd">' + it.alvo.x + '|' + it.alvo.y + '</td><td style="' + td + 'color:#FFC400">' + (it.alvo.bonus ? nobNomeBonus(it.alvo.bonus) : '—') + (it.viz ? ' <span style="color:#7ed17e" title="bárbaras coladas">🏘️' + it.viz + '</span>' : '') + '</td>' +
           '<td style="' + td + 'color:#999">' + (it.alvo.pontos || 0).toLocaleString('pt-BR') + ' pts</td><td style="' + td + 'color:#ddd">' + it.origem.coord + '</td>' +
           '<td style="' + td + 'color:#999">' + it.dist.toFixed(1) + ' campos' + (it.dRef != null ? ' <span style="color:#FFC400">• ' + it.dRef.toFixed(1) + ' da ref.</span>' : '') + '</td><td style="' + td + 'color:#ddd">' + it.nobres + ' nobre(s)' + (it.reforco ? ' (reforço)' : '') + '</td></tr>';
       }).join('');
@@ -11107,6 +11300,7 @@
         '<div style="color:#888;margin-bottom:6px">' + r.aldeias + ' aldeia(s) suas • ' + p.origens + ' com nobre + escolta no grupo • ' + r.busca.lista.length + ' bárbara(s) até ' + r.busca.raioLido + ' campos (' + r.busca.setores + ' setores, ' + r.busca.lidos + ' lidos agora, o resto do cache)' +
           (r.busca.falhas ? ' (' + r.busca.falhas + ' pacote(s) falharam)' : '') + ' • ' + p.candidatas + ' dentro do filtro/raio (' + p.raio + ' campos' + (r.distMax ? ', limite do mundo ' + r.distMax : '') + ') • vagas agora: ' + (p.vagas >= 100000 ? 'sem limite' : p.vagas) + '</div>' +
         '<div style="color:#FFC400;font-weight:800;margin-bottom:4px">👑 ' + p.plano.length + ' envio(s) no próximo ciclo</div>' +
+        (r.relax ? '<div style="color:#ffb347;margin-bottom:4px">🔻 Regras reduzidas pra achar alvo: ' + gerHtml(r.relax) + '</div>' : '') +
         (linhas ? '<div style="max-height:190px;overflow:auto"><table style="width:100%;border-collapse:collapse">' + linhas + '</table></div>' :
           '<div style="color:#777">' + (p.vagas === 0 ? 'Sem vaga: já tem o máximo de bárbaras com nobre a caminho (0 = sem limite).' : (!p.origens ? 'Nenhuma aldeia do grupo tem nobre + 25 de escolta em casa.' : 'Nenhuma bárbara serviu (espaçamento: ' + p.motivos.espaco + ', sem aldeia com nobres suficientes perto: ' + p.motivos.semOrigem + ').')) + '</div>') +
         '</div>';
@@ -12346,11 +12540,11 @@
   ============================================================ */
   var pmRodando = false, pmParar = false;
   function pmLerCfg() {
-    var p = { grupo: '0', unidades: null, nivel: 0, eMin: 0.5, eMax: 1.2 };
-    try { var c = JSON.parse(sessionStorage.getItem('ork_pesqmassa_' + game_data.world) || 'null'); if (c) { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
+    var p = { ativo: false, grupo: '0', unidades: null, nivel: 0, eMin: 0.5, eMax: 1.2 };
+    try { var c = JSON.parse(localStorage.getItem('ork_pesqmassa_' + game_data.world) || 'null'); if (c) { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     return p;
   }
-  function pmGravarCfg(c) { try { sessionStorage.setItem('ork_pesqmassa_' + game_data.world, JSON.stringify(c)); } catch (e) {} }
+  function pmGravarCfg(c) { try { localStorage.setItem('ork_pesqmassa_' + game_data.world, JSON.stringify(c)); } catch (e) {} }
   // lê uma página da visualização de pesquisa: bolinhas por aldeia/unidade + o link de pesquisa do jogo
   async function pmLerPagina(grupo, pagina) {
     var r = await fetch(game_data.link_base_pure + 'overview_villages&mode=tech&group=' + encodeURIComponent(grupo) + '&page=' + pagina, { credentials: 'include' });
@@ -12412,7 +12606,7 @@
           if (pmParar) { break; }
           var b = alvo[i];
           var r = await gerPost(pmUrl(lido.link, b.vid), 'tech_id=' + encodeURIComponent(b.u) + '&source=' + b.vid);
-          if (r.ok) { okPassada++; res.pesquisou++; res.porUn[b.u] = (res.porUn[b.u] || 0) + 1; } else { res.recusou++; res.ultimoErro = r.erro; }
+          if (r.ok) { okPassada++; res.pesquisou++; res.porUn[b.u] = (res.porUn[b.u] || 0) + 1; try { var bol = document.getElementById(b.vid + '_' + b.u); if (bol) { bol.classList.remove('brown'); bol.classList.add('yellow'); } } catch (e) {} } else { res.recusou++; res.ultimoErro = r.erro; }
           mostrar('Passada ' + passada + '/' + nivelAlvo + ': ' + (i + 1) + '/' + alvo.length + ' — ' + res.pesquisou + ' pesquisa(s) mandada(s)' + (res.recusou ? ', ' + res.recusou + ' recusada(s) (recurso/fila?)' : ''), (i + 1) / alvo.length);
           var a = Math.max(0.2, +cfg.eMin || 0.5), z = Math.max(a, +cfg.eMax || 1.2);
           await gerEsperar(gerEntre(Math.round(a * 1000), Math.round(z * 1000)));
@@ -12466,6 +12660,9 @@
             '<button id="ork-pm-sim" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Conferir (sem pesquisar)</button>' +
             '<button id="ork-pm-parar" style="flex:1;display:none;background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Parar</button>' +
             '<button id="ork-pm-ok" style="flex:1.3;background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;border:none;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:800;font-size:11px;font-family:inherit">🔬 Pesquisar tudo</button></div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:7px;background:#141414;border:1px solid ' + (c.ativo ? '#2f6b2f' : '#262626') + ';border-radius:8px;padding:6px 8px">' +
+            '<span style="flex:1;font-size:10.5px;color:#bbb" data-dica="Ligado: toda vez que você abrir a tela Visualização → Pesquisa, ele pesquisa sozinho com a configuração acima (salva ao ligar). Fica ligado até você desligar aqui (ou clicar no aviso que aparece na tela).">🔁 Automático: ' + (c.ativo ? '<b style="color:#7ed17e">LIGADO</b> — pesquisa sozinho ao abrir a tela Pesquisa' : '<b style="color:#888">desligado</b>') + '</span>' +
+            '<button id="ork-pm-auto" style="background:' + (c.ativo ? '#2a1010;color:#ff6b6b;border:1px solid #4a1c1c' : '#1f3320;color:#7ed17e;border:1px solid #2f6b2f') + ';border-radius:7px;padding:5px 12px;cursor:pointer;font-weight:800;font-size:10.5px;font-family:inherit">' + (c.ativo ? '⏹ Parar automático' : '▶ Ligar automático') + '</button></div>' +
         '</div></div>';
     document.body.appendChild(ov);
     var balao = autoLigarDicas(ov);
@@ -12522,10 +12719,267 @@
     v('ork-pm-sim').addEventListener('click', function () { rodar(true); });
     v('ork-pm-ok').addEventListener('click', function () { rodar(false); });
     v('ork-pm-parar').addEventListener('click', function () { pmParar = true; mostrar('Parando...'); });
+    v('ork-pm-auto').addEventListener('click', function () {
+      var n = ler(); n.ativo = !pmLerCfg().ativo;
+      if (n.ativo && !n.unidades.length) { mostrar('Marque pelo menos uma tropa antes de ligar.'); return; }
+      pmGravarCfg(n); try { balao.remove(); } catch (e) {} ov.remove();
+      if (n.ativo) { if (pmNaTela()) { pmRetomar(); } else if (confirm('Automático ligado. Abrir a tela de Pesquisa agora pra começar?')) { location.href = game_data.link_base_pure + 'overview_villages&mode=tech'; } }
+      else { pmParar = true; var t = document.getElementById('ork-auto-pm'); if (t) { t.remove(); } }
+    });
     v('ork-pm-x').addEventListener('click', function () { if (pmRodando && !confirm('A pesquisa está rodando. Fechar a janela PARA a pesquisa. Fechar mesmo?')) { return; } pmParar = true; try { balao.remove(); } catch (e) {} ov.remove(); });
+  }
+  /* v97: MODO AUTOMÁTICO — ligado no painel, roda sozinho toda vez que você abrir a tela do jogo
+     (Pesquisa → pesquisa; Edifícios → constrói), com a configuração salva. Para só quando desligar no painel. */
+  function orkAutoTela(id, icone, nome, aoParar) {
+    var b = document.getElementById('ork-auto-' + id);
+    if (!b) {
+      b = document.createElement('div'); b.id = 'ork-auto-' + id;
+      b.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:' + (id === 'cr' ? 64 : 20) + 'px;z-index:9999996;background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #FFC400;border-radius:20px;padding:6px 14px;color:#eee;font:11.5px "Segoe UI",Arial,sans-serif;box-shadow:0 8px 22px rgba(0,0,0,.55);cursor:pointer;max-width:90vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      b.title = 'Clique pra desligar o automático';
+      b.addEventListener('click', function () { if (confirm('Desligar o automático do ' + nome + '?\n\nEle para de rodar sozinho quando você abrir essa tela (dá pra ligar de novo no painel).')) { aoParar(); b.remove(); } });
+      document.body.appendChild(b);
+    }
+    return function (t, fim) {
+      b.innerHTML = '<b style="color:#FFC400">' + icone + ' ' + nome + ' automático</b> — ' + gerHtml(t);
+      if (fim) { setTimeout(function () { try { b.remove(); } catch (e) {} }, 20000); }
+    };
+  }
+  function pmNaTela() { return !!(window.game_data && game_data.screen === 'overview_villages' && (game_data.mode === 'tech' || /[?&]mode=tech\b/.test(location.href))); }
+  function crNaTela() { return !!(window.game_data && game_data.screen === 'overview_villages' && (game_data.mode === 'buildings' || /[?&]mode=buildings\b/.test(location.href))); }
+  async function pmRetomar() {
+    var c = pmLerCfg();
+    if (!c.ativo || !pmNaTela() || pmRodando || !(c.unidades || []).length) { return; }
+    var mostrar = orkAutoTela('pm', '🔬', 'Pesquisar em Massa', function () { var n = pmLerCfg(); n.ativo = false; pmGravarCfg(n); pmParar = true; });
+    mostrar('lendo a pesquisa das aldeias...');
+    var r = await pmExecutar(c, false, function (t) { mostrar(t); });
+    mostrar(r.erro ? 'erro: ' + r.erro : ('✔ ' + r.pesquisou + ' pesquisa(s) mandada(s)' + (r.recusou ? ', ' + r.recusou + ' recusada(s) (recurso/fila)' : '') + (r.pesquisou || r.recusou ? '' : ' — nada pra pesquisar agora')), true);
+  }
+  async function crRetomar() {
+    var c = crLerCfg();
+    if (!c.ativo || !crNaTela() || crRodando || !(c.predios || []).length) { return; }
+    var mostrar = orkAutoTela('cr', '⚡', 'Construção Rápida', function () { var n = crLerCfg(); n.ativo = false; crGravarCfg(n); crParar = true; });
+    mostrar('lendo os edifícios das aldeias...');
+    var r = await crExecutar(c, false, function (t) { mostrar(t); });
+    mostrar(r.erro ? 'erro: ' + r.erro : ('✔ ' + r.mandou + ' ordem(ns) mandada(s)' + (r.recusou ? ', ' + r.recusou + ' recusada(s) (recurso)' : '') + (r.cheias ? ' • ' + r.cheias + ' com fila cheia' : '') + (r.mandou || r.recusou ? '' : ' — nada pra construir agora')), true);
   }
   function checaPesqMassa() { return !!(window.game_data && game_data.village && game_data.village.id); }
   function rodarPesqMassa() { pmAbrirModal(); }
+
+  /* ============================================================
+     CONSTRUÇÃO RÁPIDA (v97)
+     Lê a tela Visualização → Edifícios (overview_villages&mode=buildings), página por página,
+     e manda construir os edifícios marcados em todas as aldeias do grupo, na ordem dos ícones,
+     respeitando a fila de cada aldeia e o nível alvo. Mesmo pedido do Gerente de Conta (upgrade_building).
+  ============================================================ */
+  var crRodando = false, crParar = false;
+  var CR_PREDIOS = ['main', 'barracks', 'stable', 'garage', 'watchtower', 'snob', 'smith', 'place', 'statue', 'market', 'wood', 'stone', 'iron', 'farm', 'storage', 'hide', 'wall', 'church', 'church_f'];
+  var CR_NOME = { main: 'Edif. princ.', barracks: 'Quartel', stable: 'Estábulo', garage: 'Oficina', watchtower: 'Torre', snob: 'Academia', smith: 'Ferreiro', place: 'Praça',
+    statue: 'Estátua', market: 'Mercado', wood: 'Bosque', stone: 'Argila', iron: 'Ferro', farm: 'Fazenda', storage: 'Armazém', hide: 'Esconder.', wall: 'Muralha', church: 'Igreja', church_f: '1ª igreja' };
+  function crLerCfg() {
+    var p = { ativo: false, grupo: '0', predios: ['main', 'wood', 'stone', 'iron', 'farm', 'storage'], nivel: 0, porAldeia: 1, fila: 2, eMin: 0.5, eMax: 1.2 };
+    try { var c = JSON.parse(localStorage.getItem('ork_construcao_' + game_data.world) || 'null'); if (c) { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
+    return p;
+  }
+  function crGravarCfg(c) { try { localStorage.setItem('ork_construcao_' + game_data.world, JSON.stringify(c)); } catch (e) {} }
+  // níveis máximos de cada edifício neste mundo (interface do jogo; guardado 1 dia)
+  async function crNiveisMax() {
+    var k = 'ork_cr_max_' + game_data.world;
+    try { var c = JSON.parse(localStorage.getItem(k) || 'null'); if (c && Date.now() - c.ts < 86400000) { return c.v; } } catch (e) {}
+    var v = {};
+    try {
+      var xml = new DOMParser().parseFromString(await (await fetch('/interface.php?func=get_building_info', { credentials: 'include' })).text(), 'text/xml');
+      var cfg = xml.getElementsByTagName('config')[0];
+      [].forEach.call(cfg ? cfg.children : [], function (b) { var el = b.getElementsByTagName('max_level')[0]; if (el) { v[b.tagName.toLowerCase()] = +el.textContent || 0; } });
+      try { localStorage.setItem(k, JSON.stringify({ v: v, ts: Date.now() })); } catch (e) {}
+    } catch (e) {}
+    return v;
+  }
+  // lê todas as páginas da tela Edifícios: id da aldeia, nível de cada edifício e o que já está na fila
+  async function crLerAldeias(grupo, mostrar) {
+    var out = [], vistos = {}, presentes = {};
+    var pag = 0;
+    await balCarregarTodas(game_data.link_base_pure + 'overview_villages&mode=buildings&group=' + encodeURIComponent(grupo || '0'), function (doc) {
+      pag++;
+      doc.querySelectorAll('.row_a, .row_b').forEach(function (tr) {
+        try {
+          var vn = tr.querySelector('.quickedit-vn'), vid = vn ? vn.getAttribute('data-id') : null;
+          if (!vid) { var a = tr.querySelector('a[href*="village="]'); var m = a ? (a.getAttribute('href') || '').match(/village=(\d+)/) : null; vid = m ? m[1] : null; }
+          if (!vid || vistos[vid]) { return; }
+          vistos[vid] = 1;
+          var coord = ((tr.querySelector('.nowrap') || tr).textContent || '').match(/\d{3}\|\d{3}/);
+          var niv = {}, naFila = {};
+          tr.querySelectorAll('.upgrade_building').forEach(function (b) {
+            var cl = [].filter.call(b.classList, function (x) { return /^b_/.test(x); })[0];
+            if (cl) { var nm = cl.replace('b_', ''); niv[nm] = parseInt(b.textContent, 10) || 0; presentes[nm] = 1; }
+          });
+          var imgs = [].slice.call(tr.querySelectorAll('.queue_icon img'));
+          imgs.forEach(function (im) { var m2 = (im.getAttribute('src') || '').match(/buildings\/(?:mid\/)?(\w+?)\d*\.(?:webp|png)/); if (m2) { naFila[m2[1]] = (naFila[m2[1]] || 0) + 1; } });
+          out.push({ id: vid, coord: coord ? coord[0] : vid, niv: niv, naFila: naFila, fila: imgs.length });
+        } catch (e) {}
+      });
+      if (mostrar) { mostrar('lendo página ' + pag + ' — ' + out.length + ' aldeia(s)'); }
+    });
+    return { aldeias: out, presentes: presentes };
+  }
+  async function crExecutar(cfg, simular, mostrar) {
+    crRodando = true; crParar = false;
+    var res = { mandou: 0, recusou: 0, porPredio: {}, ordens: 0, aldeias: 0, cheias: 0, prontas: 0, erro: '' };
+    try {
+      var mx = await crNiveisMax();
+      var lido = await crLerAldeias(cfg.grupo, mostrar);
+      res.aldeias = lido.aldeias.length;
+      var predios = (cfg.predios || []).filter(function (b) { return lido.presentes[b] || !Object.keys(lido.presentes).length; });
+      var ordens = [];
+      lido.aldeias.forEach(function (a) {
+        var vagas = Math.max(0, (+cfg.fila || 2) - a.fila), feitas = 0, algum = false;
+        if (!vagas) { res.cheias++; return; }
+        for (var i = 0; i < predios.length && vagas > 0 && feitas < Math.max(1, +cfg.porAldeia || 1); i++) {
+          var b = predios[i], atual = (a.niv[b] || 0) + (a.naFila[b] || 0);
+          var teto = mx[b] || 30; if (+cfg.nivel > 0) { teto = Math.min(teto, +cfg.nivel); }
+          if (a.niv[b] === undefined && Object.keys(a.niv).length) { continue; } // edifício não existe nesse mundo/aldeia
+          if (atual >= teto) { continue; }
+          algum = true;
+          ordens.push({ vid: a.id, coord: a.coord, b: b }); vagas--; feitas++;
+        }
+        if (!algum && !feitas) { res.prontas++; }
+      });
+      res.ordens = ordens.length;
+      ordens.forEach(function (o) { if (simular) { res.porPredio[o.b] = (res.porPredio[o.b] || 0) + 1; } });
+      if (simular) { crRodando = false; return res; }
+      for (var i = 0; i < ordens.length && !crParar; i++) {
+        while (window.__ORK_CAPTCHA_BLOQUEADO__ && !crParar) { mostrar('Captcha — esperando você resolver...'); await gerEsperar(gerEntre(3000, 5000)); }
+        if (crParar) { break; }
+        var o = ordens[i];
+        var r = await gerConstruir(o.vid, o.b);
+        if (r.ok) { res.mandou++; res.porPredio[o.b] = (res.porPredio[o.b] || 0) + 1; } else { res.recusou++; res.ultimoErro = r.erro; }
+        mostrar(o.coord + ' → ' + (CR_NOME[o.b] || o.b) + ' • ' + (i + 1) + '/' + ordens.length + ' — ' + res.mandou + ' ordem(ns) mandada(s)' + (res.recusou ? ', ' + res.recusou + ' recusada(s)' : ''), (i + 1) / ordens.length);
+        var a1 = Math.max(0.2, +cfg.eMin || 0.5), z1 = Math.max(a1, +cfg.eMax || 1.2);
+        await gerEsperar(gerEntre(Math.round(a1 * 1000), Math.round(z1 * 1000)));
+      }
+    } catch (e) { res.erro = (e && e.message) || String(e); }
+    crRodando = false;
+    return res;
+  }
+  function crAbrirModal() {
+    if (document.getElementById('ork-modal-cr')) { return; }
+    var c = crLerCfg(), cat = gerLerCatalogo() || { grupos: [] };
+    var marc = {}; (c.predios || []).forEach(function (b) { marc[b] = 1; });
+    var ordem = (c.predios || []).concat(CR_PREDIOS.filter(function (b) { return !marc[b]; }));
+    var img = (window.image_base || '/graphic/') + 'buildings/';
+    var inp = 'background:#111;border:1px solid rgba(255,255,255,.12);color:#ececec;padding:4px 6px;border-radius:6px;font-size:11.5px;box-sizing:border-box;font-family:inherit';
+    var sec = 'background:#141414;border:1px solid #262626;border-radius:8px;padding:7px 8px;margin-top:6px';
+    var stit = 'font-size:9px;color:#8a8a8a;font-weight:800;text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px';
+    var lin = 'display:flex;gap:6px;align-items:center;font-size:10.5px;color:#bbb';
+    var ov = document.createElement('div');
+    ov.id = 'ork-modal-cr';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    ov.innerHTML =
+      '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:560px;max-width:calc(100vw - 20px);max-height:calc(100vh - 30px);overflow:auto;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12)">' +
+        '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:7px 10px;display:flex;align-items:center;gap:7px">' +
+          '<span style="font-weight:800;font-size:12px;letter-spacing:1px">⚡ CONSTRUÇÃO RÁPIDA</span>' +
+          '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="Constrói os edifícios marcados em TODAS as aldeias do grupo de uma vez. Lê a tela Visualização → Edifícios (1.000 aldeias por página, passa por todas), vê o nível de cada edifício e o que já está na fila, e manda construir na ORDEM dos ícones marcados (o 1º marcado tem prioridade). Respeita o Máx. na fila de cada aldeia e o nível alvo. Aldeia sem recurso: o jogo recusa e ela é pulada — rode de novo depois.">?</span>' +
+          '<span style="flex:1"></span><span id="ork-cr-x" style="cursor:pointer;font-weight:bold;font-size:15px">&times;</span></div>' +
+        '<div style="padding:6px 9px 9px">' +
+          '<div style="' + sec + '"><div style="' + stit + '">Aldeias e regras</div>' +
+            '<div style="display:flex;gap:4px;align-items:center;margin-bottom:5px"><select id="ork-cr-grupo" style="flex:1;' + inp + '"></select>' +
+              '<button type="button" id="ork-cr-lergr" title="Ler os grupos do jogo" style="background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:6px;padding:4px 8px;cursor:pointer;font-weight:700;font-size:10.5px;font-family:inherit">🔄</button></div>' +
+            '<div style="' + lin + '">' +
+              '<span data-dica="Constrói até esse nível. 0 = até o máximo do jogo.">Construir até o nível</span><input id="ork-cr-nivel" type="number" min="0" value="' + (c.nivel || 0) + '" style="width:52px;' + inp + ';text-align:center"><span style="color:#777">(0 = máximo)</span>' +
+              '<span style="flex:1"></span><span data-dica="Quantas ordens novas cada aldeia recebe por vez (dos edifícios marcados, na ordem).">Ordens por aldeia</span><input id="ork-cr-por" type="number" min="1" value="' + (c.porAldeia || 1) + '" style="width:46px;' + inp + ';text-align:center"></div>' +
+            '<div style="' + lin + ';margin-top:5px">' +
+              '<span data-dica="Só manda ordem se a fila de construção da aldeia tiver menos que isso. Sem premium o jogo aceita 2; com Conta Premium, até 5.">Máx. na fila</span><input id="ork-cr-fila" type="number" min="1" max="5" value="' + (c.fila || 2) + '" style="width:46px;' + inp + ';text-align:center">' +
+              '<span style="flex:1"></span><span data-dica="Pausa entre uma ordem e a próxima, sorteada entre o mínimo e o máximo. Menor = mais rápido; o jogo aceita no máximo uns 5 pedidos por segundo.">Entre ordens (seg)</span>' +
+              '<input id="ork-cr-emin" type="number" step="0.1" min="0.2" value="' + c.eMin + '" style="width:46px;' + inp + ';text-align:center"><span>a</span>' +
+              '<input id="ork-cr-emax" type="number" step="0.1" min="0.2" value="' + c.eMax + '" style="width:46px;' + inp + ';text-align:center"></div></div>' +
+          '<div style="' + sec + '"><div style="' + stit + '">Edifícios (marque; a ordem dos marcados é a prioridade)</div>' +
+            '<div id="ork-cr-pred" style="display:flex;flex-wrap:wrap;gap:4px">' + ordem.map(function (b) {
+              return '<label class="ork-cr-p" data-b="' + b + '" style="display:flex;flex-direction:column;align-items:center;gap:2px;width:58px;padding:4px 0;border-radius:7px;cursor:pointer;border:1px solid ' + (marc[b] ? '#FFC400' : '#2c2c2c') + ';background:' + (marc[b] ? '#241f08' : '#111') + '">' +
+                '<img src="' + img + b + '.png" style="width:18px;height:18px" onerror="this.style.display=\'none\'">' +
+                '<span style="font-size:8.5px;color:#aaa;white-space:nowrap">' + (CR_NOME[b] || b) + '</span>' +
+                '<span style="display:flex;align-items:center;gap:3px"><input type="checkbox" data-b="' + b + '"' + (marc[b] ? ' checked' : '') + ' style="margin:0;width:13px;height:13px;accent-color:#e8ac0a"><span class="ork-cr-ord" style="font-size:9px;color:#FFC400;font-weight:800"></span></span></label>';
+            }).join('') + '</div></div>' +
+          '<div id="ork-cr-status" style="' + sec + ';font-size:11px;color:#aaa">Clique em <b style="color:#FFC400">Conferir</b> pra ver quantas ordens dá pra mandar agora, ou em <b style="color:#FFC400">Construir tudo</b>.</div>' +
+          '<div style="height:6px;background:#0a0a0a;border:1px solid #2c2c2c;border-radius:5px;margin-top:6px;overflow:hidden"><div id="ork-cr-barra" style="height:100%;width:0;background:linear-gradient(90deg,#FFB800,#FFEB99);transition:width .3s"></div></div>' +
+          '<div style="display:flex;gap:5px;margin-top:8px">' +
+            '<button id="ork-cr-sim" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Conferir (sem construir)</button>' +
+            '<button id="ork-cr-parar" style="flex:1;display:none;background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Parar</button>' +
+            '<button id="ork-cr-ok" style="flex:1.3;background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;border:none;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:800;font-size:11px;font-family:inherit">⚡ Construir tudo</button></div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:7px;background:#141414;border:1px solid ' + (c.ativo ? '#2f6b2f' : '#262626') + ';border-radius:8px;padding:6px 8px">' +
+            '<span style="flex:1;font-size:10.5px;color:#bbb" data-dica="Ligado: toda vez que você abrir a tela Visualização → Edifícios, ele constrói sozinho com a configuração acima (salva ao ligar). Fica ligado até você desligar aqui (ou clicar no aviso que aparece na tela).">🔁 Automático: ' + (c.ativo ? '<b style="color:#7ed17e">LIGADO</b> — constrói sozinho ao abrir a tela Edifícios' : '<b style="color:#888">desligado</b>') + '</span>' +
+            '<button id="ork-cr-auto" style="background:' + (c.ativo ? '#2a1010;color:#ff6b6b;border:1px solid #4a1c1c' : '#1f3320;color:#7ed17e;border:1px solid #2f6b2f') + ';border-radius:7px;padding:5px 12px;cursor:pointer;font-weight:800;font-size:10.5px;font-family:inherit">' + (c.ativo ? '⏹ Parar automático' : '▶ Ligar automático') + '</button></div>' +
+        '</div></div>';
+    document.body.appendChild(ov);
+    var balao = autoLigarDicas(ov);
+    function v(id) { return document.getElementById(id); }
+    // ordem de prioridade = ordem em que foram marcados
+    var sel = (c.predios || []).slice();
+    function desenharOrdem() {
+      ov.querySelectorAll('.ork-cr-p').forEach(function (l) {
+        var b = l.getAttribute('data-b'), i = sel.indexOf(b), on = i !== -1;
+        l.style.borderColor = on ? '#FFC400' : '#2c2c2c'; l.style.background = on ? '#241f08' : '#111';
+        l.querySelector('.ork-cr-ord').textContent = on ? (i + 1) + 'º' : '';
+      });
+    }
+    desenharOrdem();
+    ov.querySelectorAll('.ork-cr-p input').forEach(function (ck) {
+      ck.addEventListener('change', function () { var b = ck.getAttribute('data-b'); var i = sel.indexOf(b); if (ck.checked && i === -1) { sel.push(b); } if (!ck.checked && i !== -1) { sel.splice(i, 1); } desenharOrdem(); });
+    });
+    function grupos() {
+      var s = v('ork-cr-grupo');
+      var ops = [['0', 'Todas as aldeias']].concat((cat.grupos || []).map(function (g) { return [g.id, g.nome]; }));
+      s.innerHTML = ops.map(function (o) { return '<option value="' + gerHtml(o[0]) + '"' + (String(o[0]) === String(c.grupo) ? ' selected' : '') + '>' + gerHtml(o[1]) + '</option>'; }).join('');
+    }
+    grupos();
+    v('ork-cr-lergr').addEventListener('click', async function () {
+      var b = this; b.disabled = true; b.textContent = '...';
+      try { var g = await gerLerGrupos(); cat = gerLerCatalogo() || {}; cat.grupos = g; gerGravarCatalogo(cat); } catch (e) {}
+      b.disabled = false; b.textContent = '🔄'; grupos();
+    });
+    function ler() {
+      var n = crLerCfg();
+      n.grupo = v('ork-cr-grupo').value || '0';
+      n.predios = sel.slice();
+      n.nivel = Math.max(0, parseInt(v('ork-cr-nivel').value, 10) || 0);
+      n.porAldeia = Math.max(1, parseInt(v('ork-cr-por').value, 10) || 1);
+      n.fila = Math.max(1, Math.min(5, parseInt(v('ork-cr-fila').value, 10) || 2));
+      n.eMin = Math.max(0.2, parseFloat(v('ork-cr-emin').value) || 0.5); n.eMax = Math.max(n.eMin, parseFloat(v('ork-cr-emax').value) || 1.2);
+      crGravarCfg(n); return n;
+    }
+    function mostrar(t, frac) { var s = v('ork-cr-status'); if (s) { s.textContent = t; } if (frac != null && v('ork-cr-barra')) { v('ork-cr-barra').style.width = Math.round(frac * 100) + '%'; } }
+    function resumo(r, sim) {
+      var porP = Object.keys(r.porPredio).map(function (b) { return (CR_NOME[b] || b) + ': ' + r.porPredio[b]; }).join(' • ');
+      var extra = ' em ' + r.aldeias + ' aldeia(s)' + (r.cheias ? ' • ' + r.cheias + ' com a fila cheia' : '') + (r.prontas ? ' • ' + r.prontas + ' já no nível' : '');
+      return (r.erro ? '<span style="color:#ff6b6b">Erro: ' + gerHtml(r.erro) + '</span><br>' : '') +
+        (sim ? '<b style="color:#FFC400">' + r.ordens + ' ordem(ns) dá pra mandar agora</b>' + gerHtml(extra)
+             : '<b style="color:#7ed17e">✔ ' + r.mandou + ' ordem(ns) mandada(s)</b>' + (r.recusou ? ' • <span style="color:#ffb347">' + r.recusou + ' recusada(s)' + (r.ultimoErro ? ' — ' + gerHtml(String(r.ultimoErro).slice(0, 80)) : '') + '</span>' : '') + gerHtml(extra)) +
+        (porP ? '<br><span style="color:#999">' + gerHtml(porP) + '</span>' : '');
+    }
+    async function rodar(sim) {
+      if (crRodando) { return; }
+      var n = ler();
+      if (!n.predios.length) { mostrar('Marque pelo menos um edifício.'); return; }
+      v('ork-cr-ok').disabled = true; v('ork-cr-sim').disabled = true; v('ork-cr-parar').style.display = sim ? 'none' : '';
+      mostrar('Lendo a tela de edifícios...', 0);
+      var r = await crExecutar(n, sim, mostrar);
+      var s = v('ork-cr-status'); if (s) { s.innerHTML = resumo(r, sim); }
+      if (v('ork-cr-barra')) { v('ork-cr-barra').style.width = '100%'; }
+      if (v('ork-cr-ok')) { v('ork-cr-ok').disabled = false; v('ork-cr-sim').disabled = false; v('ork-cr-parar').style.display = 'none'; }
+      try { console.log('[OROCHIKING] Construção Rápida: ' + (sim ? 'conferência' : 'concluído') + ' —', r); } catch (e) {}
+    }
+    v('ork-cr-sim').addEventListener('click', function () { rodar(true); });
+    v('ork-cr-ok').addEventListener('click', function () { rodar(false); });
+    v('ork-cr-parar').addEventListener('click', function () { crParar = true; mostrar('Parando...'); });
+    v('ork-cr-auto').addEventListener('click', function () {
+      var n = ler(); n.ativo = !crLerCfg().ativo;
+      if (n.ativo && !n.predios.length) { mostrar('Marque pelo menos um edifício antes de ligar.'); return; }
+      crGravarCfg(n); try { balao.remove(); } catch (e) {} ov.remove();
+      if (n.ativo) { if (crNaTela()) { crRetomar(); } else if (confirm('Automático ligado. Abrir a tela de Edifícios agora pra começar?')) { location.href = game_data.link_base_pure + 'overview_villages&mode=buildings'; } }
+      else { crParar = true; var t = document.getElementById('ork-auto-cr'); if (t) { t.remove(); } }
+    });
+    v('ork-cr-x').addEventListener('click', function () { if (crRodando && !confirm('A construção está rodando. Fechar a janela PARA. Fechar mesmo?')) { return; } crParar = true; try { balao.remove(); } catch (e) {} ov.remove(); });
+  }
+  function checaConstrucao() { return !!(window.game_data && game_data.village && game_data.village.id); }
+  function rodarConstrucao() { crAbrirModal(); }
 
   /* ============================================================
      PROTEÇÃO GERAL DAS FERRAMENTAS (v83)
@@ -12544,12 +12998,14 @@
       rename: ['ork_renomeador_config'],
       barbaras: ['orkBarbList_Settings'],
       coletorfarm: ['fmMapLA_Settings'],
-      cunhar: ['ork_cunhar_config', 'ork_cunhar_from'],
+      cunhar: ['ork_cunhar_config', 'ork_cunhar_from', 'ork_cunhar_regras'],
       keypress: ['ork_keypress_config', 'ork_keypress_trava'],
       balanceador: ['ork_balanceador', 'ork_balanceador_trava'],
       gerente: ['ork_gerente', 'ork_gerente_trava', 'ork_gerente_catalogo_' + w, 'ork_gerente_url_tropas_' + w],
       nobrebb: ['ork_nobre_mapa_' + w, 'ork_nobre_maxdist_' + w, 'ork_nobre_trava'],
-      noblaplayer: ['ork_noblap_trava']
+      noblaplayer: ['ork_noblap_trava'],
+      pesqmassa: ['ork_pesqmassa_' + w],
+      construcao: ['ork_construcao_' + w, 'ork_cr_max_' + w]
     };
     var sessao = { auto247: ['ork_auto247', 'ork_auto247_preset', 'ork_auto247_atk'], nobrebb: ['ork_nobre_' + w], noblaplayer: ['ork_noblap_' + w] };
     return { local: local[id] || [], sessao: sessao[id] || [] };
@@ -12785,7 +13241,7 @@
       nome: 'Cunhar Moedas',
       abrev: 'Cunhar',
       icone: '🪙',
-      dica: 'Escolha o intervalo aqui mesmo; ele vai pra Academia e começa a cunhar sozinho quando a página carregar (sem Ativar agora). Com mais de 1.000 aldeias, passa pelas páginas todas numa aba só. Deixe a aba de Cunhagem aberta.',
+      dica: 'Escolha o intervalo aqui mesmo; ele vai pra Academia e começa a cunhar sozinho quando a página carregar (sem Ativar agora). Com mais de 1.000 aldeias, passa pelas páginas todas numa aba só. Deixe a aba de Cunhagem aberta. Regras opcionais: Moedas por aldeia (máximo por ciclo, 0 = tudo) e Guardar por aldeia (deixa o recurso de X moedas sem cunhar, pra formar nobre).',
       checar: checaCunhar,
       rodar: rodarCunhar,
       configurarAntes: true,
@@ -12839,7 +13295,7 @@
       nome: 'Noblar Automático',
       abrev: 'Noblar Automático',
       icone: '👑',
-      dica: 'Conquista bárbaras sozinho: lê o mapa de perto pra longe (Tipo: bônus primeiro e depois as normais, qualquer bárbara, ou só bônus; com o espaçamento em campos que você escolher — e, se quiser, pode noblar até a bárbara colada na sua aldeia desligando "Espaçamento conta minhas aldeias"), manda os nobres (quantos quiser por bárbara, todos da mesma aldeia, cada um com a escolta que você escolher) da aldeia mais perto que tem nobre. Opcional: forma nobres na Academia das aldeias sozinho. Quando conquista, pesquisa o explorador, recruta e a própria aldeia nova explora as bárbaras ao redor pra entrarem no Farm. Repete em ciclos de segundos ou minutos. Use o Simular antes. Novo: Coordenadas de referência (opcional) — prioriza as bárbaras perto delas (ex.: a borda); e o tempo entre formar nobres é configurável.',
+      dica: 'Conquista bárbaras sozinho: lê o mapa de perto pra longe (Tipo: bônus primeiro e depois as normais, qualquer bárbara, ou só bônus; com o espaçamento em campos que você escolher — e, se quiser, pode noblar até a bárbara colada na sua aldeia desligando "Espaçamento conta minhas aldeias"; opcional: 🗺️ Continentes, ex. K45, K55, pra noblar só neles; opcional: 🏘️ Priorizar com vizinhas — bárbaras com pelo menos N bárbaras coladas vão primeiro; opcional: 🔻 Reduzir regras automaticamente — quando as bárbaras nas regras acabam, afrouxa espaçamento/bônus/vizinhas sozinho pra não parar), manda os nobres (quantos quiser por bárbara, todos da mesma aldeia, cada um com a escolta que você escolher) da aldeia mais perto que tem nobre. Opcional: forma nobres na Academia das aldeias sozinho. Quando conquista, pesquisa o explorador, recruta e a própria aldeia nova explora as bárbaras ao redor pra entrarem no Farm. Repete em ciclos de segundos ou minutos. Use o Simular antes. Novo: Coordenadas de referência (opcional) — prioriza as bárbaras perto delas (ex.: a borda); e o tempo entre formar nobres é configurável.',
       checar: checaNobre,
       rodar: rodarNobre,
       destino: null
@@ -12859,9 +13315,19 @@
       nome: 'Pesquisar em Massa',
       abrev: 'Pesquisar em Massa',
       icone: '🔬',
-      dica: 'Pesquisa as tropas no Ferreiro de todas as aldeias (ou de um grupo) de uma vez. Lê a tela Visualização → Pesquisa, página por página (1.000 aldeias cada), e manda pesquisar onde a bolinha está marrom (pode pesquisar agora). Funciona em ferreiro simples e de níveis (detecta sozinho; você escolhe até que nível). Botão Conferir mostra quantas pesquisas dá pra fazer antes de mandar. Para no captcha e continua depois.',
+      dica: 'Pesquisa as tropas no Ferreiro de todas as aldeias (ou de um grupo) de uma vez. Lê a tela Visualização → Pesquisa, página por página (1.000 aldeias cada), e manda pesquisar onde a bolinha está marrom (pode pesquisar agora). Funciona em ferreiro simples e de níveis (detecta sozinho; você escolhe até que nível). Botão Conferir mostra quantas pesquisas dá pra fazer antes de mandar. Para no captcha e continua depois. 🔁 Automático: ligado, pesquisa sozinho toda vez que você abrir a tela Pesquisa, até desligar aqui.',
       checar: checaPesqMassa,
       rodar: rodarPesqMassa,
+      destino: null
+    },
+    {
+      id: 'construcao',
+      nome: 'Construção Rápida',
+      abrev: 'Construção Rápida',
+      icone: '⚡',
+      dica: 'Constrói os edifícios que você marcar em todas as aldeias (ou de um grupo) de uma vez. Lê a tela Visualização → Edifícios, página por página (1.000 aldeias cada), vê o nível e a fila de cada aldeia e manda construir na ordem dos ícones marcados, até o nível que você escolher. Botão Conferir mostra quantas ordens dá pra mandar antes. Para no captcha e continua depois. 🔁 Automático: ligado, constrói sozinho toda vez que você abrir a tela Edifícios, até desligar aqui.',
+      checar: checaConstrucao,
+      rodar: rodarConstrucao,
       destino: null
     }
   ];
@@ -12870,7 +13336,7 @@
     ['🌾 Farm', ['farmar', 'farmdormindo', 'keypress', 'coletorfarm']],
     ['⚔️ Ataque e nobres', ['ataque', 'nobrebb', 'noblaplayer', 'defender']],
     ['🗺️ Coleta', ['barbaras', 'perfil', 'ocultar']],
-    ['🏰 Conta', ['gerente', 'pesqmassa', 'balanceador', 'cunhar', 'rename', 'cancelar']],
+    ['🏰 Conta', ['gerente', 'pesqmassa', 'construcao', 'balanceador', 'cunhar', 'rename', 'cancelar']],
     ['♾️ Automação', ['auto247']]
   ];
   var FERRAMENTAS_POR_ID = {};
@@ -13045,7 +13511,13 @@
     if (!(window.game_data && game_data.village)) return;
     if (!nobLer().ativo) return;
     setTimeout(nobRetomar, gerEntre(3000, 4500));
-    setTimeout(nplRetomar, gerEntre(4500, 6000));
+  })();
+  // v97: cada um confere o próprio "ativo" (antes dependiam do Noblar Bárbaras estar ligado)
+  (function retomarOutros() {
+    if (!(window.game_data && game_data.village)) return;
+    try { if (nplLer().ativo) { setTimeout(nplRetomar, gerEntre(4500, 6000)); } } catch (e) {}
+    try { if (pmLerCfg().ativo && pmNaTela()) { setTimeout(pmRetomar, gerEntre(1200, 2000)); } } catch (e) {}
+    try { if (crLerCfg().ativo && crNaTela()) { setTimeout(crRetomar, gerEntre(1200, 2000)); } } catch (e) {}
   })();
 
   (function retomarBalanceador() {
@@ -13364,6 +13836,8 @@
     try { on.gerente = gerLer().ativo; } catch (e) {}
     try { on.nobrebb = nobLer().ativo; } catch (e) {}
     try { on.noblaplayer = nplLer().ativo; } catch (e) {}
+    try { on.pesqmassa = pmLerCfg().ativo; } catch (e) {}
+    try { on.construcao = crLerCfg().ativo; } catch (e) {}
     try { on.balanceador = balLer().ativo; } catch (e) {}
     try { on.auto247 = autoLer().ativo; } catch (e) {}
     try { on.farmar = !!document.getElementById('fh-fechar') && localStorage.getItem('ork_retomar_dormindo') !== '1'; } catch (e) {}
