@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      98.0
+// @version      99.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 98;
+  window.__ORK_VERSAO__ = 99;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -298,6 +298,14 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-10-01-v99',
+      data: '01/10/2026',
+      titulo: 'Fila aparecendo na hora',
+      itens: [
+        '🔬⚡ Pesquisar em Massa e Construção Rápida: com a tela Pesquisa/Edifícios aberta, cada ordem aparece na fila da aldeia na hora (1 a 1) e as bolinhas mudam de cor — não precisa mais dar F5.'
+      ]
+    },
     {
       id: '2026-10-01-v98',
       data: '01/10/2026',
@@ -9493,7 +9501,7 @@
       if (!j) { return { ok: false, erro: 'resposta não-JSON (HTTP ' + r.status + ')' }; }
       var erro = j.error || (j.response && j.response.error);
       if (erro) { return { ok: false, erro: Array.isArray(erro) ? erro.join(' ') : String(erro) }; }
-      return { ok: r.status === 200, erro: r.status === 200 ? '' : 'HTTP ' + r.status };
+      return { ok: r.status === 200, erro: r.status === 200 ? '' : 'HTTP ' + r.status, j: j };
     } catch (e) { return { ok: false, erro: 'rede: ' + ((e && e.message) || 'falhou') }; }
   }
   function gerConstruir(vid, predio) {
@@ -12612,6 +12620,44 @@
      Ferreiro simples: 1 passada. Ferreiro de níveis: repete passadas até o nível escolhido.
      Mesmo pedido do script clássico (TechOverview ajax_research_link + tech_id).
   ============================================================ */
+  /* v98: a tela Edifícios/Pesquisa não se redesenha sozinha quando a ordem vai por trás.
+     Enquanto você está nela, relê a página (1 pedido) e atualiza só a coluna da fila e as bolinhas. */
+  async function orkRefrescarTela(tipo) {
+    try {
+      var r = await fetch(location.href, { credentials: 'include' });
+      var doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+      if (tipo === 'cr') {
+        doc.querySelectorAll('.row_a, .row_b').forEach(function (tr) {
+          var vn = tr.querySelector('.quickedit-vn'); if (!vn) { return; }
+          var meu = document.querySelector('.quickedit-vn[data-id="' + vn.getAttribute('data-id') + '"]'); if (!meu) { return; }
+          var trMeu = meu.closest('tr'); if (!trMeu) { return; }
+          var a = tr.children, b = trMeu.children; if (!a.length || a.length !== b.length) { return; }
+          var ult = a.length - 1; // coluna "Construção" (fila)
+          if (b[ult].innerHTML !== a[ult].innerHTML) { b[ult].innerHTML = a[ult].innerHTML; }
+          for (var i = 0; i < ult; i++) { if (a[i].classList && a[i].classList.contains('upgrade_building') && b[i].textContent !== a[i].textContent) { b[i].textContent = a[i].textContent; } }
+        });
+      } else {
+        doc.querySelectorAll('[id^="village_tech_order_"]').forEach(function (el) { var m = document.getElementById(el.id); if (m && m.innerHTML !== el.innerHTML) { m.innerHTML = el.innerHTML; } });
+        doc.querySelectorAll('.rtt[id]').forEach(function (el) { var m = document.getElementById(el.id); if (m && m.className !== el.className) { m.className = el.className; } });
+      }
+    } catch (e) {}
+  }
+  // v99: mostra na hora (1 a 1) o que entrou na fila — sem pedido a mais
+  function orkFilaPesquisaNaTela(vid, u, j) {
+    try {
+      var cel = document.getElementById('village_tech_order_' + vid); if (!cel) { return; }
+      var html = j && (j.tech_order || (j.response && j.response.tech_order));
+      if (html) { cel.innerHTML = html; return; }
+      cel.insertAdjacentHTML('beforeend', '<img src="' + (window.image_base || '/graphic/') + 'unit/unit_' + u + '.png" title="' + u + '" style="width:16px;height:16px;vertical-align:middle">');
+    } catch (e) {}
+  }
+  function orkFilaConstrucaoNaTela(vid, b) {
+    try {
+      var vn = document.querySelector('.quickedit-vn[data-id="' + vid + '"]'); if (!vn) { return; }
+      var tr = vn.closest('tr'); if (!tr || !tr.lastElementChild) { return; }
+      tr.lastElementChild.insertAdjacentHTML('beforeend', '<span class="queue_icon ork-fila-nova"><img src="' + (window.image_base || '/graphic/') + 'buildings/' + b + '.png" title="' + b + '" style="width:16px;height:16px;vertical-align:middle"></span>');
+    } catch (e) {}
+  }
   var pmRodando = false, pmParar = false;
   function pmLerCfg() {
     var p = { ativo: false, grupo: '0', unidades: null, nivel: 0, eMin: 0.5, eMax: 1.2 };
@@ -12680,7 +12726,7 @@
           if (pmParar) { break; }
           var b = alvo[i];
           var r = await gerPost(pmUrl(lido.link, b.vid), 'tech_id=' + encodeURIComponent(b.u) + '&source=' + b.vid);
-          if (r.ok) { okPassada++; res.pesquisou++; res.porUn[b.u] = (res.porUn[b.u] || 0) + 1; try { var bol = document.getElementById(b.vid + '_' + b.u); if (bol) { bol.classList.remove('brown'); bol.classList.add('yellow'); } } catch (e) {} } else { res.recusou++; res.ultimoErro = r.erro; }
+          if (r.ok) { okPassada++; res.pesquisou++; res.porUn[b.u] = (res.porUn[b.u] || 0) + 1; orkFilaPesquisaNaTela(b.vid, b.u, r.j); try { var bol = document.getElementById(b.vid + '_' + b.u); if (bol) { bol.classList.remove('brown'); bol.classList.add('yellow'); } } catch (e) {} } else { res.recusou++; res.ultimoErro = r.erro; }
           mostrar('Passada ' + passada + '/' + nivelAlvo + ': ' + (i + 1) + '/' + alvo.length + ' — ' + res.pesquisou + ' pesquisa(s) mandada(s)' + (res.recusou ? ', ' + res.recusou + ' recusada(s) (recurso/fila?)' : ''), (i + 1) / alvo.length);
           var a = Math.max(0.2, +cfg.eMin || 0.5), z = Math.max(a, +cfg.eMax || 1.2);
           await gerEsperar(gerEntre(Math.round(a * 1000), Math.round(z * 1000)));
@@ -12689,6 +12735,7 @@
       }
     } catch (e) { res.erro = (e && e.message) || String(e); }
     pmRodando = false;
+    if (!simular && res.pesquisou && pmNaTela()) { await orkRefrescarTela('pm'); }
     return res;
   }
   function pmAbrirModal() {
@@ -12925,13 +12972,14 @@
         if (crParar) { break; }
         var o = ordens[i];
         var r = await gerConstruir(o.vid, o.b);
-        if (r.ok) { res.mandou++; res.porPredio[o.b] = (res.porPredio[o.b] || 0) + 1; } else { res.recusou++; res.ultimoErro = r.erro; }
+        if (r.ok) { res.mandou++; res.porPredio[o.b] = (res.porPredio[o.b] || 0) + 1; orkFilaConstrucaoNaTela(o.vid, o.b); } else { res.recusou++; res.ultimoErro = r.erro; }
         mostrar(o.coord + ' → ' + (CR_NOME[o.b] || o.b) + ' • ' + (i + 1) + '/' + ordens.length + ' — ' + res.mandou + ' ordem(ns) mandada(s)' + (res.recusou ? ', ' + res.recusou + ' recusada(s)' : ''), (i + 1) / ordens.length);
         var a1 = Math.max(0.2, +cfg.eMin || 0.5), z1 = Math.max(a1, +cfg.eMax || 1.2);
         await gerEsperar(gerEntre(Math.round(a1 * 1000), Math.round(z1 * 1000)));
       }
     } catch (e) { res.erro = (e && e.message) || String(e); }
     crRodando = false;
+    if (!simular && res.mandou && crNaTela()) { await orkRefrescarTela('cr'); }
     return res;
   }
   function crAbrirModal() {
