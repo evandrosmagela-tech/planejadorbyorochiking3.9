@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      110.0
+// @version      113.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 110;
+  window.__ORK_VERSAO__ = 113;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -298,6 +298,32 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-10-02-v113',
+      data: '02/10/2026',
+      titulo: '24/7: Etiquetar ataques na sequência',
+      itens: [
+        '♾️ 24/7: nova ação 🏷️ Etiquetar ataques na Sequência do ciclo — etiqueta os ataques recebidos novos, por trás, a cada volta. Marque e ordene com ▲▼.'
+      ]
+    },
+    {
+      id: '2026-10-02-v112',
+      data: '02/10/2026',
+      titulo: 'Renomeador: botões direto no Combinado',
+      itens: [
+        '✏️ Depois de usar o Renomeador uma vez pelo painel, a tela Combinado mostra ✏️ Renomear e ⏹ Parar do lado de "Aldeias por página" — sem voltar no painel. O × tira os botões.'
+      ]
+    },
+    {
+      id: '2026-10-02-v111',
+      data: '02/10/2026',
+      titulo: 'Bolinha verde em todos os scripts ligados + Coletor Hard',
+      itens: [
+        '🟢 A bolinha verde ao lado do nome agora aparece em TODO script ligado — faltavam Cunhar, KeyPress, Ataque (repetição) e Coletor Hard.',
+        '🕒 Coletor Hard: a janela agora abre sempre inteira dentro da tela (pelo painel e pela bolinha). Se estava fora da tela, ela volta pro lugar padrão sozinha.',
+        '⚪ Bolinhas dos scripts no canto esquerdo, uma acima da outra, já no lugar certo ao carregar a página.'
+      ]
+    },
     {
       id: '2026-10-02-v109',
       data: '02/10/2026',
@@ -1648,7 +1674,7 @@
         if (!cfg.pos) { painel.style.left = ''; painel.style.top = ''; painel.style.right = ''; painel.style.bottom = ''; return; }
         // v109: a janela tinha ficado fora da tela (arrastada / tela menor) e "não abria" — agora sempre volta pra dentro
         const larg = painel.offsetWidth || 340, alt = Math.min(painel.offsetHeight || 300, window.innerHeight - 20);
-        const maxX = Math.max(0, window.innerWidth - larg - 6), maxY = Math.max(0, window.innerHeight - Math.min(alt, 160) - 6);
+        const maxX = Math.max(0, window.innerWidth - larg - 6), maxY = Math.max(0, window.innerHeight - alt - 6); // v111: a janela INTEIRA dentro da tela
         if (!(cfg.pos.x >= 0) || !(cfg.pos.y >= 0)) { cfg.pos = null; posicionar(); return; }
         cfg.pos = { x: Math.min(cfg.pos.x, maxX), y: Math.min(cfg.pos.y, maxY) };
         painel.style.left = cfg.pos.x + 'px';
@@ -7503,7 +7529,8 @@
     balancear: { nome: '⚖️ Balancear recursos', dica: 'Equilibra os recursos pelo mercado com os ajustes da aba Balancear. Só roda se já passou o tempo mínimo desde o último balanceamento.' },
     nobre: { nome: '👑 Noblar bárbaras', dica: 'Roda 1 ciclo do Noblar Automático com a configuração salva na aba Noblar Automático (alvos, escolta, produzir nobres, pós-conquista...).' },
     gerente: { nome: '🏗️ Gerente de Conta', dica: 'Roda 1 ciclo do Gerente de Conta (construir, recrutar e pesquisar) com as regras salvas na aba Gerente de Conta — só quando já passou o tempo do campo "Repetir a cada" de lá (em minutos ou segundos).' },
-    coletor: { nome: '🧺 Coletor Hard (farm assistente)', dica: 'Roda 1 vez o Coletor Hard (ícone dourado flutuante) com a configuração salva nele.' }
+    coletor: { nome: '🧺 Coletor Hard (farm assistente)', dica: 'Roda 1 vez o Coletor Hard (ícone dourado flutuante) com a configuração salva nele.' },
+    etiquetar: { nome: '🏷️ Etiquetar ataques', dica: 'Etiqueta os ataques recebidos que ainda estão sem nome (botão Etiqueta do próprio jogo), por trás — 1 ou 2 pedidos leves.' }
   };
   function autoSeqCompleta(c) {
     var s = Array.isArray(c.seq) ? c.seq.filter(function (x) { return x && AUTO_ACOES[x.id]; }) : null;
@@ -7535,6 +7562,10 @@
         autoStatus('Gerente: construindo/recrutando/pesquisando...');
         autoLog('🏗️ rodando 1 ciclo do Gerente de Conta (intervalo configurado: ' + gerTextoIntervalo(gc) + ').');
         await gerRodarCiclo(true);
+      } else if (id === 'etiquetar') {
+        autoStatus('Etiquetando ataques...');
+        var re = await etqRodarFetch(true);
+        autoLog('🏷️ Etiquetador: ' + (re && re.clicou ? 'etiquetei os ataques novos.' : 'nada novo pra etiquetar.'));
       } else if (id === 'coletor') {
         var api = window.__OROCHIKING__;
         if (!api || !api.rodarUmaVez) { autoLog('Coletor Hard não está disponível nesta tela — pulei.'); return; }
@@ -14489,10 +14520,62 @@
     } catch (e) {}
   })();
 
-  var ORK_ATALHO_PERFIL = 'ork_atalho_perfil';
+  /* v111: COLETOR HARD — garante que a janela abra DE VERDADE e inteira dentro da tela, tanto pelo
+     painel quanto pela bolinha (mesmo que um script antigo/separado do Coletor tenha sido carregado antes). */
+  function orkColetorGarantirVisivel(abrir) {
+    try {
+      var h = document.getElementById('orochiking_host'), r = h && (h.shadowRoot || h), p = r && r.getElementById ? r.getElementById('painel') : null;
+      if (!p) { console.warn('[OROCHIKING] Coletor Hard: janela não encontrada nesta página.'); return false; }
+      if (abrir) { p.classList.remove('oculto'); }
+      if (p.classList.contains('oculto')) { return true; }
+      h.style.zIndex = '2147483000'; h.style.display = ''; h.style.visibility = '';
+      var b = p.getBoundingClientRect(), fora = b.width < 50 || b.right < 60 || b.bottom < 60 || b.left > window.innerWidth - 60 || b.top > window.innerHeight - 60 || b.top < 0 || b.bottom > window.innerHeight + 2;
+      if (fora) {
+        p.style.left = ''; p.style.top = ''; p.style.right = '20px'; p.style.bottom = '84px';
+        try { var k = 'orochiking_cfg_' + location.host, c = JSON.parse(localStorage.getItem(k) || '{}'); c.pos = null; c.aberto = true; localStorage.setItem(k, JSON.stringify(c)); } catch (e) {}
+        console.log('[OROCHIKING] Coletor Hard: a janela estava fora da tela — trouxe de volta.');
+      }
+      return true;
+    } catch (e) { console.warn('[OROCHIKING] Coletor Hard:', e); return false; }
+  }
+  // clique na bolinha do Coletor Hard: depois que ela abre, confere se a janela ficou visível
+  try {
+    document.addEventListener('click', function (ev) {
+      var cam = ev.composedPath ? ev.composedPath() : [];
+      for (var i = 0; i < cam.length; i++) { if (cam[i] && cam[i].id === 'bolha') { setTimeout(function () { orkColetorGarantirVisivel(false); }, 60); return; } }
+    }, true);
+  } catch (e) {}
+
+  var ORK_ATALHO_PERFIL = 'ork_atalho_perfil', ORK_ATALHO_RENOMEAR = 'ork_atalho_renomear';
+  /* v112: ATALHO DO RENOMEADOR NO COMBINADO — depois de usar uma vez pelo painel, a tela Combinado
+     mostra ✏️ Renomear e ⏹ Parar do lado de "Aldeias por página" (sem voltar no painel). */
+  function orkAtalhoRenomear() {
+    try {
+      if (!(window.game_data && game_data.screen === 'overview_villages' && game_data.mode === 'combined')) { return; }
+      if (localStorage.getItem(ORK_ATALHO_RENOMEAR) !== '1' || document.getElementById('ork-atalho-ren')) { return; }
+      var inp = document.querySelector('input[name="page_size"]'), ancora = inp ? (inp.form ? (inp.form.querySelector('input[type="submit"], button, .btn') || inp) : inp) : null;
+      var box = document.createElement('span'); box.id = 'ork-atalho-ren';
+      box.style.cssText = 'display:inline-flex;gap:5px;align-items:center;margin-left:8px;vertical-align:middle';
+      var bt = 'border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:800;font-size:11.5px;font-family:"Segoe UI",Arial,sans-serif';
+      box.innerHTML = '<button type="button" id="ork-ren-ir" style="' + bt + ';background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200" title="Abre o Renomeador Hard (mesmo do painel)">✏️ Renomear</button>' +
+        '<button type="button" id="ork-ren-parar" style="' + bt + ';background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c" title="Para o Renomeador e fecha a janela dele">⏹ Parar</button>' +
+        '<span id="ork-ren-x" style="color:#8a6a3a;cursor:pointer;font-weight:800;font-size:13px" title="Tirar estes botões (voltam quando usar pelo painel)">&times;</span>';
+      if (ancora && ancora.parentNode) { ancora.parentNode.insertBefore(box, ancora.nextSibling); }
+      else { box.style.cssText += ';position:fixed;top:70px;right:14px;z-index:99990;background:#1a1a1a;padding:6px 8px;border-radius:10px;border:1px solid #3a3a3a'; document.body.appendChild(box); }
+      box.querySelector('#ork-ren-ir').addEventListener('click', function (e) { e.preventDefault(); var f = FERRAMENTAS_POR_ID.rename; if (f) { orkExecutar(f); } });
+      box.querySelector('#ork-ren-parar').addEventListener('click', function (e) {
+        e.preventDefault();
+        var st = document.getElementById('rh-stop'); if (st && !st.disabled) { st.click(); }
+        var pp = document.getElementById('rh-popup'); if (pp) { pp.style.display = 'none'; }
+      });
+      box.querySelector('#ork-ren-x').addEventListener('click', function () { try { localStorage.removeItem(ORK_ATALHO_RENOMEAR); } catch (e) {} box.remove(); });
+    } catch (e) {}
+  }
+  setTimeout(orkAtalhoRenomear, 500);
   function orkExecutar(f) {
     // v107: usou Perfil/Ocultar uma vez → os atalhos aparecem sozinhos em todo perfil de jogador
     if (f && (f.id === 'perfil' || f.id === 'ocultar')) { try { localStorage.setItem(ORK_ATALHO_PERFIL, '1'); } catch (e) {} }
+    if (f && f.id === 'rename') { try { localStorage.setItem(ORK_ATALHO_RENOMEAR, '1'); } catch (e) {} setTimeout(orkAtalhoRenomear, 300); }
     var antes = new Set(Array.prototype.slice.call(document.body.children));
     try {
       f.rodar();
@@ -14634,8 +14717,8 @@
       dica: 'Abre a janela do Coletor Hard (o mesmo da bolinha dourada do canto direito): explora as bárbaras em volta das suas aldeias pro Assistente de Saque, com raio, pontos, modelo e repetição em ciclos. Roda em qualquer tela de aldeia.',
       checar: function () { return true; },
       rodar: function () {
-        if (window.__OROCHIKING__ && typeof window.__OROCHIKING__.abrir === 'function') { window.__OROCHIKING__.abrir(); }
-        else { alert('O Coletor Hard só abre numa tela de aldeia do jogo. Abra a Visão geral da aldeia e tente de novo.'); }
+        try { if (window.__OROCHIKING__ && typeof window.__OROCHIKING__.abrir === 'function') { window.__OROCHIKING__.abrir(); } } catch (e) { console.warn('[OROCHIKING] Coletor Hard: abrir falhou', e); }
+        if (!orkColetorGarantirVisivel(true)) { alert('O Coletor Hard não carregou nesta tela. Abra a Visão geral de uma aldeia e tente de novo.\n\nSe tiver outro script "Coletor Hard" instalado separado no Tampermonkey, desative ele (o painel já traz o Coletor Hard).'); }
       },
       destino: null
     },
@@ -15325,6 +15408,11 @@
     try { on.snipe = snpLer().ativo; } catch (e) {}
     try { on.balanceador = balLer().ativo; } catch (e) {}
     try { on.auto247 = autoLer().ativo; } catch (e) {}
+    // v111: faltavam estes — agora TODO script ligado mostra a bolinha verde
+    try { on.cunhar = !!lerConfigCunhar().ativo; } catch (e) {}
+    try { on.keypress = !!kpLerConfig().ativo; } catch (e) {}
+    try { var lc = JSON.parse(localStorage.getItem('ork_loop_ataque_config') || 'null'); on.ataque = !!(lc && lc.ativo); } catch (e) {}
+    try { var ch = window.__OROCHIKING__ && window.__OROCHIKING__.cfg && window.__OROCHIKING__.cfg(); on.coletorhard = !!(ch && ch.ativo) || !!(window.__OROCHIKING__ && window.__OROCHIKING__.rodando && window.__OROCHIKING__.rodando()); } catch (e) {}
     try { on.farmar = !!document.getElementById('fh-fechar') && localStorage.getItem('ork_retomar_dormindo') !== '1'; } catch (e) {}
     try { on.farmdormindo = !!document.getElementById('fh-fechar') && localStorage.getItem('ork_retomar_dormindo') === '1'; } catch (e) {}
     document.querySelectorAll('#ork-tabs .ork-tab').forEach(function (t) { t.classList.toggle('ork-rodando', !!on[t.getAttribute('data-id')]); });
