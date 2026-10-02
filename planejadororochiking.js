@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      99.0
+// @version      100.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 99;
+  window.__ORK_VERSAO__ = 100;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -298,6 +298,17 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-10-02-v100',
+      data: '02/10/2026',
+      titulo: 'Novos: Snipe de Nobres, Etiquetador e Recursos pra Academia',
+      itens: [
+        '🛡️ Snipe de Nobres (NOVO, BETA, seção Ataque e nobres): acha trem de nobres na sua aldeia e coloca a defesa entre o 1º e o 2º nobre, por cancelamento e/ou apoio. Cancelamento automático (no ms) ou MANUAL: ele envia e renomeia o comando com "CANCELAR hh:mm:ss:ms", com bip 3-2-1 e botão Cancelar agora. Feito pra speed (ataques de 12–40 s, vigia a cada 3 seg). Tropas: tudo em casa ou as que você escolher.',
+        '🏷️ Etiquetador (NOVO, seção Ataque e nobres): etiqueta os ataques recebidos com o botão Etiqueta do próprio jogo, por trás, só os novos. Etiquetar agora ou automático a cada X min ou seg (bolinha 🏷️ fica vermelha com ataque chegando).',
+        '🏛️ Recursos pra Academia (NOVO, seção Conta): pra quem tem 1 aldeia com Academia — puxa recurso das outras aldeias só pra ela, na proporção da moeda, sem lotar o armazém, das mais perto primeiro. Simular, Enviar agora ou repetir a cada X min.',
+        '⚡ Construção Rápida: agora ENCHE a fila de cada aldeia (até o Máx. na fila) — o 1º edifício marcado sobe vários níveis, depois o 2º... Termina uma aldeia e vai pra próxima; se faltar recurso, pula o resto dela.'
+      ]
+    },
     {
       id: '2026-10-01-v99',
       data: '01/10/2026',
@@ -12887,6 +12898,849 @@
   function rodarPesqMassa() { pmAbrirModal(); }
 
   /* ============================================================
+     RECURSOS PRA ACADEMIA (v100)
+     Puxa recurso das suas aldeias pra UMA aldeia (a da Academia), pelo "Chamar recursos" do
+     mercado — o mesmo pedido do Balanceador (1 envio chama de várias aldeias de uma vez).
+     Manda na proporção do custo da moeda, sem lotar o armazém do alvo, as mais perto primeiro.
+  ============================================================ */
+  var RA_CHAVE = 'ork_recacademia_' + ((window.game_data && game_data.world) || '');
+  var raTimer = null, raRodando = false, raRelogio = null, raSoMapSend = false;
+  function raLer() {
+    var p = { ativo: false, alvo: '', grupo: '0', proporcao: true, custo: [28000, 30000, 25000], reserva: 0, distMax: 0, minEnvio: 1000, intervaloMin: 10, proximoEm: 0, ultimo: null };
+    try { var c = JSON.parse(localStorage.getItem(RA_CHAVE) || 'null'); if (c) { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
+    if (!Array.isArray(p.custo) || p.custo.length !== 3) { p.custo = [28000, 30000, 25000]; }
+    return p;
+  }
+  function raGravar(c) { try { localStorage.setItem(RA_CHAVE, JSON.stringify(c)); } catch (e) {} }
+  function raLog(t) { try { console.log('[OROCHIKING] Recursos pra Academia: ' + t); } catch (e) {} }
+  // calcula quanto cada aldeia manda (sem enviar nada)
+  async function raPlanejar(cfg) {
+    var m = String(cfg.alvo || '').match(/(\d{1,3})\|(\d{1,3})/);
+    if (!m) { return { erro: 'Coloque a coordenada da aldeia com Academia.' }; }
+    var alvoCoord = (+m[1]) + '|' + (+m[2]);
+    var todas = (await balDadosProducao('0')).list_production;
+    var alvo = todas.filter(function (v) { return v.coord === alvoCoord; })[0];
+    if (!alvo) { return { erro: 'A aldeia ' + alvoCoord + ' não é sua (ou não apareceu na Visualização → Produção).' }; }
+    var origensTodas = (cfg.grupo && cfg.grupo !== '0') ? (await balDadosProducao(cfg.grupo)).list_production : todas;
+    var chegando = new Map(); try { chegando = await balDadosChegando(); } catch (e) {}
+    var ch = chegando.get(alvoCoord) || { wood: 0, stone: 0, iron: 0 };
+    var cap = Math.floor((alvo.capacity || 0) * 0.95);
+    var espaco = [Math.max(0, cap - alvo.wood - ch.wood), Math.max(0, cap - alvo.stone - ch.stone), Math.max(0, cap - alvo.iron - ch.iron)];
+    var espacoIni = espaco.slice();
+    var capMerc = 1000; try { capMerc = Math.min(1500, Math.max(1000, parseInt(balLer().capacidade, 10) || 1000)); } catch (e) {}
+    var custo = cfg.custo.map(function (x) { return Math.max(1, +x || 1); }), soma = custo[0] + custo[1] + custo[2];
+    var resTxt = String(cfg.reserva == null ? '0' : cfg.reserva).trim(), resPct = /%$/.test(resTxt), resVal = Math.max(0, parseFloat(resTxt.replace(',', '.')) || 0), dmax = Math.max(0, +cfg.distMax || 0), minimo = Math.max(0, +cfg.minEnvio || 0);
+    var origens = origensTodas.filter(function (v) { return v.coord !== alvoCoord && v.merchants > 0; })
+      .map(function (v) { v._d = balDistCoord(v.coord, alvoCoord); return v; })
+      .filter(function (v) { return !dmax || v._d <= dmax; })
+      .sort(function (a, b) { return a._d - b._d; });
+    var envios = [];
+    origens.forEach(function (v) {
+      if (espaco[0] + espaco[1] + espaco[2] < minimo) { return; }
+      var res = resPct ? Math.floor((v.capacity || 0) * resVal / 100) : resVal;
+      var disp = [Math.max(0, v.wood - res), Math.max(0, v.stone - res), Math.max(0, v.iron - res)];
+      var capViagem = v.merchants * capMerc, mandar;
+      if (cfg.proporcao) {
+        var k = Math.min(disp[0] / custo[0], disp[1] / custo[1], disp[2] / custo[2], capViagem / soma, espaco[0] / custo[0], espaco[1] / custo[1], espaco[2] / custo[2]);
+        mandar = custo.map(function (c) { return Math.floor(k * c); });
+      } else {
+        var lim = [Math.min(disp[0], espaco[0]), Math.min(disp[1], espaco[1]), Math.min(disp[2], espaco[2])];
+        var tot = lim[0] + lim[1] + lim[2], f = tot > capViagem ? capViagem / tot : 1;
+        mandar = lim.map(function (x) { return Math.floor(x * f); });
+      }
+      var total = mandar[0] + mandar[1] + mandar[2];
+      if (total < Math.max(minimo, 1)) { return; }
+      espaco = [espaco[0] - mandar[0], espaco[1] - mandar[1], espaco[2] - mandar[2]];
+      envios.push({ id: v.id, coord: v.coord, nome: v.name, dist: v._d, wood: mandar[0], stone: mandar[1], iron: mandar[2], total: total, merc: Math.ceil(total / capMerc) });
+    });
+    var tot = [0, 0, 0]; envios.forEach(function (e) { tot[0] += e.wood; tot[1] += e.stone; tot[2] += e.iron; });
+    var moedas = Math.floor(Math.min(tot[0] / custo[0], tot[1] / custo[1], tot[2] / custo[2]));
+    return { alvo: alvo, envios: envios, total: tot, moedas: moedas, espaco: espacoIni, cap: cap, chegando: ch, origens: origens.length };
+  }
+  function raMapSend(origemId, alvoId, w, st, ir) {
+    return new Promise(function (resolve) {
+      var feito = false; function fim(ok, info) { if (!feito) { feito = true; resolve({ ok: ok, info: info }); } }
+      try {
+        TribalWars.post('market', { ajaxaction: 'map_send', village: origemId }, { target_id: alvoId, wood: w, stone: st, iron: ir },
+          function (r) { fim(true, r && r.message); }, function (e) { fim(false, e); });
+        setTimeout(function () { fim(false, 'sem resposta em 20s'); }, 20000);
+      } catch (e) { fim(false, e && e.message); }
+    });
+  }
+  async function raEnviar(plano) {
+    var lotes = [], atual = null;
+    plano.envios.forEach(function (e, i) {
+      if (!atual || i % 100 === 0) { atual = { target_id: plano.alvo.id, data: {} }; lotes.push(atual); }
+      atual.data['resource[' + e.id + '][wood]'] = e.wood; atual.data['resource[' + e.id + '][stone]'] = e.stone; atual.data['resource[' + e.id + '][iron]'] = e.iron;
+    });
+    var ok = 0, falhas = 0;
+    for (var i = 0; i < lotes.length; i++) {
+      while (window.__ORK_CAPTCHA_BLOQUEADO__) { await gerEsperar(gerEntre(3000, 5000)); }
+      var r = raSoMapSend ? { ok: false } : await balEnviar(lotes[i]);
+      if (r.ok && r.info !== false) { ok++; }
+      else {
+        // "Chamar recursos" recusado (ex.: sem Conta Premium): manda de cada aldeia pelo envio normal do mercado
+        if (!raSoMapSend) { raLog('"Chamar recursos" não aceito — mandando aldeia por aldeia pelo mercado.'); raSoMapSend = true; }
+        var ids = Object.keys(lotes[i].data).filter(function (k) { return /\[wood\]$/.test(k); }).map(function (k) { return k.match(/\[(\d+)\]/)[1]; });
+        for (var q = 0; q < ids.length; q++) {
+          while (window.__ORK_CAPTCHA_BLOQUEADO__) { await gerEsperar(gerEntre(3000, 5000)); }
+          var d = lotes[i].data, id = ids[q];
+          var r2 = await raMapSend(id, plano.alvo.id, d['resource[' + id + '][wood]'], d['resource[' + id + '][stone]'], d['resource[' + id + '][iron]']);
+          if (r2.ok) { ok++; } else { falhas++; raLog('falhou o envio da aldeia ' + id + ': ' + String(r2.info && (r2.info.message || r2.info)).slice(0, 120)); }
+          await gerEsperar(gerEntre(400, 900));
+        }
+      }
+      await gerEsperar(gerEntre(1000, 3000));
+    }
+    return { ok: ok, falhas: falhas };
+  }
+  async function raRodarCiclo() {
+    if (raRodando) { return; }
+    var c = raLer(); if (!c.ativo) { return; }
+    if (window.__ORK_CAPTCHA_BLOQUEADO__) { raTimer = setTimeout(raRodarCiclo, gerEntre(5000, 8000)); return; }
+    raRodando = true;
+    try {
+      var p = await raPlanejar(c);
+      if (p.erro) { raLog(p.erro); }
+      else if (!p.envios.length) { raLog('nada pra mandar agora (armazém do alvo cheio ou sem recurso/mercador livre).'); }
+      else { var r = await raEnviar(p); c = raLer(); c.ultimo = { quando: Date.now(), aldeias: p.envios.length, total: p.total, moedas: p.moedas, falhas: r.falhas }; raGravar(c); raLog('mandou de ' + p.envios.length + ' aldeia(s): ' + p.total.map(balFmt).join(' / ') + ' (~' + p.moedas + ' moeda(s)).'); }
+    } catch (e) { raLog('erro: ' + (e && e.message)); }
+    raRodando = false;
+    c = raLer(); if (!c.ativo) { return; }
+    c.proximoEm = Date.now() + Math.max(1, +c.intervaloMin || 10) * 60000 + gerEntre(2000, 4000); raGravar(c);
+    raAgendar();
+  }
+  function raAgendar() {
+    var c = raLer(); if (!c.ativo) { return; }
+    raMostrarBolinha();
+    if (raTimer) { clearTimeout(raTimer); }
+    raTimer = setTimeout(raRodarCiclo, Math.max(1000, (c.proximoEm || 0) - Date.now()));
+  }
+  function raParar() {
+    var c = raLer(); c.ativo = false; c.proximoEm = 0; raGravar(c);
+    if (raTimer) { clearTimeout(raTimer); raTimer = null; }
+    if (raRelogio) { clearInterval(raRelogio); raRelogio = null; }
+    var b = document.getElementById('ork-ra-bolinha'); if (b) { b.remove(); }
+  }
+  function raMostrarBolinha() {
+    if (document.getElementById('ork-ra-bolinha')) { return; }
+    var b = document.createElement('div'); b.id = 'ork-ra-bolinha';
+    b.style.cssText = 'position:fixed;left:532px;bottom:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
+    b.innerHTML = '<span style="font-size:18px">🏛️</span><span id="ork-ra-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">REC</span>';
+    b.addEventListener('click', function () { if (confirm('Parar o Recursos pra Academia?')) { raParar(); } });
+    document.body.appendChild(b);
+    raRelogio = setInterval(function () {
+      var c = raLer(), el = document.getElementById('ork-ra-tempo'); if (!el) { return; }
+      if (raRodando || !c.proximoEm) { el.textContent = 'ENV'; return; }
+      var s2 = Math.max(0, Math.round((c.proximoEm - Date.now()) / 1000)); el.textContent = Math.floor(s2 / 60) + ':' + ('0' + (s2 % 60)).slice(-2);
+      b.title = 'Recursos pra Academia → ' + c.alvo + ' • próximo envio em ' + el.textContent + (c.ultimo ? ' • último: ~' + c.ultimo.moedas + ' moeda(s) de ' + c.ultimo.aldeias + ' aldeia(s)' : '') + ' — clique pra parar';
+    }, 1000);
+  }
+  function raRetomar() { var c = raLer(); if (c.ativo) { raAgendar(); } }
+  function raAbrirModal() {
+    if (document.getElementById('ork-modal-ra')) { return; }
+    var c = raLer(), cat = gerLerCatalogo() || { grupos: [] };
+    if (!c.alvo && window.game_data && game_data.village) { c.alvo = game_data.village.x + '|' + game_data.village.y; }
+    var inp = 'background:#111;border:1px solid rgba(255,255,255,.12);color:#ececec;padding:4px 6px;border-radius:6px;font-size:11.5px;box-sizing:border-box;font-family:inherit';
+    var sec = 'background:#141414;border:1px solid #262626;border-radius:8px;padding:7px 8px;margin-top:6px';
+    var stit = 'font-size:9px;color:#8a8a8a;font-weight:800;text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px';
+    var lin = 'display:flex;gap:6px;align-items:center;font-size:10.5px;color:#bbb;margin-top:5px';
+    var ico = function (r) { return '<span class="icon header ' + r + '" style="display:inline-block;width:14px;height:14px;vertical-align:middle"></span>'; };
+    var ov = document.createElement('div'); ov.id = 'ork-modal-ra';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    ov.innerHTML =
+      '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:520px;max-width:calc(100vw - 20px);max-height:calc(100vh - 30px);overflow:auto;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12)">' +
+        '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:7px 10px;display:flex;align-items:center;gap:7px">' +
+          '<span style="font-weight:800;font-size:12px;letter-spacing:1px">🏛️ RECURSOS PRA ACADEMIA</span>' +
+          '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="Pra quando você tem UMA aldeia com Academia: puxa recurso das suas outras aldeias só pra ela, pelo Chamar recursos do mercado (o mesmo envio do Balanceador) — se a conta não tiver esse recurso, manda de cada aldeia pelo envio normal do mercado, sozinho. Manda na proporção do custo da moeda (pra virar moeda/nobre sem sobra), sem lotar o armazém dela (conta o que já está chegando), das aldeias mais perto primeiro.">?</span>' +
+          '<span style="flex:1;text-align:right;font-size:9.5px;font-weight:800;color:#3d3000">' + (c.ativo ? '● RODANDO' : 'PARADO') + '</span><span id="ork-ra-x" style="cursor:pointer;font-weight:bold;font-size:15px;margin-left:6px">&times;</span></div>' +
+        '<div style="padding:6px 9px 9px">' +
+          '<div style="' + sec + '"><div style="' + stit + '">Pra onde</div>' +
+            '<div style="display:flex;gap:4px;align-items:center"><span style="font-size:10.5px;color:#bbb;white-space:nowrap" data-dica="Coordenada da SUA aldeia com Academia — ela recebe tudo.">🏛️ Aldeia com Academia</span>' +
+              '<input id="ork-ra-alvo" type="text" placeholder="500|500" value="' + gerHtml(c.alvo || '') + '" style="flex:1;' + inp + ';text-align:center">' +
+              '<button type="button" id="ork-ra-aqui" style="background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:6px;padding:4px 8px;cursor:pointer;font-weight:700;font-size:10.5px;font-family:inherit">📍 aldeia atual</button></div>' +
+            '<div style="' + lin + '"><span data-dica="Só as aldeias deste grupo mandam recurso.">Quem manda</span><select id="ork-ra-grupo" style="flex:1;' + inp + '"></select>' +
+              '<button type="button" id="ork-ra-lergr" title="Ler os grupos do jogo" style="background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:6px;padding:4px 8px;cursor:pointer;font-weight:700;font-size:10.5px;font-family:inherit">🔄</button></div></div>' +
+          '<div style="' + sec + '"><div style="' + stit + '">Regras</div>' +
+            '<label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:#ccc;cursor:help" data-dica="Ligado (padrão): manda madeira, argila e ferro na proporção do custo da moeda — o recurso vira moeda sem sobrar um tipo parado. Desligado: manda o que tiver de cada um.">' +
+              '<input id="ork-ra-prop" type="checkbox"' + (c.proporcao ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">🪙 Mandar na proporção da moeda</label>' +
+            '<div style="' + lin + '"><span data-dica="Custo de 1 moeda neste mundo (madeira / argila / ferro). Padrão 28.000 / 30.000 / 25.000.">Custo da moeda</span>' +
+              ico('wood') + '<input id="ork-ra-c0" type="number" value="' + c.custo[0] + '" style="width:70px;' + inp + ';text-align:center">' +
+              ico('stone') + '<input id="ork-ra-c1" type="number" value="' + c.custo[1] + '" style="width:70px;' + inp + ';text-align:center">' +
+              ico('iron') + '<input id="ork-ra-c2" type="number" value="' + c.custo[2] + '" style="width:70px;' + inp + ';text-align:center"></div>' +
+            '<div style="' + lin + '"><span data-dica="Quanto de CADA recurso fica em cada aldeia que manda (pra ela continuar construindo). Número = quantidade fixa (ex.: 20000). Com % = porcentagem do armazém de cada aldeia (ex.: 10%). 0 = manda tudo que puder.">Deixar em cada aldeia</span><input id="ork-ra-res" type="text" placeholder="0 ou 10%" value="' + gerHtml(String(c.reserva || 0)) + '" style="width:80px;' + inp + ';text-align:center">' +
+              '<span style="flex:1"></span><span data-dica="Só aldeias até essa distância mandam (as mais perto primeiro). 0 = qualquer distância.">Dist. máx.</span><input id="ork-ra-dist" type="number" min="0" value="' + (c.distMax || 0) + '" style="width:60px;' + inp + ';text-align:center"></div></div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;background:#141414;border:1px solid ' + (c.ativo ? '#2f6b2f' : '#262626') + ';border-radius:8px;padding:6px 8px">' +
+            '<span style="flex:1;font-size:10.5px;color:#bbb" data-dica="Ligado: manda sozinho a cada X minutos (sem lotar o armazém do alvo). Fica ligado até você parar aqui ou na bolinha 🏛️.">🔁 Repetir a cada</span>' +
+            '<input id="ork-ra-int" type="number" min="1" value="' + (c.intervaloMin || 10) + '" style="width:52px;' + inp + ';text-align:center"><span style="font-size:10.5px;color:#888">min</span></div>' +
+          '<div id="ork-ra-prev" style="' + sec + ';font-size:11px;color:#aaa">Clique em <b style="color:#FFC400">Simular</b> pra ver quanto cada aldeia manda.</div>' +
+          '<div style="display:flex;gap:5px;margin-top:8px">' +
+            '<button id="ork-ra-sim" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Simular</button>' +
+            '<button id="ork-ra-env" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Enviar agora (1 vez)</button>' +
+            '<button id="ork-ra-ok" style="flex:1.2;background:' + (c.ativo ? '#2a1010;color:#ff6b6b;border:1px solid #4a1c1c' : 'linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;border:none') + ';border-radius:8px;padding:7px 0;cursor:pointer;font-weight:800;font-size:11px;font-family:inherit">' + (c.ativo ? '⏹ Parar repetição' : '🔁 Ativar repetição') + '</button></div>' +
+        '</div></div>';
+    document.body.appendChild(ov);
+    var balao = autoLigarDicas(ov);
+    function v(id) { return document.getElementById(id); }
+    function grupos() { var s = v('ork-ra-grupo'); var ops = [['0', 'Todas as aldeias']].concat((cat.grupos || []).map(function (g) { return [g.id, g.nome]; })); s.innerHTML = ops.map(function (o) { return '<option value="' + gerHtml(o[0]) + '"' + (String(o[0]) === String(c.grupo) ? ' selected' : '') + '>' + gerHtml(o[1]) + '</option>'; }).join(''); }
+    grupos();
+    v('ork-ra-lergr').addEventListener('click', async function () { var b = this; b.disabled = true; b.textContent = '...'; try { var g = await gerLerGrupos(); cat = gerLerCatalogo() || {}; cat.grupos = g; gerGravarCatalogo(cat); } catch (e) {} b.disabled = false; b.textContent = '🔄'; grupos(); });
+    v('ork-ra-aqui').addEventListener('click', function () { v('ork-ra-alvo').value = game_data.village.x + '|' + game_data.village.y; });
+    function ler() {
+      var n = raLer();
+      n.alvo = (v('ork-ra-alvo').value || '').trim(); n.grupo = v('ork-ra-grupo').value || '0';
+      n.proporcao = v('ork-ra-prop').checked;
+      n.custo = [v('ork-ra-c0'), v('ork-ra-c1'), v('ork-ra-c2')].map(function (x, i) { return Math.max(1, parseInt(x.value, 10) || [28000, 30000, 25000][i]); });
+      var rr = String(v('ork-ra-res').value || '0').trim(); n.reserva = /%$/.test(rr) ? Math.min(100, Math.max(0, parseFloat(rr) || 0)) + '%' : Math.max(0, parseInt(rr.replace(/[^0-9]/g, ''), 10) || 0); n.distMax = Math.max(0, parseFloat(v('ork-ra-dist').value) || 0);
+      n.intervaloMin = Math.max(1, parseFloat(v('ork-ra-int').value) || 10);
+      raGravar(n); return n;
+    }
+    function mostrarPlano(p, enviado) {
+      var box = v('ork-ra-prev');
+      if (p.erro) { box.innerHTML = '<span style="color:#ff6b6b">' + gerHtml(p.erro) + '</span>'; return; }
+      var td = 'padding:2px 4px;font-size:10.5px;';
+      var linhas = p.envios.slice(0, 40).map(function (e) { return '<tr style="border-top:1px solid #222"><td style="' + td + 'color:#ddd">' + e.coord + '</td><td style="' + td + 'color:#888">' + e.dist.toFixed(1) + '</td><td style="' + td + 'text-align:right">' + balFmt(e.wood) + '</td><td style="' + td + 'text-align:right">' + balFmt(e.stone) + '</td><td style="' + td + 'text-align:right">' + balFmt(e.iron) + '</td><td style="' + td + 'color:#888;text-align:right">' + e.merc + '🐴</td></tr>'; }).join('');
+      box.innerHTML = '<div style="color:#888;margin-bottom:5px">Alvo ' + p.alvo.coord + ' • armazém ' + balFmt(p.cap) + ' • cabe ainda ' + p.espaco.map(balFmt).join(' / ') + ' • ' + p.origens + ' aldeia(s) com mercador livre</div>' +
+        '<div style="color:' + (enviado ? '#7ed17e' : '#FFC400') + ';font-weight:800;margin-bottom:4px">' + (enviado ? '✔ Mandado: ' : '') + p.envios.length + ' aldeia(s) → ' + p.total.map(balFmt).join(' / ') + ' ≈ ' + p.moedas + ' moeda(s)</div>' +
+        (linhas ? '<div style="max-height:170px;overflow:auto"><table style="width:100%;border-collapse:collapse">' + linhas + '</table></div>' : '<div style="color:#777">Nada pra mandar agora — armazém do alvo cheio, ou sem recurso/mercador livre nas outras aldeias.</div>') +
+        (p.envios.length > 40 ? '<div style="color:#666;font-size:10px">... e mais ' + (p.envios.length - 40) + ' aldeia(s)</div>' : '');
+    }
+    v('ork-ra-sim').addEventListener('click', async function () { var b = this, n = ler(); b.disabled = true; b.textContent = 'Calculando...'; try { mostrarPlano(await raPlanejar(n), false); } catch (e) { v('ork-ra-prev').textContent = 'Erro: ' + (e && e.message); } b.disabled = false; b.textContent = 'Simular'; });
+    v('ork-ra-env').addEventListener('click', async function () {
+      var b = this, n = ler(); b.disabled = true; b.textContent = 'Enviando...';
+      try { var p = await raPlanejar(n); if (!p.erro && p.envios.length) { var r = await raEnviar(p); mostrarPlano(p, !r.falhas); if (r.falhas) { v('ork-ra-prev').insertAdjacentHTML('beforeend', '<div style="color:#ff6b6b">' + r.falhas + ' envio(s) falharam — veja o Console (F12).</div>'); } } else { mostrarPlano(p, false); } } catch (e) { v('ork-ra-prev').textContent = 'Erro: ' + (e && e.message); }
+      b.disabled = false; b.textContent = 'Enviar agora (1 vez)';
+    });
+    function fechar() { try { balao.remove(); } catch (e) {} ov.remove(); }
+    v('ork-ra-x').addEventListener('click', fechar);
+    v('ork-ra-ok').addEventListener('click', function () {
+      if (raLer().ativo) { raParar(); fechar(); return; }
+      var n = ler(); if (!/\d{1,3}\|\d{1,3}/.test(n.alvo)) { v('ork-ra-prev').innerHTML = '<span style="color:#ff6b6b">Coloque a coordenada da aldeia com Academia.</span>'; return; }
+      n.ativo = true; n.proximoEm = 0; raGravar(n); fechar(); raMostrarBolinha(); raRodarCiclo();
+    });
+  }
+  function checaRecAcademia() { return !!(window.game_data && game_data.village && game_data.village.id); }
+  function rodarRecAcademia() { raAbrirModal(); }
+
+  /* ============================================================
+     ETIQUETADOR (v100)
+     Etiqueta os ataques recebidos com o botão "Etiqueta" do PRÓPRIO jogo (ele identifica a tropa
+     mais lenta: Nobre, Aríete, Espada...). Marca só os que ainda têm o nome padrão ("Ataque"),
+     então não mexe no que você renomeou. Roda por trás (tela de Recebidos escondida) ou na
+     própria tela, se você estiver nela. Automático a cada X minutos, com bolinha 🏷️.
+  ============================================================ */
+  var ETQ_CHAVE = 'ork_etiquetador_' + ((window.game_data && game_data.world) || '');
+  var etqTimer = null, etqRodando = false, etqRelogio = null;
+  var ETQ_PADRAO = /^(ataque|attack|angriff|atak|attaque|aanval|attacco|útok|utok|napad|επίθεση|támadás|tamadas|atac|saldırı|напад|напад)$/i;
+  function etqLer() {
+    var p = { ativo: false, intervaloMin: 2, intervaloUni: 'min', soNovos: true, proximoEm: 0, ultimo: null };
+    try { var c = JSON.parse(localStorage.getItem(ETQ_CHAVE) || 'null'); if (c) { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
+    return p;
+  }
+  function etqGravar(c) { try { localStorage.setItem(ETQ_CHAVE, JSON.stringify(c)); } catch (e) {} }
+  // intervalo em ms (min ou seg; mínimo 10 segundos)
+  function etqIntervaloMs(c) { var v = Math.max(0, parseFloat(c.intervaloMin) || 2); return Math.max(10000, c.intervaloUni === 'seg' ? v * 1000 : v * 60000); }
+  function etqLog(t) { try { console.log('[OROCHIKING] Etiquetador: ' + t); } catch (e) {} }
+  function etqNaTela() { return !!(window.game_data && game_data.screen === 'overview_villages' && game_data.mode === 'incomings' && !/[?&]subtype=supports/.test(location.href)); }
+  // lê as linhas de ataque de um documento da tela de Recebidos
+  function etqLinhas(doc) {
+    return [].slice.call(doc.querySelectorAll('#incomings_table tr, table.vis tr')).filter(function (tr) {
+      return tr.querySelector('input[type="checkbox"]') && tr.querySelector('.quickedit-label, .quickedit-content');
+    });
+  }
+  function etqNomeDaLinha(tr) { var el = tr.querySelector('.quickedit-label') || tr.querySelector('.quickedit-content'); return ((el && el.textContent) || '').replace(/\s+/g, ' ').trim(); }
+  function etqBotao(doc) {
+    return doc.querySelector('input[name="label"]') ||
+      [].slice.call(doc.querySelectorAll('input[type="submit"], input[type="button"], button')).filter(function (b) { return /etiquet|label|markier|oznacz|étiquet|etichett/i.test(b.value || b.textContent || ''); })[0] || null;
+  }
+  // marca só o que precisa e clica em "Etiqueta" (o jogo recarrega a página com os nomes novos)
+  function etqMarcarEClicar(doc, soNovos) {
+    var linhas = etqLinhas(doc), marcar = [];
+    linhas.forEach(function (tr) { var ck = tr.querySelector('input[type="checkbox"]'); if (ck) { ck.checked = false; } });
+    linhas.forEach(function (tr) { if (!soNovos || ETQ_PADRAO.test(etqNomeDaLinha(tr))) { marcar.push(tr); } });
+    var out = { total: linhas.length, novos: marcar.length, clicou: false, semBotao: false };
+    if (!marcar.length) { return out; }
+    var bt = etqBotao(doc);
+    if (!bt) { out.semBotao = true; return out; }
+    marcar.forEach(function (tr) { var ck = tr.querySelector('input[type="checkbox"]'); if (ck) { ck.checked = true; } });
+    bt.click(); out.clicou = true;
+    return out;
+  }
+  // v100: jeito leve — 1 pedido lê a tela; se tiver ataque novo, manda o mesmo formulário do botão Etiqueta (2º pedido)
+  async function etqRodarFetch(soNovos) {
+    var url = game_data.link_base_pure + 'overview_villages&mode=incomings&subtype=attacks&type=unignored&page=-1';
+    var r = await fetch(url, { credentials: 'include' });
+    var html = await r.text();
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var linhas = etqLinhas(doc);
+    var marcar = linhas.filter(function (tr) { return !soNovos || ETQ_PADRAO.test(etqNomeDaLinha(tr)); });
+    var out = { total: linhas.length, novos: marcar.length, clicou: false, semBotao: false };
+    if (!linhas.length && !/incomings_table|quickedit/.test(html)) { return { erro: 'não abriu a tela de Recebidos (precisa de Conta Premium?)' }; }
+    if (!marcar.length) { return out; }
+    var bt = etqBotao(doc), form = bt && (bt.form || bt.closest('form'));
+    if (!bt) { out.semBotao = true; return out; }
+    if (!form || !form.getAttribute('action')) { return null; } // sem formulário legível: usa o jeito da tela escondida
+    var pares = [];
+    form.querySelectorAll('input[type="hidden"][name]').forEach(function (i) { pares.push([i.name, i.value]); });
+    marcar.forEach(function (tr) { var ck = tr.querySelector('input[type="checkbox"]'); if (ck && ck.name) { pares.push([ck.name, ck.getAttribute('value') || 'on']); } });
+    if (bt.name) { pares.push([bt.name, bt.value || bt.textContent || '']); }
+    var acao = new URL(form.getAttribute('action'), location.origin + '/game.php').toString();
+    var r2 = await fetch(acao, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: pares.map(function (p) { return encodeURIComponent(p[0]) + '=' + encodeURIComponent(p[1]); }).join('&') });
+    out.clicou = r2.ok; if (!r2.ok) { out.erro = 'o jogo recusou (HTTP ' + r2.status + ')'; }
+    return out;
+  }
+  // roda numa tela de Recebidos escondida (iframe), sem mexer na sua tela
+  function etqRodarPorTras(soNovos) {
+    return new Promise(function (resolve) {
+      var fr = document.createElement('iframe'), fase = 0, res = null, acabou = false;
+      fr.style.cssText = 'position:fixed;left:-3000px;top:0;width:1100px;height:700px;visibility:hidden;border:0';
+      function fim(r) { if (acabou) { return; } acabou = true; clearTimeout(lim); try { fr.remove(); } catch (e) {} resolve(r); }
+      var lim = setTimeout(function () { fim(res || { erro: 'a tela de Recebidos demorou demais' }); }, 30000);
+      fr.onload = function () {
+        fase++;
+        try {
+          var d = fr.contentDocument;
+          if (fase === 1) {
+            if (!etqLinhas(d).length && !/incomings/.test(d.location.href)) { fim({ erro: 'não abriu a tela de Recebidos (precisa de Conta Premium?)' }); return; }
+            res = etqMarcarEClicar(d, soNovos);
+            if (!res.clicou) { fim(res); }
+          } else { fim(res); }
+        } catch (e) { fim({ erro: (e && e.message) || 'erro' }); }
+      };
+      fr.src = game_data.link_base_pure + 'overview_villages&mode=incomings&subtype=attacks&type=unignored&page=-1';
+      document.body.appendChild(fr);
+    });
+  }
+  async function etqRodarUmaVez(manual) {
+    if (etqRodando) { return null; }
+    var c = etqLer();
+    // várias abas: só uma etiqueta por vez (evita clique em dobro)
+    try { var ult = +localStorage.getItem(ETQ_CHAVE + '_trava') || 0; if (!manual && Date.now() - ult < Math.min(45000, etqIntervaloMs(c) * 0.8)) { return null; } localStorage.setItem(ETQ_CHAVE + '_trava', String(Date.now())); } catch (e) {}
+    if (window.__ORK_CAPTCHA_BLOQUEADO__) { return { erro: 'captcha na tela' }; }
+    etqRodando = true;
+    var r;
+    try {
+      if (etqNaTela()) { r = etqMarcarEClicar(document, c.soNovos); }
+      else { r = await etqRodarFetch(c.soNovos); if (r === null) { r = await etqRodarPorTras(c.soNovos); } }
+    } catch (e) { r = { erro: (e && e.message) || String(e) }; }
+    etqRodando = false;
+    c = etqLer(); c.ultimo = { quando: Date.now(), total: (r && r.total) || 0, novos: (r && r.clicou) ? r.novos : 0, erro: r && r.erro, semBotao: r && r.semBotao }; etqGravar(c);
+    etqLog(r && r.erro ? 'erro: ' + r.erro : (r.semBotao ? 'não achei o botão Etiqueta na tela de Recebidos.' : (r.clicou ? r.novos + ' ataque(s) etiquetado(s) de ' + r.total + '.' : 'nada novo pra etiquetar (' + r.total + ' ataque(s) chegando).')));
+    return r;
+  }
+  async function etqCiclo() {
+    var c = etqLer(); if (!c.ativo) { return; }
+    if (window.__ORK_CAPTCHA_BLOQUEADO__) { etqTimer = setTimeout(etqCiclo, gerEntre(5000, 8000)); return; }
+    await etqRodarUmaVez(false);
+    c = etqLer(); if (!c.ativo) { return; }
+    c.proximoEm = Date.now() + etqIntervaloMs(c) + (c.intervaloUni === 'seg' ? gerEntre(500, 2000) : gerEntre(2000, 6000)); etqGravar(c);
+    etqAgendar();
+  }
+  function etqAgendar() {
+    var c = etqLer(); if (!c.ativo) { return; }
+    etqMostrarBolinha();
+    if (etqTimer) { clearTimeout(etqTimer); }
+    etqTimer = setTimeout(etqCiclo, Math.max(1500, (c.proximoEm || 0) - Date.now()));
+  }
+  function etqParar() {
+    var c = etqLer(); c.ativo = false; c.proximoEm = 0; etqGravar(c);
+    if (etqTimer) { clearTimeout(etqTimer); etqTimer = null; }
+    if (etqRelogio) { clearInterval(etqRelogio); etqRelogio = null; }
+    var b = document.getElementById('ork-etq-bolinha'); if (b) { b.remove(); }
+  }
+  function etqMostrarBolinha() {
+    if (document.getElementById('ork-etq-bolinha')) { return; }
+    var b = document.createElement('div'); b.id = 'ork-etq-bolinha';
+    b.style.cssText = 'position:fixed;left:596px;bottom:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
+    b.innerHTML = '<span style="font-size:18px">🏷️</span><span id="ork-etq-tempo" style="font-size:8.5px;font-weight:800;margin-top:2px">ETQ</span>';
+    b.addEventListener('click', function () { if (confirm('Parar o Etiquetador automático?')) { etqParar(); } });
+    document.body.appendChild(b);
+    etqRelogio = setInterval(function () {
+      var c = etqLer(), el = document.getElementById('ork-etq-tempo'); if (!el) { return; }
+      var u = c.ultimo;
+      if (etqRodando || !c.proximoEm) { el.textContent = 'ETQ'; }
+      else { var s2 = Math.max(0, Math.round((c.proximoEm - Date.now()) / 1000)); el.textContent = Math.floor(s2 / 60) + ':' + ('0' + (s2 % 60)).slice(-2); }
+      b.title = 'Etiquetador automático' + (u ? ' • última às ' + new Date(u.quando).toLocaleTimeString('pt-BR').slice(0, 5) + ': ' + (u.erro ? 'erro — ' + u.erro : u.novos + ' etiquetado(s), ' + u.total + ' ataque(s) chegando') : '') + ' — clique pra parar';
+      b.style.background = (u && u.total > 0) ? 'linear-gradient(100deg,#c0392b,#ff6b5b 50%,#c0392b)' : 'linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a)';
+      b.style.color = (u && u.total > 0) ? '#fff' : '#1a1400';
+    }, 1000);
+  }
+  function etqRetomar() { var c = etqLer(); if (c.ativo) { etqAgendar(); } }
+  function etqAbrirModal() {
+    if (document.getElementById('ork-modal-etq')) { return; }
+    var c = etqLer();
+    var inp = 'background:#111;border:1px solid rgba(255,255,255,.12);color:#ececec;padding:4px 6px;border-radius:6px;font-size:11.5px;box-sizing:border-box;font-family:inherit';
+    var sec = 'background:#141414;border:1px solid #262626;border-radius:8px;padding:7px 8px;margin-top:6px';
+    var u = c.ultimo;
+    var ov = document.createElement('div'); ov.id = 'ork-modal-etq';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    ov.innerHTML =
+      '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:430px;max-width:calc(100vw - 20px);color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12)">' +
+        '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:7px 10px;display:flex;align-items:center;gap:7px">' +
+          '<span style="font-weight:800;font-size:12px;letter-spacing:1px">🏷️ ETIQUETADOR</span>' +
+          '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="Etiqueta os ataques recebidos com o botão Etiqueta do próprio jogo — ele identifica a tropa mais lenta de cada ataque (Nobre, Aríete, Espada...). Roda por trás, sem você precisar estar na tela de Recebidos (se estiver nela, etiqueta ali mesmo). Precisa da Visualização de Recebidos do jogo (Conta Premium).">?</span>' +
+          '<span style="flex:1;text-align:right;font-size:9.5px;font-weight:800;color:#3d3000">' + (c.ativo ? '● AUTOMÁTICO' : 'PARADO') + '</span><span id="ork-etq-x" style="cursor:pointer;font-weight:bold;font-size:15px;margin-left:6px">&times;</span></div>' +
+        '<div style="padding:6px 9px 9px">' +
+          '<div style="' + sec + '">' +
+            '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:help" data-dica="Ligado (padrão): etiqueta só os ataques que ainda estão com o nome padrão (Ataque) — os que você renomeou à mão (ex.: com OK, snipe, anotação) ficam como estão. Desligado: etiqueta todos de novo.">' +
+              '<input id="ork-etq-novos" type="checkbox"' + (c.soNovos ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">Só os ataques novos (não mexe no que você renomeou)</label>' +
+            '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#bbb;margin-top:6px"><span data-dica="De quanto em quanto tempo o automático confere os ataques chegando — em minutos ou segundos (mínimo 10 seg). Em mundo speed, onde ataque chega em 20-30 seg, use segundos (ex.: 15 seg). Cada conferência é 1 pedido leve; só quando tem ataque novo ele manda a etiqueta (2º pedido).">🔁 Automático a cada</span>' +
+              '<input id="ork-etq-int" type="number" min="1" value="' + (c.intervaloMin || 2) + '" style="width:60px;' + inp + ';text-align:center">' +
+              '<select id="ork-etq-uni" style="' + inp + '"><option value="min"' + (c.intervaloUni !== 'seg' ? ' selected' : '') + '>min</option><option value="seg"' + (c.intervaloUni === 'seg' ? ' selected' : '') + '>seg</option></select></div></div>' +
+          '<div id="ork-etq-st" style="' + sec + ';font-size:11px;color:#aaa">' + (u ? 'Última vez às ' + new Date(u.quando).toLocaleTimeString('pt-BR').slice(0, 5) + ': ' + (u.erro ? '<span style="color:#ff6b6b">' + gerHtml(u.erro) + '</span>' : '<b style="color:#FFC400">' + u.novos + ' etiquetado(s)</b> • ' + u.total + ' ataque(s) chegando') : 'Clique em <b style="color:#FFC400">Etiquetar agora</b> ou ligue o automático.') + '</div>' +
+          '<div style="display:flex;gap:5px;margin-top:8px">' +
+            '<button id="ork-etq-agora" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">🏷️ Etiquetar agora</button>' +
+            '<button id="ork-etq-ok" style="flex:1.2;background:' + (c.ativo ? '#2a1010;color:#ff6b6b;border:1px solid #4a1c1c' : 'linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;border:none') + ';border-radius:8px;padding:7px 0;cursor:pointer;font-weight:800;font-size:11px;font-family:inherit">' + (c.ativo ? '⏹ Parar automático' : '🔁 Ligar automático') + '</button></div>' +
+        '</div></div>';
+    document.body.appendChild(ov);
+    var balao = autoLigarDicas(ov);
+    function v(id) { return document.getElementById(id); }
+    function ler() { var n = etqLer(); n.soNovos = v('ork-etq-novos').checked; n.intervaloUni = v('ork-etq-uni').value === 'seg' ? 'seg' : 'min'; n.intervaloMin = Math.max(n.intervaloUni === 'seg' ? 10 : 1, parseFloat(v('ork-etq-int').value) || 2); etqGravar(n); return n; }
+    function fechar() { try { balao.remove(); } catch (e) {} ov.remove(); }
+    v('ork-etq-x').addEventListener('click', fechar);
+    v('ork-etq-agora').addEventListener('click', async function () {
+      var b = this; ler(); b.disabled = true; b.textContent = 'Etiquetando...';
+      var r = await etqRodarUmaVez(true);
+      var st = v('ork-etq-st');
+      if (st) { st.innerHTML = !r ? 'Já está rodando — espere um pouco.' : (r.erro ? '<span style="color:#ff6b6b">' + gerHtml(r.erro) + '</span>' : (r.semBotao ? '<span style="color:#ffb347">Não achei o botão Etiqueta na tela de Recebidos.</span>' : (r.clicou ? '<b style="color:#7ed17e">✔ ' + r.novos + ' ataque(s) etiquetado(s)</b> de ' + r.total : 'Nada novo pra etiquetar • ' + r.total + ' ataque(s) chegando'))); }
+      if (b) { b.disabled = false; b.textContent = '🏷️ Etiquetar agora'; }
+    });
+    v('ork-etq-ok').addEventListener('click', function () {
+      if (etqLer().ativo) { etqParar(); fechar(); return; }
+      var n = ler(); n.ativo = true; n.proximoEm = 0; etqGravar(n); fechar(); etqMostrarBolinha(); etqCiclo();
+    });
+  }
+  function checaEtiquetador() { return !!(window.game_data && game_data.village && game_data.village.id); }
+  function rodarEtiquetador() { etqAbrirModal(); }
+
+  /* ============================================================
+     SNIPE DE NOBRES (v100) — totalmente automático
+     Lê os ataques chegando (etiqueta os novos pelo Etiquetador), acha os trens de nobres
+     (2+ nobres na mesma aldeia sua, colados) e coloca a defesa ENTRE o 1º e o 2º nobre:
+       • Cancelamento: as tropas da aldeia atacada saem (apoio pra outra aldeia sua) e são
+         canceladas na hora certa pra VOLTAR no meio do trem. Volta = 2×cancelamento − saída.
+       • Apoio: tropas de outras aldeias suas saem no ms certo pra CHEGAR no meio do trem.
+     Precisão real de navegador/internet: ~±50–150 ms. Trem com espaço menor que o
+     "Espaço mínimo" é pulado. Se o cancelamento falhar, as tropas só chegam como apoio na
+     sua outra aldeia (nada se perde). NÃO feche/recarregue a aba durante um snipe.
+  ============================================================ */
+  var SNP_CHAVE = 'ork_snipe_' + ((window.game_data && game_data.world) || '');
+  var SNP_ABA = 'aba' + Math.random().toString(36).slice(2, 9);
+  var snpTimer = null, snpRelogio = null, snpCicloRodando = false, snpRtts = [], snpVelCache = null, snpEmMemoria = {};
+  var SNP_NOBRE = /nobre|noble|snob|adel|szlachcic|nobile|edel|šlecht|nemes|ευγεν|asilzade|дворян|nobleman/i;
+  function snpLer() {
+    var p = { ativo: false, cancel: true, apoio: true, maxApoio: 3, modoTropas: 'tudo', tropas: [{ u: 'spear', n: 0 }, { u: 'sword', n: 0 }, { u: 'archer', n: 0 }, { u: 'heavy', n: 0 }],
+      janelaCancelMin: 10, minGap: 100, ajusteMs: 0, cancelModo: 'auto', bip: true, intervalo: 10, intervaloUni: 'seg', planos: {}, log: [] };
+    try { var c = JSON.parse(localStorage.getItem(SNP_CHAVE) || 'null'); if (c) { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
+    if (!p.planos || typeof p.planos !== 'object') { p.planos = {}; }
+    if (!Array.isArray(p.log)) { p.log = []; }
+    return p;
+  }
+  function snpGravar(c) { try { localStorage.setItem(SNP_CHAVE, JSON.stringify(c)); } catch (e) {} }
+  function snpMudar(fn) { var c = snpLer(); fn(c); snpGravar(c); return c; }
+  function snpLog(t, imp) {
+    try { console.log('[OROCHIKING] Snipe: ' + t); } catch (e) {}
+    snpMudar(function (c) { c.log.unshift({ q: Date.now(), t: t }); c.log = c.log.slice(0, 40); });
+    if (imp) { try { if (window.UI && UI.InfoMessage) { UI.InfoMessage('🛡️ Snipe: ' + t, 6000); } } catch (e) {} }
+  }
+  function snpAgora() { try { return Timing.getCurrentServerTime(); } catch (e) { return Date.now(); } }
+  function snpRtt() { if (!snpRtts.length) { return 80; } var a = snpRtts.slice().sort(function (x, y) { return x - y; }); return a[Math.floor(a.length / 2)]; }
+  function snpMedir(t0) { var d = performance.now() - t0; if (d > 0 && d < 3000) { snpRtts.push(d); if (snpRtts.length > 15) { snpRtts.shift(); } } }
+  function snpIntervaloMs(c) { var v = Math.max(0, parseFloat(c.intervalo) || 15); return Math.max(3000, c.intervaloUni === 'min' ? v * 60000 : v * 1000); }
+  // folga mínima antes de disparar (2 pedidos de preparo): bom pra speed com ataque de 12–40 s
+  function snpFolga() { return 1500 + 3 * snpRtt(); }
+  function snpBip(forte) {
+    try { var C = window.AudioContext || window.webkitAudioContext; if (!C) { return; } window.__orkSnpAudio = window.__orkSnpAudio || new C(); var ac = window.__orkSnpAudio;
+      var o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = forte ? 1320 : 880; g.gain.value = forte ? 0.35 : 0.2; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + (forte ? 0.35 : 0.12)); } catch (e) {}
+  }
+  // renomeia um comando SEU (ex.: "CANCELAR 21:00:12:345") pelo editar-nome do próprio jogo
+  async function snpRenomearComando(origemId, cmdId, texto) {
+    var url = null;
+    try {
+      var html = await (await fetch('/game.php?village=' + origemId + '&screen=info_command&id=' + cmdId + '&type=own', { credentials: 'include' })).text();
+      var m = html.match(/[\/\w.]*game\.php\?[^"'\s<>]*ajaxaction=edit_own_comment[^"'\s<>]*/); if (m) { url = m[0].replace(/&amp;/g, '&').replace(/\\\//g, '/'); }
+    } catch (e) {}
+    if (!url) { url = '/game.php?village=' + origemId + '&screen=info_command&ajaxaction=edit_own_comment'; }
+    if (!/[?&]id=\d/.test(url)) { url += '&id=' + cmdId; }
+    if (!/[?&]h=/.test(url)) { url += '&h=' + encodeURIComponent(nobCsrf()); }
+    var r = await nobAjax(url, 'text=' + encodeURIComponent(texto));
+    return !r.erro;
+  }
+  function snpHora(ms) { var d = new Date(ms); return d.toLocaleTimeString('pt-BR') + ':' + ('00' + d.getMilliseconds()).slice(-3); }
+  // espera até o horário do servidor t (ms): timers do painel até ~40 ms antes, depois espera fina
+  async function snpEsperarAte(t) {
+    for (;;) {
+      var rem = t - snpAgora();
+      if (rem <= 0) { return; }
+      if (rem > 2500) { await gerEsperar(rem - 2000); }
+      else if (rem > 60) { await gerEsperar(rem - 40); }
+      else { while (snpAgora() < t) { /* espera fina dos últimos ms */ } return; }
+    }
+  }
+  // velocidades das tropas neste mundo (min por campo)
+  async function snpVelocidades() {
+    if (snpVelCache) { return snpVelCache; }
+    var v = {};
+    try {
+      var xml = new DOMParser().parseFromString(await (await fetch('/interface.php?func=get_unit_info', { credentials: 'include' })).text(), 'text/xml');
+      var cfg = xml.getElementsByTagName('config')[0];
+      [].forEach.call(cfg ? cfg.children : [], function (u) { var s = u.getElementsByTagName('speed')[0]; if (s) { v[u.tagName.toLowerCase()] = parseFloat(s.textContent) || 0; } });
+    } catch (e) {}
+    snpVelCache = v; return v;
+  }
+  // quais tropas mandar, a partir do que a aldeia tem em casa
+  function snpUnidades(cfg, disp) {
+    var out = {}, total = 0;
+    if (cfg.modoTropas !== 'escolher') {
+      Object.keys(disp || {}).forEach(function (u) { if (u !== 'snob' && u !== 'militia' && (disp[u] || 0) > 0) { out[u] = disp[u]; total += disp[u]; } });
+    } else {
+      (cfg.tropas || []).forEach(function (t) { if (!t || !t.u || t.u === 'snob') { return; } var tem = disp[t.u] || 0, n = (+t.n || 0) > 0 ? Math.min(+t.n, tem) : tem; if (n > 0) { out[t.u] = n; total += n; } });
+    }
+    return total > 0 ? out : null;
+  }
+  // ataques chegando (com ms) — etiqueta os novos antes, pra saber quais são nobres
+  async function snpLerChegando() {
+    var url = game_data.link_base_pure + 'overview_villages&mode=incomings&subtype=attacks&type=unignored&page=-1';
+    async function ler() {
+      var t0 = performance.now(), r = await fetch(url, { credentials: 'include' }), html = await r.text(); snpMedir(t0);
+      var doc = new DOMParser().parseFromString(html, 'text/html'), lista = [];
+      etqLinhas(doc).forEach(function (tr) {
+        var nome = etqNomeDaLinha(tr), ck = tr.querySelector('input[type="checkbox"]');
+        var coords = []; tr.querySelectorAll('a').forEach(function (a) { var m = (a.textContent || '').match(/(\d{1,3})\|(\d{1,3})/); if (m && coords.indexOf(m[0]) === -1) { coords.push(m[0]); } });
+        var tm = tr.querySelector('[data-endtime]'), fim = tm ? (+tm.getAttribute('data-endtime') || 0) * 1000 : 0;
+        var ms = null; tr.querySelectorAll('td').forEach(function (td) { var m = (td.textContent || '').match(/\d{1,2}:\d{2}:\d{2}:(\d{3})/); if (m && ms === null) { ms = +m[1]; } });
+        var idm = (tr.querySelector('a[href*="info_command"]') || {}).href; idm = idm ? (idm.match(/[?&]id=(\d+)/) || [])[1] : null;
+        if (!fim || coords.length < 1) { return; }
+        lista.push({ id: idm || (ck && ck.value) || (coords.join('-') + fim), nome: nome, alvo: coords[0], origem: coords[1] || '', chegada: fim + (ms || 0), temMs: ms !== null,
+          nobre: SNP_NOBRE.test(nome) || !!tr.querySelector('img[src*="snob"]'), semNome: ETQ_PADRAO.test(nome) });
+      });
+      return lista;
+    }
+    var lista = await ler();
+    if (lista.some(function (a) { return a.semNome; })) { try { var e = await etqRodarFetch(true); if (e && e.clicou) { await gerEsperar(gerEntre(600, 1200)); lista = await ler(); } } catch (err) {} }
+    return lista;
+  }
+  // trens: 2+ nobres na mesma aldeia, colados (até 10 s entre um e outro). Snipe = entre o 1º e o 2º.
+  function snpTrens(lista, cfg) {
+    var porAlvo = {};
+    lista.filter(function (a) { return a.nobre; }).forEach(function (a) { (porAlvo[a.alvo] = porAlvo[a.alvo] || []).push(a); });
+    var trens = [];
+    Object.keys(porAlvo).forEach(function (alvo) {
+      var ns = porAlvo[alvo].sort(function (a, b) { return a.chegada - b.chegada; });
+      for (var i = 0; i < ns.length - 1; i++) {
+        var gap = ns[i + 1].chegada - ns[i].chegada;
+        if (gap > 10000) { continue; }
+        if (i > 0 && ns[i].chegada - ns[i - 1].chegada <= 10000) { continue; } // só o começo de cada trem
+        trens.push({ chave: alvo + '_' + ns[i].id, alvo: alvo, t1: ns[i].chegada, t2: ns[i + 1].chegada, gap: gap, aim: ns[i].chegada + Math.floor(gap / 2),
+          nobres: ns.filter(function (n) { return n.chegada >= ns[i].chegada && n.chegada - ns[i].chegada < 30000; }).length, origem: ns[i].origem,
+          temMs: ns[i].temMs && ns[i + 1].temMs, apertado: gap < (+cfg.minGap || 100) });
+      }
+    });
+    return trens;
+  }
+  // prepara o comando (2 primeiros passos da Praça) e devolve o "disparo" (último passo) pra dar no ms certo
+  async function snpPreparar(origemId, alvo, unidades) {
+    var r1 = await nobAjax('/game.php?village=' + origemId + '&screen=place&ajax=command&target=' + alvo.id + '&client_time=' + nobHora());
+    if (r1.erro) { return { erro: r1.erro }; }
+    var d1 = nobDialogo(r1.dialog), cont = {};
+    d1.querySelectorAll('input[id^="unit_input_"]').forEach(function (inp) { cont[inp.id.replace('unit_input_', '')] = parseInt(inp.getAttribute('data-all-count'), 10) || 0; });
+    var uni = {}, total = 0; Object.keys(unidades).forEach(function (u) { var n = Math.min(unidades[u], cont[u] || 0); if (n > 0) { uni[u] = n; total += n; } });
+    if (!total) { return { erro: 'sem tropa em casa na hora' }; }
+    var pares = nobSerializar(d1.querySelector('form') || d1).filter(function (p) { return p[0] !== 'x' && p[0] !== 'y' && p[0] !== 'attack' && p[0] !== 'support'; });
+    pares = pares.map(function (p) { return cont.hasOwnProperty(p[0]) ? [p[0], uni[p[0]] ? String(uni[p[0]]) : ''] : p; });
+    Object.keys(uni).forEach(function (u) { if (!pares.some(function (p) { return p[0] === u; })) { pares.push([u, String(uni[u])]); } });
+    pares.push(['x', String(alvo.x)], ['y', String(alvo.y)], ['support', 'l']);
+    var r2 = await nobAjax('/game.php?village=' + origemId + '&screen=place&ajax=confirm&h=' + encodeURIComponent(nobCsrf()) + '&client_time=' + nobHora(), nobCodificar(pares));
+    if (r2.erro) { return { erro: r2.erro }; }
+    var d2 = nobDialogo(r2.dialog), dur = nobDuracaoMs(d2), corpo = nobCodificar(nobSerializar(d2.querySelector('form') || d2));
+    return { uni: uni, durMs: dur, fire: async function () {
+      var t0 = performance.now(), envioSrv = snpAgora();
+      var r3 = await nobAjax('/game.php?village=' + origemId + '&screen=place&ajaxaction=popup_command&h=' + encodeURIComponent(nobCsrf()) + '&client_time=' + nobHora(), corpo);
+      var rtt = performance.now() - t0; snpMedir(t0);
+      return { ok: !r3.erro, erro: r3.erro, saidaSrv: envioSrv + rtt / 2 };
+    } };
+  }
+  // acha o link de cancelar do comando que acabou de sair (tela Praça da aldeia)
+  async function snpAcharCancelar(origemId, destinoCoord) {
+    var d = await balGetDoc('/game.php?village=' + origemId + '&screen=place');
+    var melhor = null, maior = -1;
+    d.querySelectorAll('a[href*="action=cancel"]').forEach(function (a) {
+      var tr = a.closest('tr'), txt = tr ? tr.textContent : '';
+      var id = +((a.getAttribute('href') || '').match(/[?&]id=(\d+)/) || [])[1] || 0;
+      if ((!destinoCoord || txt.indexOf(destinoCoord) !== -1) && id > maior) { maior = id; melhor = a.getAttribute('href'); }
+    });
+    return melhor ? new URL(melhor.replace(/&amp;/g, '&'), location.origin + '/game.php').toString() : null;
+  }
+  // ---- execução de uma ação (persistida: sobrevive a recarregar a aba, se der tempo) ----
+  function snpAtualizarAcao(chave, idx, mud) { snpMudar(function (c) { var p = c.planos[chave]; if (p && p.acoes[idx]) { for (var k in mud) { p.acoes[idx][k] = mud[k]; } } }); }
+  async function snpExecutarAcao(chave, idx) {
+    var memo = chave + '#' + idx; if (snpEmMemoria[memo]) { return; } snpEmMemoria[memo] = 1;
+    try {
+      var c = snpLer(), p = c.planos[chave], a = p && p.acoes[idx]; if (!a) { return; }
+      var ajuste = +c.ajusteMs || 0;
+      if (a.estado === 'agendado') {
+        await snpEsperarAte(a.sendAt - 25000);
+        if (!snpLer().ativo) { snpAtualizarAcao(chave, idx, { estado: 'cancelado (parado)' }); return; }
+        if (window.__ORK_CAPTCHA_BLOQUEADO__) { snpAtualizarAcao(chave, idx, { estado: 'falhou: captcha' }); snpLog(a.desc + ': captcha na tela — não deu pra snipar.', true); return; }
+        var prep = await snpPreparar(a.origemId, a.destino, a.unidades);
+        if (prep.erro) { snpAtualizarAcao(chave, idx, { estado: 'falhou: ' + prep.erro }); snpLog(a.desc + ': ' + prep.erro, true); return; }
+        var sendAt = a.sendAt;
+        if (a.tipo === 'apoio' && prep.durMs && Math.abs(prep.durMs - a.durMs) > 1500) { sendAt = p.aim - prep.durMs; } // confere com a duração do jogo
+        await snpEsperarAte(sendAt - snpRtt() / 2 + ajuste);
+        var f = await prep.fire();
+        if (!f.ok) { snpAtualizarAcao(chave, idx, { estado: 'falhou: ' + f.erro }); snpLog(a.desc + ': envio recusado — ' + f.erro, true); return; }
+        if (a.tipo === 'apoio') { snpAtualizarAcao(chave, idx, { estado: 'enviado ✔ chega ~' + snpHora(f.saidaSrv + (prep.durMs || a.durMs)) }); snpLog(a.desc + ': apoio saiu, chega ~' + snpHora(f.saidaSrv + (prep.durMs || a.durMs)) + ' (alvo ' + snpHora(p.aim) + ').', true); return; }
+        var cancelAt = Math.round((f.saidaSrv + p.aim) / 2);
+        snpAtualizarAcao(chave, idx, { estado: 'saiu — achando o cancelar', saidaSrv: f.saidaSrv, cancelAt: cancelAt });
+        var url = null;
+        for (var t = 0; t < 6 && !url; t++) { await gerEsperar(t ? gerEntre(350, 600) : 150); try { url = await snpAcharCancelar(a.origemId, a.destino.coord); } catch (e) {} }
+        if (!url) { snpAtualizarAcao(chave, idx, { estado: 'falhou: não achei o cancelar (tropas seguem como apoio pra ' + a.destino.coord + ')' }); snpLog(a.desc + ': não achei o link de cancelar — as tropas seguem como apoio pra ' + a.destino.coord + '.', true); return; }
+        if (a.manual) {
+          // MANUAL: renomeia o comando com a hora de cancelar (já descontada a latência) e avisa com bip
+          var horaClique = cancelAt - snpRtt() / 2 + ajuste, txtHora = snpHora(horaClique);
+          var cmdId = (url.match(/[?&]id=(\d+)/) || [])[1], renomeou = false;
+          if (cmdId) { try { renomeou = await snpRenomearComando(a.origemId, cmdId, 'CANCELAR ' + txtHora); } catch (e) {} }
+          snpAtualizarAcao(chave, idx, { estado: 'manual: CANCELE às ' + txtHora, cancelUrl: url, cancelAt: cancelAt });
+          snpLog(a.desc + ': ' + (renomeou ? 'renomeei o comando' : 'não consegui renomear o comando') + ' — CANCELE às ' + txtHora + ' (hora do servidor) na Praça de ' + p.alvo + '.', true);
+          if (snpLer().bip !== false) { for (var k = 3; k >= 0; k--) { await snpEsperarAte(horaClique - k * 1000); snpBip(k === 0); } } else { await snpEsperarAte(horaClique); }
+          try { if (window.UI && UI.InfoMessage) { UI.InfoMessage('🛡️ CANCELE AGORA o comando de ' + p.alvo + '!', 3000); } } catch (e) {}
+          await gerEsperar(4000);
+          var aa = (snpLer().planos[chave] || { acoes: [] }).acoes[idx];
+          if (aa && /^manual:/.test(aa.estado)) { snpAtualizarAcao(chave, idx, { estado: 'enviado ✔ (manual) — era pra cancelar às ' + txtHora }); }
+          return;
+        }
+        snpAtualizarAcao(chave, idx, { estado: 'esperando cancelar', cancelUrl: url });
+        a = snpLer().planos[chave].acoes[idx];
+      }
+      if (a.estado === 'esperando cancelar' && a.cancelUrl) {
+        if (a.cancelAt - snpAgora() < -500) { snpAtualizarAcao(chave, idx, { estado: 'falhou: passou da hora de cancelar (aba recarregada?)' }); snpLog(a.desc + ': passou da hora de cancelar.', true); return; }
+        await snpEsperarAte(a.cancelAt - snpRtt() / 2 + ajuste);
+        var t0 = performance.now(), cancSrv = snpAgora();
+        var rc = await fetch(a.cancelUrl, { credentials: 'include' }); snpMedir(t0);
+        var cancReal = cancSrv + (performance.now() - t0) / 2, volta = 2 * cancReal - a.saidaSrv;
+        if (rc.ok) { snpAtualizarAcao(chave, idx, { estado: 'cancelado ✔ volta ~' + snpHora(volta) }); snpLog(a.desc + ': cancelado — tropas voltam ~' + snpHora(volta) + ' (alvo ' + snpHora(p.aim) + ').', true); }
+        else { snpAtualizarAcao(chave, idx, { estado: 'falhou: cancelar recusado (HTTP ' + rc.status + ')' }); snpLog(a.desc + ': o jogo recusou o cancelamento.', true); }
+      }
+    } catch (e) { snpAtualizarAcao(chave, idx, { estado: 'falhou: ' + ((e && e.message) || e) }); }
+    finally { delete snpEmMemoria[memo]; }
+  }
+  // monta o plano de um trem: cancelamento (tropas da própria aldeia) + apoio (outras aldeias)
+  async function snpPlanejar(tr, cfg, aldeias, ocupadas) {
+    var agora = snpAgora(), acoes = [];
+    var alvoV = aldeias.filter(function (v) { return v.coord === tr.alvo; })[0];
+    if (!alvoV) { return { erro: 'a aldeia ' + tr.alvo + ' não é sua' }; }
+    var outras = aldeias.filter(function (v) { return v.id !== alvoV.id; }).map(function (v) { v._d = nobDist(v, alvoV); return v; }).sort(function (a, b) { return a._d - b._d; });
+    var janela = Math.max(1, +cfg.janelaCancelMin || 10) * 60000;
+    if (cfg.cancel && !ocupadas[alvoV.id] && outras.length) {
+      var uniC = snpUnidades(cfg, alvoV.tropas);
+      var manual = cfg.cancelModo === 'manual';
+      var sendAt = Math.max(agora + snpFolga(), tr.aim - 2 * janela + (manual ? 30000 : 15000));
+      var dest = null;
+      if (uniC && tr.aim - sendAt >= (manual ? 10000 : 2000) && tr.aim - sendAt <= 2 * janela - 5000) {
+        // o destino tem que ser longe o bastante pras tropas AINDA estarem no caminho na hora de cancelar
+        var velC = await snpVelocidades(), lentaC = 0; Object.keys(uniC).forEach(function (u) { lentaC = Math.max(lentaC, velC[u] || 0); });
+        var precisa = (tr.aim - sendAt) / 2 + 3000;
+        for (var di = 0; di < outras.length && !dest; di++) { if (!lentaC || outras[di]._d * lentaC * 60000 > precisa) { dest = outras[di]; } }
+      }
+      if (dest) {
+        acoes.push({ tipo: 'cancel', origemId: alvoV.id, destino: { id: dest.id, x: dest.x, y: dest.y, coord: dest.coord }, unidades: uniC, sendAt: sendAt, estado: 'agendado',
+          manual: manual, desc: 'Cancelamento' + (manual ? ' MANUAL ' : ' ') + alvoV.coord + ' (sai ' + snpHora(sendAt) + ')' });
+        ocupadas[alvoV.id] = 1;
+      }
+    }
+    if (cfg.apoio) {
+      var vel = await snpVelocidades(), n = 0;
+      for (var i = 0; i < outras.length && n < Math.max(0, +cfg.maxApoio || 0); i++) {
+        var v = outras[i]; if (ocupadas[v.id]) { continue; }
+        var uniA = snpUnidades(cfg, v.tropas); if (!uniA) { continue; }
+        var lenta = 0; Object.keys(uniA).forEach(function (u) { lenta = Math.max(lenta, vel[u] || 0); }); if (!lenta) { continue; }
+        var durMs = Math.round(v._d * lenta * 60) * 1000, sA = tr.aim - durMs;
+        if (sA < agora + snpFolga()) { continue; } // longe demais pra chegar a tempo
+        acoes.push({ tipo: 'apoio', origemId: v.id, destino: { id: alvoV.id, x: alvoV.x, y: alvoV.y, coord: alvoV.coord }, unidades: uniA, sendAt: sA, durMs: durMs, estado: 'agendado',
+          desc: 'Apoio ' + v.coord + ' → ' + alvoV.coord + ' (sai ' + snpHora(sA) + ')' });
+        ocupadas[v.id] = 1; n++;
+      }
+    }
+    return { acoes: acoes };
+  }
+  async function snpCiclo(soConferir) {
+    if (snpCicloRodando) { return null; }
+    var c = snpLer();
+    if (!soConferir && !c.ativo) { return null; }
+    if (!soConferir) {
+      try { var tv = JSON.parse(localStorage.getItem(SNP_CHAVE + '_trava') || 'null'); if (tv && tv.aba !== SNP_ABA && Date.now() - tv.ts < snpIntervaloMs(c) * 3) { snpAgendar(); return null; } localStorage.setItem(SNP_CHAVE + '_trava', JSON.stringify({ aba: SNP_ABA, ts: Date.now() })); } catch (e) {}
+    }
+    if (window.__ORK_CAPTCHA_BLOQUEADO__) { if (!soConferir) { snpAgendar(); } return { erro: 'captcha na tela' }; }
+    snpCicloRodando = true;
+    var res = { trens: [], novos: 0, erro: '' };
+    try {
+      var lista = await snpLerChegando();
+      res.trens = snpTrens(lista, c); res.ataques = lista.length; res.nobres = lista.filter(function (a) { return a.nobre; }).length;
+      if (!soConferir) {
+        var novos = res.trens.filter(function (t) { return !c.planos[t.chave] && t.aim > snpAgora() + snpFolga() + 1000; });
+        if (novos.length) {
+          var aldeias = await nobAldeias('0'), ocupadas = {};
+          Object.keys(c.planos).forEach(function (k) { (c.planos[k].acoes || []).forEach(function (a) { if (!/^(falhou|cancelado|enviado)/.test(a.estado)) { ocupadas[a.origemId] = 1; } }); });
+          for (var i = 0; i < novos.length; i++) {
+            var tr = novos[i];
+            if (tr.apertado) { snpMudar(function (cc) { cc.planos[tr.chave] = { alvo: tr.alvo, t1: tr.t1, t2: tr.t2, aim: tr.aim, gap: tr.gap, nobres: tr.nobres, acoes: [], obs: 'pulado: só ' + tr.gap + ' ms entre os nobres' }; }); snpLog('trem em ' + tr.alvo + ' com só ' + tr.gap + ' ms entre os nobres — apertado demais, pulei.', true); continue; }
+            var pl = await snpPlanejar(tr, snpLer(), aldeias, ocupadas);
+            snpMudar(function (cc) { cc.planos[tr.chave] = { alvo: tr.alvo, t1: tr.t1, t2: tr.t2, aim: tr.aim, gap: tr.gap, nobres: tr.nobres, acoes: pl.acoes || [], obs: pl.erro || (pl.acoes && pl.acoes.length ? '' : 'sem tropa/tempo pra snipar') }; });
+            res.novos++;
+            snpLog('⚠️ TREM: ' + tr.nobres + ' nobre(s) em ' + tr.alvo + ' às ' + snpHora(tr.t1) + ' (espaço ' + tr.gap + ' ms) → ' + ((pl.acoes || []).length ? (pl.acoes.length + ' ação(ões) de snipe pra ' + snpHora(tr.aim)) : (pl.erro || 'sem tropa/tempo pra snipar')), true);
+            (pl.acoes || []).forEach(function (a, idx) { snpExecutarAcao(tr.chave, idx); });
+          }
+        }
+        snpMudar(function (cc) { Object.keys(cc.planos).forEach(function (k) { if (cc.planos[k].aim < Date.now() - 15 * 60000) { delete cc.planos[k]; } }); });
+      }
+    } catch (e) { res.erro = (e && e.message) || String(e); snpLog('erro no ciclo: ' + res.erro); }
+    snpCicloRodando = false;
+    if (!soConferir) { snpAgendar(); }
+    return res;
+  }
+  function snpAgendar() {
+    var c = snpLer(); if (!c.ativo) { return; }
+    snpMostrarBolinha();
+    if (snpTimer) { clearTimeout(snpTimer); }
+    snpTimer = setTimeout(function () { snpCiclo(false); }, snpIntervaloMs(c) + gerEntre(300, 1500));
+  }
+  function snpParar() {
+    snpMudar(function (c) { c.ativo = false; });
+    if (snpTimer) { clearTimeout(snpTimer); snpTimer = null; }
+    if (snpRelogio) { clearInterval(snpRelogio); snpRelogio = null; }
+    var b = document.getElementById('ork-snp-bolinha'); if (b) { b.remove(); }
+  }
+  function snpRetomar() {
+    var c = snpLer(); if (!c.ativo) { return; }
+    // ações que ficaram no meio (aba recarregada): retoma as que ainda dá tempo
+    Object.keys(c.planos).forEach(function (k) { (c.planos[k].acoes || []).forEach(function (a, idx) { if (a.estado === 'agendado' || (a.estado === 'esperando cancelar' && a.cancelUrl)) { snpExecutarAcao(k, idx); }
+      else if (/^manual:/.test(a.estado) && a.cancelAt < Date.now() - 5000) { snpAtualizarAcao(k, idx, { estado: 'enviado ✔ (manual) — ' + a.estado.replace(/^manual:\s*/, '') }); } }); });
+    snpMostrarBolinha(); snpCiclo(false);
+  }
+  function snpMostrarBolinha() {
+    if (document.getElementById('ork-snp-bolinha')) { return; }
+    var b = document.createElement('div'); b.id = 'ork-snp-bolinha';
+    b.style.cssText = 'position:fixed;left:660px;bottom:20px;width:54px;height:54px;border-radius:50%;background:linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a);color:#1a1400;border:1px solid rgba(255,196,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 10px 26px rgba(0,0,0,.5);font-family:"Segoe UI",Arial,sans-serif;z-index:9999996;line-height:1';
+    b.innerHTML = '<span style="font-size:18px">🛡️</span><span id="ork-snp-txt" style="font-size:8.5px;font-weight:800;margin-top:2px">SNIPE</span>';
+    b.addEventListener('click', function () { snpAbrirModal(); });
+    document.body.appendChild(b);
+    snpRelogio = setInterval(function () {
+      var c = snpLer(), el = document.getElementById('ork-snp-txt'); if (!el) { return; }
+      var ativos = 0, prox = null;
+      Object.keys(c.planos).forEach(function (k) { (c.planos[k].acoes || []).forEach(function (a) { if (!/^(falhou|cancelado|enviado)/.test(a.estado)) { ativos++; var t = a.estado === 'agendado' ? a.sendAt : a.cancelAt; if (t && (!prox || t < prox)) { prox = t; } } }); });
+      if (ativos && prox) { var s2 = Math.max(0, Math.round((prox - snpAgora()) / 1000)); el.textContent = Math.floor(s2 / 60) + ':' + ('0' + (s2 % 60)).slice(-2); b.style.background = 'linear-gradient(100deg,#c0392b,#ff6b5b 50%,#c0392b)'; b.style.color = '#fff'; }
+      else { el.textContent = 'SNIPE'; b.style.background = 'linear-gradient(100deg,#e8ac0a,#ffdc63 50%,#e8ac0a)'; b.style.color = '#1a1400'; }
+      b.title = 'Snipe de Nobres automático' + (ativos ? ' • ' + ativos + ' ação(ões) agendada(s) — NÃO feche/recarregue esta aba' : ' • vigiando os ataques') + ' • latência ~' + Math.round(snpRtt()) + ' ms — clique pra abrir';
+    }, 500);
+  }
+  function snpAbrirModal() {
+    if (document.getElementById('ork-modal-snp')) { return; }
+    var c = snpLer();
+    var inp = 'background:#111;border:1px solid rgba(255,255,255,.12);color:#ececec;padding:4px 6px;border-radius:6px;font-size:11.5px;box-sizing:border-box;font-family:inherit';
+    var sec = 'background:#141414;border:1px solid #262626;border-radius:8px;padding:7px 8px;margin-top:6px';
+    var stit = 'font-size:9px;color:#8a8a8a;font-weight:800;text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px';
+    var lin = 'display:flex;gap:6px;align-items:center;font-size:10.5px;color:#bbb;margin-top:5px';
+    var ck = 'width:15px;height:15px;margin:0;accent-color:#e8ac0a';
+    var ov = document.createElement('div'); ov.id = 'ork-modal-snp';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483500;display:flex;align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif';
+    ov.innerHTML =
+      '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:' + (window.innerWidth < 760 ? 440 : 760) + 'px;max-width:calc(100vw - 20px);max-height:calc(100vh - 30px);overflow:auto;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12)">' +
+        '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:7px 10px;display:flex;align-items:center;gap:7px">' +
+          '<span style="font-weight:800;font-size:12px;letter-spacing:1px">🛡️ SNIPE DE NOBRES</span><span style="font-size:8.5px;font-weight:800;background:#141200;color:#FFC400;border-radius:4px;padding:1px 5px;letter-spacing:.5px">BETA</span>' +
+          '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="Totalmente automático: vigia os ataques chegando (etiqueta os novos), acha trem de nobres (2+ nobres colados na mesma aldeia sua) e coloca a defesa ENTRE o 1º e o 2º nobre. Cancelamento: as tropas da aldeia atacada saem como apoio pra sua aldeia mais perto e são canceladas na hora certa pra VOLTAR no meio do trem (só dá se o nobre chega dentro do tempo de cancelar). Apoio: tropas das suas outras aldeias saem no ms certo pra CHEGAR no meio do trem. Precisão real: ~±50–150 ms. Se o cancelamento falhar, as tropas só chegam como apoio na sua outra aldeia. NÃO feche/recarregue a aba durante um snipe.">?</span>' +
+          '<span style="flex:1;text-align:right;font-size:9.5px;font-weight:800;color:#3d3000">' + (c.ativo ? '● VIGIANDO' : 'PARADO') + '</span><span id="ork-snp-x" style="cursor:pointer;font-weight:bold;font-size:15px;margin-left:6px">&times;</span></div>' +
+        '<div style="padding:6px 9px 9px">' +
+          '<div style="display:grid;grid-template-columns:' + (window.innerWidth < 760 ? '1fr' : '1fr 1fr') + ';gap:0 8px;align-items:start"><div>' +
+            '<div style="' + sec + '"><div style="' + stit + '">Como snipar</div>' +
+              '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:help" data-dica="As tropas da própria aldeia atacada saem (como apoio pra sua aldeia mais perto) e são canceladas no momento exato pra voltar entre o 1º e o 2º nobre. Só funciona se o nobre chega dentro de 2× o tempo de cancelamento."><input id="ork-snp-canc" type="checkbox"' + (c.cancel ? ' checked' : '') + ' style="' + ck + '">↩️ Por cancelamento</label>' +
+              '<div style="' + lin + ';padding-left:21px"><span data-dica="Automático: o painel envia e cancela sozinho no ms certo. Manual: o painel envia e RENOMEIA o comando com &quot;CANCELAR hh:mm:ss:ms&quot; (hora do servidor, já descontada sua latência) e dá bip 3-2-1; você mesmo cancela na Praça. Bom pra speed, mais controle. Lembre: no manual, cada 100 ms de atraso no clique vira 200 ms na volta.">Cancelar:</span><select id="ork-snp-cmodo" style="' + inp + '"><option value="auto"' + (c.cancelModo !== 'manual' ? ' selected' : '') + '>🤖 Automático (no ms)</option><option value="manual"' + (c.cancelModo === 'manual' ? ' selected' : '') + '>✋ Manual (renomeia com a hora)</option></select>' +
+                '<label style="display:flex;align-items:center;gap:4px;cursor:help" data-dica="No cancelamento manual, toca bip 3, 2, 1 e um bip forte na hora exata de clicar em cancelar."><input id="ork-snp-bip" type="checkbox"' + (c.bip !== false ? ' checked' : '') + ' style="' + ck + '">🔔 bip</label></div>' +
+              '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:help;margin-top:5px" data-dica="Sempre automático: tropas das suas outras aldeias (as mais perto primeiro) saem no ms certo pra chegar como apoio entre o 1º e o 2º nobre."><input id="ork-snp-apoio" type="checkbox"' + (c.apoio ? ' checked' : '') + ' style="' + ck + '">🛡️ Por apoio de outras aldeias</label>' +
+              '<div style="' + lin + '"><span data-dica="Quantas aldeias suas, no máximo, mandam apoio em cada trem.">Aldeias de apoio por trem</span><input id="ork-snp-maxap" type="number" min="0" value="' + (c.maxApoio || 0) + '" style="width:52px;' + inp + ';text-align:center"></div></div>' +
+            '<div style="' + sec + '"><div style="' + stit + '">Tropas do snipe</div>' +
+              '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc"><input type="radio" name="ork-snp-modo" value="tudo"' + (c.modoTropas !== 'escolher' ? ' checked' : '') + ' style="' + ck + '">Tudo que tiver em casa (menos nobre)</label>' +
+              '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;margin-top:4px"><input type="radio" name="ork-snp-modo" value="escolher"' + (c.modoTropas === 'escolher' ? ' checked' : '') + ' style="' + ck + '">Só estas tropas (0 = todas daquela)</label>' +
+              '<div id="ork-snp-tropas" style="margin-top:4px"></div>' +
+              '<button type="button" id="ork-snp-add" style="margin-top:4px;background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:5px;padding:1px 8px;cursor:pointer;font-weight:700;font-size:10px;font-family:inherit">+ tropa</button></div>' +
+          '</div><div>' +
+            '<div style="' + sec + '"><div style="' + stit + '">Precisão e vigia</div>' +
+              '<div style="' + lin + ';margin-top:0"><span data-dica="Espaço mínimo entre o 1º e o 2º nobre pra tentar o snipe. Menor que isso = apertado demais pra precisão de navegador (pulado). Padrão 100 ms.">Espaço mínimo entre nobres</span><input id="ork-snp-gap" type="number" min="20" value="' + (c.minGap || 100) + '" style="width:60px;' + inp + ';text-align:center"><span>ms</span></div>' +
+              '<div style="' + lin + '"><span data-dica="Até quantos minutos depois de sair o jogo deixa cancelar um comando neste mundo (padrão do jogo: 10).">Tempo pra cancelar (jogo)</span><input id="ork-snp-jan" type="number" min="1" value="' + (c.janelaCancelMin || 10) + '" style="width:52px;' + inp + ';text-align:center"><span>min</span></div>' +
+              '<div style="' + lin + '"><span data-dica="Correção fina, em ms, somada aos disparos. Se os snipes chegarem sempre um pouco ATRASADOS, use um número negativo (ex.: -30); adiantados, positivo. A latência da sua internet já é compensada sozinha.">Ajuste fino</span><input id="ork-snp-aj" type="number" value="' + (c.ajusteMs || 0) + '" style="width:60px;' + inp + ';text-align:center"><span>ms</span><span style="flex:1"></span><span style="color:#777" id="ork-snp-lat">latência ~' + Math.round(snpRtt()) + ' ms</span></div>' +
+              '<div style="' + lin + '"><span data-dica="De quanto em quanto tempo ele confere os ataques chegando (mínimo 3 seg). Em speed com ataques de 12–40 s, use 3–5 seg; mundo normal, 15–30 seg.">🔁 Vigiar a cada</span><input id="ork-snp-int" type="number" min="1" value="' + (c.intervalo || 10) + '" style="width:56px;' + inp + ';text-align:center">' +
+                '<select id="ork-snp-uni" style="' + inp + '"><option value="seg"' + (c.intervaloUni !== 'min' ? ' selected' : '') + '>seg</option><option value="min"' + (c.intervaloUni === 'min' ? ' selected' : '') + '>min</option></select></div></div>' +
+            '<div style="' + sec + '"><div style="' + stit + '">Trens e snipes</div><div id="ork-snp-lista" style="max-height:170px;overflow:auto;font-size:10.5px;color:#bbb"></div></div>' +
+          '</div></div>' +
+          '<div style="font-size:9.5px;color:#a88;margin-top:6px">⚠️ Durante um snipe (bolinha 🛡️ vermelha), não feche nem recarregue esta aba. Precisão real ~±50–150 ms.</div>' +
+          '<div style="display:flex;gap:5px;margin-top:7px">' +
+            '<button id="ork-snp-conf" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">🔍 Conferir agora (sem snipar)</button>' +
+            '<button id="ork-snp-ok" style="flex:1.2;background:' + (c.ativo ? '#2a1010;color:#ff6b6b;border:1px solid #4a1c1c' : 'linear-gradient(100deg,#FFB800,#FFDD55);color:#141200;border:none') + ';border-radius:8px;padding:7px 0;cursor:pointer;font-weight:800;font-size:11px;font-family:inherit">' + (c.ativo ? '⏹ Parar snipe automático' : '🛡️ Ligar snipe automático') + '</button></div>' +
+        '</div></div>';
+    document.body.appendChild(ov);
+    var balao = autoLigarDicas(ov);
+    function v(id) { return document.getElementById(id); }
+    var tropas = JSON.parse(JSON.stringify(c.tropas || []));
+    function desenharTropas() {
+      var box = v('ork-snp-tropas'), uns = nobUnidadesEscolta();
+      box.innerHTML = tropas.map(function (e, i) {
+        return '<div style="display:flex;gap:4px;margin-top:3px"><select class="ork-snp-tu" data-i="' + i + '" style="flex:1;' + inp + ';padding:3px 5px">' + uns.map(function (u) { return '<option value="' + u + '"' + (u === e.u ? ' selected' : '') + '>' + (NOB_NOME_UN[u] || u) + '</option>'; }).join('') + '</select>' +
+          '<input class="ork-snp-tn" data-i="' + i + '" type="number" min="0" value="' + (e.n || 0) + '" style="width:70px;' + inp + ';padding:3px 4px;text-align:center"><button type="button" class="ork-snp-tx" data-i="' + i + '" style="width:24px;background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:5px;cursor:pointer;font-weight:800;padding:0">×</button></div>';
+      }).join('');
+      box.querySelectorAll('.ork-snp-tu').forEach(function (s) { s.addEventListener('change', function () { tropas[+s.getAttribute('data-i')].u = s.value; }); });
+      box.querySelectorAll('.ork-snp-tn').forEach(function (s) { s.addEventListener('input', function () { tropas[+s.getAttribute('data-i')].n = parseInt(s.value, 10) || 0; }); });
+      box.querySelectorAll('.ork-snp-tx').forEach(function (b) { b.addEventListener('click', function () { tropas.splice(+b.getAttribute('data-i'), 1); desenharTropas(); }); });
+    }
+    desenharTropas();
+    v('ork-snp-add').addEventListener('click', function () { tropas.push({ u: 'spear', n: 0 }); desenharTropas(); });
+    function desenharLista(trensConf) {
+      var cc = snpLer(), box = v('ork-snp-lista'); if (!box) { return; }
+      var linhas = Object.keys(cc.planos).map(function (k) { var p = cc.planos[k];
+        return '<div style="border-top:1px solid #222;padding:3px 0"><b style="color:#FFC400">' + p.alvo + '</b> • ' + p.nobres + '👑 às ' + snpHora(p.t1) + ' • espaço ' + p.gap + ' ms' + (p.obs ? ' • <span style="color:#ffb347">' + gerHtml(p.obs) + '</span>' : '') +
+          (p.acoes || []).map(function (a) { return '<div style="padding-left:10px;color:' + (/falhou/.test(a.estado) ? '#ff6b6b' : /✔/.test(a.estado) ? '#7ed17e' : /^manual:/.test(a.estado) ? '#ffdc63' : '#ccc') + '">' + (a.tipo === 'cancel' ? '↩️ ' : '🛡️ ') + gerHtml(a.desc) + ' — ' + (/^manual:/.test(a.estado) ? '<b>' + gerHtml(a.estado) + '</b> <span style="color:#ff6b5b">(' + Math.round((a.cancelAt - snpAgora()) / 100) / 10 + ' s)</span> <a href="' + gerHtml(a.cancelUrl || '#') + '" class="ork-snp-cnow" style="background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:4px;padding:0 6px;font-weight:800;text-decoration:none" data-dica="Cancela o comando AGORA (1 clique, sem sair desta tela).">↩️ CANCELAR AGORA</a>' : gerHtml(a.estado)) + '</div>'; }).join('') + '</div>'; });
+      var conf = (trensConf || []).map(function (t) { return '<div style="border-top:1px solid #222;padding:3px 0">🔍 <b style="color:#FFC400">' + t.alvo + '</b> • ' + t.nobres + '👑 às ' + snpHora(t.t1) + ' • espaço ' + t.gap + ' ms' + (t.apertado ? ' <span style="color:#ffb347">(apertado)</span>' : '') + (t.temMs ? '' : ' <span style="color:#ffb347">(sem ms)</span>') + '</div>'; });
+      var log = (cc.log || []).slice(0, 8).map(function (l) { return '<div style="color:#777;font-size:10px">' + new Date(l.q).toLocaleTimeString('pt-BR') + ' — ' + gerHtml(l.t) + '</div>'; });
+      box.innerHTML = (conf.join('') + linhas.join('')) || '<div style="color:#777">Nenhum trem de nobres detectado ainda.</div>';
+      if (log.length) { box.innerHTML += '<div style="margin-top:5px;border-top:1px dashed #333;padding-top:3px">' + log.join('') + '</div>'; }
+      box.querySelectorAll('.ork-snp-cnow').forEach(function (l) { l.addEventListener('click', function (ev) {
+        ev.preventDefault(); var u = l.getAttribute('href'); if (!u || u === '#') { return; }
+        var t0 = snpAgora(); l.textContent = '...';
+        fetch(u, { credentials: 'include' }).then(function (r) { snpLog('cancelamento manual enviado às ' + snpHora(t0) + (r.ok ? '' : ' (o jogo recusou)'), true); l.textContent = r.ok ? '✔ cancelado' : '✖ recusado'; });
+      }); });
+    }
+    desenharLista();
+    var refresco = setInterval(function () { if (!document.getElementById('ork-modal-snp')) { clearInterval(refresco); return; } desenharLista(); var l = v('ork-snp-lat'); if (l) { l.textContent = 'latência ~' + Math.round(snpRtt()) + ' ms'; } }, 1500);
+    function ler() {
+      var n = snpLer();
+      n.cancel = v('ork-snp-canc').checked; n.apoio = v('ork-snp-apoio').checked; n.maxApoio = Math.max(0, parseInt(v('ork-snp-maxap').value, 10) || 0);
+      n.modoTropas = (ov.querySelector('input[name="ork-snp-modo"]:checked') || {}).value === 'escolher' ? 'escolher' : 'tudo';
+      n.tropas = tropas.filter(function (t) { return t.u; }).map(function (t) { return { u: t.u, n: Math.max(0, Math.floor(+t.n || 0)) }; });
+      n.minGap = Math.max(20, parseInt(v('ork-snp-gap').value, 10) || 100); n.janelaCancelMin = Math.max(1, parseFloat(v('ork-snp-jan').value) || 10);
+      n.ajusteMs = parseInt(v('ork-snp-aj').value, 10) || 0;
+      n.intervaloUni = v('ork-snp-uni').value === 'min' ? 'min' : 'seg'; n.intervalo = Math.max(n.intervaloUni === 'seg' ? 3 : 1, parseFloat(v('ork-snp-int').value) || 10);
+      n.cancelModo = v('ork-snp-cmodo').value === 'manual' ? 'manual' : 'auto'; n.bip = v('ork-snp-bip').checked;
+      snpGravar(n); return n;
+    }
+    function fechar() { try { balao.remove(); } catch (e) {} clearInterval(refresco); ov.remove(); }
+    v('ork-snp-x').addEventListener('click', function () { ler(); fechar(); });
+    v('ork-snp-conf').addEventListener('click', async function () {
+      var b = this; ler(); b.disabled = true; b.textContent = 'Lendo os ataques...';
+      var r = await snpCiclo(true);
+      b.disabled = false; b.textContent = '🔍 Conferir agora (sem snipar)';
+      if (r && r.erro) { v('ork-snp-lista').innerHTML = '<span style="color:#ff6b6b">' + gerHtml(r.erro) + '</span>'; return; }
+      desenharLista(r ? r.trens : []);
+      if (r) { v('ork-snp-lista').insertAdjacentHTML('afterbegin', '<div style="color:#888;margin-bottom:3px">' + (r.ataques || 0) + ' ataque(s) chegando • ' + (r.nobres || 0) + ' nobre(s) • ' + r.trens.length + ' trem(ns)</div>'); }
+    });
+    v('ork-snp-ok').addEventListener('click', function () {
+      if (snpLer().ativo) { snpParar(); fechar(); return; }
+      var n = ler(); if (!n.cancel && !n.apoio) { v('ork-snp-lista').innerHTML = '<span style="color:#ff6b6b">Ligue o cancelamento, o apoio ou os dois.</span>'; return; }
+      n.ativo = true; snpGravar(n); fechar(); snpMostrarBolinha(); snpCiclo(false);
+    });
+  }
+  function checaSnipe() { return !!(window.game_data && game_data.village && game_data.village.id); }
+  function rodarSnipe() { snpAbrirModal(); }
+
+  /* ============================================================
      CONSTRUÇÃO RÁPIDA (v97)
      Lê a tela Visualização → Edifícios (overview_villages&mode=buildings), página por página,
      e manda construir os edifícios marcados em todas as aldeias do grupo, na ordem dos ícones,
@@ -12954,25 +13808,31 @@
       lido.aldeias.forEach(function (a) {
         var vagas = Math.max(0, (+cfg.fila || 2) - a.fila), feitas = 0, algum = false;
         if (!vagas) { res.cheias++; return; }
-        for (var i = 0; i < predios.length && vagas > 0 && feitas < Math.max(1, +cfg.porAldeia || 1); i++) {
+        // v99: ENCHE a fila da aldeia na ordem de prioridade — o 1º edifício sobe quantos níveis couberem
+        // (até o nível alvo), depois o 2º, e assim por diante, até "Máx. na fila" / "Ordens por aldeia"
+        var limite = Math.max(1, +cfg.porAldeia || 1);
+        for (var i = 0; i < predios.length && vagas > 0 && feitas < limite; i++) {
           var b = predios[i], atual = (a.niv[b] || 0) + (a.naFila[b] || 0);
           var teto = mx[b] || 30; if (+cfg.nivel > 0) { teto = Math.min(teto, +cfg.nivel); }
           if (a.niv[b] === undefined && Object.keys(a.niv).length) { continue; } // edifício não existe nesse mundo/aldeia
-          if (atual >= teto) { continue; }
-          algum = true;
-          ordens.push({ vid: a.id, coord: a.coord, b: b }); vagas--; feitas++;
+          while (atual < teto && vagas > 0 && feitas < limite) {
+            algum = true;
+            ordens.push({ vid: a.id, coord: a.coord, b: b }); vagas--; feitas++; atual++;
+          }
         }
         if (!algum && !feitas) { res.prontas++; }
       });
       res.ordens = ordens.length;
       ordens.forEach(function (o) { if (simular) { res.porPredio[o.b] = (res.porPredio[o.b] || 0) + 1; } });
       if (simular) { crRodando = false; return res; }
+      var aldeiaSemRecurso = {};
       for (var i = 0; i < ordens.length && !crParar; i++) {
         while (window.__ORK_CAPTCHA_BLOQUEADO__ && !crParar) { mostrar('Captcha — esperando você resolver...'); await gerEsperar(gerEntre(3000, 5000)); }
         if (crParar) { break; }
         var o = ordens[i];
+        if (aldeiaSemRecurso[o.vid]) { continue; } // o jogo já recusou nessa aldeia: pula o resto dela e vai pra próxima
         var r = await gerConstruir(o.vid, o.b);
-        if (r.ok) { res.mandou++; res.porPredio[o.b] = (res.porPredio[o.b] || 0) + 1; orkFilaConstrucaoNaTela(o.vid, o.b); } else { res.recusou++; res.ultimoErro = r.erro; }
+        if (r.ok) { res.mandou++; res.porPredio[o.b] = (res.porPredio[o.b] || 0) + 1; orkFilaConstrucaoNaTela(o.vid, o.b); } else { res.recusou++; res.ultimoErro = r.erro; aldeiaSemRecurso[o.vid] = 1; }
         mostrar(o.coord + ' → ' + (CR_NOME[o.b] || o.b) + ' • ' + (i + 1) + '/' + ordens.length + ' — ' + res.mandou + ' ordem(ns) mandada(s)' + (res.recusou ? ', ' + res.recusou + ' recusada(s)' : ''), (i + 1) / ordens.length);
         var a1 = Math.max(0.2, +cfg.eMin || 0.5), z1 = Math.max(a1, +cfg.eMax || 1.2);
         await gerEsperar(gerEntre(Math.round(a1 * 1000), Math.round(z1 * 1000)));
@@ -12999,7 +13859,7 @@
       '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:560px;max-width:calc(100vw - 20px);max-height:calc(100vh - 30px);overflow:auto;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12)">' +
         '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:7px 10px;display:flex;align-items:center;gap:7px">' +
           '<span style="font-weight:800;font-size:12px;letter-spacing:1px">⚡ CONSTRUÇÃO RÁPIDA</span>' +
-          '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="Constrói os edifícios marcados em TODAS as aldeias do grupo de uma vez. Lê a tela Visualização → Edifícios (1.000 aldeias por página, passa por todas), vê o nível de cada edifício e o que já está na fila, e manda construir na ORDEM dos ícones marcados (o 1º marcado tem prioridade). Respeita o Máx. na fila de cada aldeia e o nível alvo. Aldeia sem recurso: o jogo recusa e ela é pulada — rode de novo depois.">?</span>' +
+          '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="Constrói os edifícios marcados em TODAS as aldeias do grupo de uma vez. Lê a tela Visualização → Edifícios (1.000 aldeias por página, passa por todas), vê o nível de cada edifício e o que já está na fila, e ENCHE a fila de cada aldeia na ORDEM dos ícones marcados (o 1º marcado sobe quantos níveis couberem, depois o 2º...). Termina uma aldeia e vai pra próxima; se faltar recurso, pula o resto dela. Respeita o Máx. na fila de cada aldeia e o nível alvo. Aldeia sem recurso: o jogo recusa e ela é pulada — rode de novo depois.">?</span>' +
           '<span style="flex:1"></span><span id="ork-cr-x" style="cursor:pointer;font-weight:bold;font-size:15px">&times;</span></div>' +
         '<div style="padding:6px 9px 9px">' +
           '<div style="' + sec + '"><div style="' + stit + '">Aldeias e regras</div>' +
@@ -13127,7 +13987,10 @@
       nobrebb: ['ork_nobre_mapa_' + w, 'ork_nobre_maxdist_' + w, 'ork_nobre_trava'],
       noblaplayer: ['ork_noblap_trava'],
       pesqmassa: ['ork_pesqmassa_' + w],
-      construcao: ['ork_construcao_' + w, 'ork_cr_max_' + w]
+      construcao: ['ork_construcao_' + w, 'ork_cr_max_' + w],
+      recacademia: ['ork_recacademia_' + w],
+      etiquetador: ['ork_etiquetador_' + w, 'ork_etiquetador_' + w + '_trava'],
+      snipe: ['ork_snipe_' + w, 'ork_snipe_' + w + '_trava']
     };
     var sessao = { auto247: ['ork_auto247', 'ork_auto247_preset', 'ork_auto247_atk'], nobrebb: ['ork_nobre_' + w], noblaplayer: ['ork_noblap_' + w] };
     return { local: local[id] || [], sessao: sessao[id] || [] };
@@ -13451,14 +14314,44 @@
       checar: checaConstrucao,
       rodar: rodarConstrucao,
       destino: null
+    },
+    {
+      id: 'recacademia',
+      nome: 'Recursos pra Academia',
+      abrev: 'Recursos pra Academia',
+      icone: '🏛️',
+      dica: 'Pra quando você tem UMA aldeia com Academia: puxa recurso das suas outras aldeias só pra ela (Chamar recursos do mercado, o mesmo envio do Balanceador), na proporção do custo da moeda, sem lotar o armazém dela e das aldeias mais perto primeiro. Simular antes, Enviar agora, ou 🔁 repetir a cada X minutos (bolinha 🏛️ no canto).',
+      checar: checaRecAcademia,
+      rodar: rodarRecAcademia,
+      destino: null
+    },
+    {
+      id: 'etiquetador',
+      nome: 'Etiquetador',
+      abrev: 'Etiquetador',
+      icone: '🏷️',
+      dica: 'Etiqueta os ataques recebidos com o botão Etiqueta do próprio jogo (Nobre, Aríete, Espada...). Roda por trás, sem precisar estar na tela de Recebidos; só mexe nos ataques novos (os que você renomeou ficam como estão). Etiquetar agora ou 🔁 automático a cada X minutos ou segundos (mínimo 10 seg, bom pra speed), com bolinha 🏷️ (fica vermelha quando tem ataque chegando). Cada conferência é 1 pedido leve.',
+      checar: checaEtiquetador,
+      rodar: rodarEtiquetador,
+      destino: null
+    },
+    {
+      id: 'snipe',
+      nome: 'Snipe de Nobres (BETA)',
+      abrev: 'Snipe de Nobres',
+      icone: '🛡️',
+      dica: 'BETA. Vigia os ataques chegando, acha trem de nobres na sua aldeia e coloca a defesa ENTRE o 1º e o 2º nobre — por cancelamento (as tropas da aldeia atacada saem e voltam no meio do trem; automático no ms OU manual: ele envia e renomeia o comando com "CANCELAR hh:mm:ss:ms", você cancela com bip de aviso) e/ou por apoio automático (suas outras aldeias chegam no meio do trem). Feito pra speed: ataques de 12–40 s já dá. Tropas: tudo que tiver em casa ou só as que você escolher. Precisão ~±50–150 ms; trem mais apertado que o espaço mínimo é pulado. Não feche a aba durante um snipe.',
+      checar: checaSnipe,
+      rodar: rodarSnipe,
+      destino: null
     }
   ];
 
   var ORK_SECOES = [
     ['🌾 Farm', ['farmar', 'farmdormindo', 'keypress', 'coletorfarm']],
-    ['⚔️ Ataque e nobres', ['ataque', 'nobrebb', 'noblaplayer', 'defender']],
+    ['⚔️ Ataque e nobres', ['ataque', 'nobrebb', 'noblaplayer', 'etiquetador', 'snipe', 'defender']],
     ['🗺️ Coleta', ['barbaras', 'perfil', 'ocultar']],
-    ['🏰 Conta', ['gerente', 'pesqmassa', 'construcao', 'balanceador', 'cunhar', 'rename', 'cancelar']],
+    ['🏰 Conta', ['gerente', 'pesqmassa', 'construcao', 'recacademia', 'balanceador', 'cunhar', 'rename', 'cancelar']],
     ['♾️ Automação', ['auto247']]
   ];
   var FERRAMENTAS_POR_ID = {};
@@ -13640,6 +14533,9 @@
     try { if (nplLer().ativo) { setTimeout(nplRetomar, gerEntre(4500, 6000)); } } catch (e) {}
     try { if (pmLerCfg().ativo && pmNaTela()) { setTimeout(pmRetomar, gerEntre(1200, 2000)); } } catch (e) {}
     try { if (crLerCfg().ativo && crNaTela()) { setTimeout(crRetomar, gerEntre(1200, 2000)); } } catch (e) {}
+    try { if (raLer().ativo) { setTimeout(raRetomar, gerEntre(2000, 3500)); } } catch (e) {}
+    try { if (etqLer().ativo) { setTimeout(etqRetomar, gerEntre(2500, 4000)); } } catch (e) {}
+    try { if (snpLer().ativo) { setTimeout(snpRetomar, gerEntre(1500, 2500)); } } catch (e) {}
   })();
 
   (function retomarBalanceador() {
@@ -13960,6 +14856,9 @@
     try { on.noblaplayer = nplLer().ativo; } catch (e) {}
     try { on.pesqmassa = pmLerCfg().ativo; } catch (e) {}
     try { on.construcao = crLerCfg().ativo; } catch (e) {}
+    try { on.recacademia = raLer().ativo; } catch (e) {}
+    try { on.etiquetador = etqLer().ativo; } catch (e) {}
+    try { on.snipe = snpLer().ativo; } catch (e) {}
     try { on.balanceador = balLer().ativo; } catch (e) {}
     try { on.auto247 = autoLer().ativo; } catch (e) {}
     try { on.farmar = !!document.getElementById('fh-fechar') && localStorage.getItem('ork_retomar_dormindo') !== '1'; } catch (e) {}
