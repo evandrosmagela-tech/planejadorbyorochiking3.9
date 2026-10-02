@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      100.0
+// @version      101.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 100;
+  window.__ORK_VERSAO__ = 101;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -299,11 +299,23 @@
   ============================================================ */
   var ORK_NOVIDADES = [
     {
+      id: '2026-10-02-v101',
+      data: '02/10/2026',
+      titulo: 'Snipe: escolha depois de qual nobre, nobre sozinho e motivos',
+      itens: [
+        '🛡️ Snipe: novo "👑 Snipar depois do Nº nobre" (padrão: depois do 2º, entre o 2º e o 3º). Pega o trem inteiro (4+ nobres); se ali estiver colado demais, usa a posição mais perto que dê.',
+        '🛡️ Snipe: agora age também com nobre sozinho (1 s antes dele) e com limpeza + nobre. Mostra o motivo quando não dá pra snipar (sem tropa, chega cedo demais, aldeia longe...).',
+        '🛡️ Snipe: lê a hora de chegada com ms mesmo quando a tela não traz o horário exato.',
+        '🏷️ Etiquetador: mínimo agora é 1 seg, com variação de 1 a 3 seg (com ms) — antes 3 seg virava ~12 seg.',
+        '🏛️ Recursos pra Academia: repetição em minutos OU segundos.'
+      ]
+    },
+    {
       id: '2026-10-02-v100',
       data: '02/10/2026',
       titulo: 'Novos: Snipe de Nobres, Etiquetador e Recursos pra Academia',
       itens: [
-        '🛡️ Snipe de Nobres (NOVO, BETA, seção Ataque e nobres): acha trem de nobres na sua aldeia e coloca a defesa entre o 1º e o 2º nobre, por cancelamento e/ou apoio. Cancelamento automático (no ms) ou MANUAL: ele envia e renomeia o comando com "CANCELAR hh:mm:ss:ms", com bip 3-2-1 e botão Cancelar agora. Feito pra speed (ataques de 12–40 s, vigia a cada 3 seg). Tropas: tudo em casa ou as que você escolher.',
+        '🛡️ Snipe de Nobres (NOVO, BETA, seção Ataque e nobres): acha trem de nobres na sua aldeia e coloca a defesa no meio do trem (depois do Nº nobre que você escolher), por cancelamento e/ou apoio. Cancelamento automático (no ms) ou MANUAL: ele envia e renomeia o comando com "CANCELAR hh:mm:ss:ms", com bip 3-2-1 e botão Cancelar agora. Feito pra speed (ataques de 12–40 s, vigia a cada 3 seg). Tropas: tudo em casa ou as que você escolher.',
         '🏷️ Etiquetador (NOVO, seção Ataque e nobres): etiqueta os ataques recebidos com o botão Etiqueta do próprio jogo, por trás, só os novos. Etiquetar agora ou automático a cada X min ou seg (bolinha 🏷️ fica vermelha com ataque chegando).',
         '🏛️ Recursos pra Academia (NOVO, seção Conta): pra quem tem 1 aldeia com Academia — puxa recurso das outras aldeias só pra ela, na proporção da moeda, sem lotar o armazém, das mais perto primeiro. Simular, Enviar agora ou repetir a cada X min.',
         '⚡ Construção Rápida: agora ENCHE a fila de cada aldeia (até o Máx. na fila) — o 1º edifício marcado sobe vários níveis, depois o 2º... Termina uma aldeia e vai pra próxima; se faltar recurso, pula o resto dela.'
@@ -333,7 +345,7 @@
       itens: [
         '⚡ Construção Rápida (NOVO, seção Conta): marque os edifícios e ele constrói em todas as aldeias de uma vez, na ordem marcada, até o nível escolhido e respeitando a fila.',
         '🔁 Automático: no Pesquisar em Massa e na Construção Rápida — ligado, roda sozinho sempre que você abrir a tela Pesquisa ou Edifícios, até desligar.',
-        '🪙 Cunhar Moedas: Moedas por aldeia (máximo por ciclo) e Guardar por aldeia (sobra recurso pra formar nobre). Valem no 24/7.',
+        '💰 Cunhar Moedas: Moedas por aldeia (máximo por ciclo) e Guardar por aldeia (sobra recurso pra formar nobre). Valem no 24/7.',
         '👑 Noblar Automático: 🗺️ Continentes (ex.: K45, K55), 🏘️ Priorizar com vizinhas (1 a 8 bárbaras coladas) e 🔻 Reduzir regras automaticamente quando as bárbaras acabam.',
         '🧺 Coletor Hard: 👑 Priorizar recém-nobladas — explora primeiro as bárbaras em volta das aldeias conquistadas nas últimas 48h.',
         '🌾 Farm Hard: quadro Saque de hoje — mostra se você lidera e quanto está na frente do 2º, ou quanto falta pro 1º.'
@@ -6715,7 +6727,7 @@
       document.head.appendChild(st);
     }
 
-    btn.innerHTML = '<span>🪙</span><span style="font-size:8px;font-weight:800;margin-top:2px;letter-spacing:.3px">ATIVO</span>';
+    btn.innerHTML = '<span>💰</span><span style="font-size:8px;font-weight:800;margin-top:2px;letter-spacing:.3px">ATIVO</span>';
 
     // tooltip ao passar o mouse
     btn.addEventListener('mouseenter', function () {
@@ -6743,7 +6755,7 @@
     overlay.innerHTML =
       '<div style="background:linear-gradient(165deg,rgba(26,26,26,.97),rgba(8,8,8,.98));border:1px solid #3a3a3a;' +
       'border-radius:16px;padding:20px 22px;width:280px;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75)">' +
-        '<div style="font-weight:800;color:#ffd84d;margin-bottom:10px">🪙 Cunhar Moedas Automático</div>' +
+        '<div style="font-weight:800;color:#ffd84d;margin-bottom:10px">💰 Cunhar Moedas Automático</div>' +
         '<div style="font-size:11.5px;color:#9a9a9a;margin-bottom:10px">Cunha agora e recarrega a página no intervalo abaixo, repetindo sozinho:</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:8px">' +
           '<label style="flex:1;font-size:10.5px;color:#bbb" data-dica="No máximo quantas moedas cada aldeia cunha por ciclo. 0 = tudo que der (como sempre foi).">Moedas por aldeia<br>' +
@@ -7403,7 +7415,7 @@
   /* ---------- sequência de ações do ciclo (você escolhe quais e a ordem) ---------- */
   var AUTO_ACOES = {
     farm: { nome: '🌾 Farm Hard', dica: 'Liga o Farm Hard pelo tempo do campo "Farm roda por" (velocidade e rotação do quadro acima).' },
-    cunhar: { nome: '🪙 Cunhar moedas', dica: 'Vai pra Academia e cunha moedas em todas as páginas (1.000 aldeias por página).' },
+    cunhar: { nome: '💰 Cunhar moedas', dica: 'Vai pra Academia e cunha moedas em todas as páginas (1.000 aldeias por página).' },
     balancear: { nome: '⚖️ Balancear recursos', dica: 'Equilibra os recursos pelo mercado com os ajustes da aba Balancear. Só roda se já passou o tempo mínimo desde o último balanceamento.' },
     nobre: { nome: '👑 Noblar bárbaras', dica: 'Roda 1 ciclo do Noblar Automático com a configuração salva na aba Noblar Automático (alvos, escolta, produzir nobres, pós-conquista...).' },
     gerente: { nome: '🏗️ Gerente de Conta', dica: 'Roda 1 ciclo do Gerente de Conta (construir, recrutar e pesquisar) com as regras salvas na aba Gerente de Conta — só quando já passou o tempo do campo "Repetir a cada" de lá (em minutos ou segundos).' },
@@ -12906,11 +12918,13 @@
   var RA_CHAVE = 'ork_recacademia_' + ((window.game_data && game_data.world) || '');
   var raTimer = null, raRodando = false, raRelogio = null, raSoMapSend = false;
   function raLer() {
-    var p = { ativo: false, alvo: '', grupo: '0', proporcao: true, custo: [28000, 30000, 25000], reserva: 0, distMax: 0, minEnvio: 1000, intervaloMin: 10, proximoEm: 0, ultimo: null };
+    var p = { ativo: false, alvo: '', grupo: '0', proporcao: true, custo: [28000, 30000, 25000], reserva: 0, distMax: 0, minEnvio: 1000, intervaloMin: 10, intervaloUni: 'min', proximoEm: 0, ultimo: null };
     try { var c = JSON.parse(localStorage.getItem(RA_CHAVE) || 'null'); if (c) { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     if (!Array.isArray(p.custo) || p.custo.length !== 3) { p.custo = [28000, 30000, 25000]; }
     return p;
   }
+  // intervalo da repetição em ms: minutos ou segundos (mínimo 10 seg)
+  function raIntervaloMs(c) { var v = Math.max(0, parseFloat(c.intervaloMin) || 10); return Math.max(10000, c.intervaloUni === 'seg' ? v * 1000 : v * 60000); }
   function raGravar(c) { try { localStorage.setItem(RA_CHAVE, JSON.stringify(c)); } catch (e) {} }
   function raLog(t) { try { console.log('[OROCHIKING] Recursos pra Academia: ' + t); } catch (e) {} }
   // calcula quanto cada aldeia manda (sem enviar nada)
@@ -13007,7 +13021,7 @@
     } catch (e) { raLog('erro: ' + (e && e.message)); }
     raRodando = false;
     c = raLer(); if (!c.ativo) { return; }
-    c.proximoEm = Date.now() + Math.max(1, +c.intervaloMin || 10) * 60000 + gerEntre(2000, 4000); raGravar(c);
+    c.proximoEm = Date.now() + raIntervaloMs(c) + gerEntre(2000, 4000); raGravar(c);
     raAgendar();
   }
   function raAgendar() {
@@ -13063,7 +13077,7 @@
               '<button type="button" id="ork-ra-lergr" title="Ler os grupos do jogo" style="background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:6px;padding:4px 8px;cursor:pointer;font-weight:700;font-size:10.5px;font-family:inherit">🔄</button></div></div>' +
           '<div style="' + sec + '"><div style="' + stit + '">Regras</div>' +
             '<label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:#ccc;cursor:help" data-dica="Ligado (padrão): manda madeira, argila e ferro na proporção do custo da moeda — o recurso vira moeda sem sobrar um tipo parado. Desligado: manda o que tiver de cada um.">' +
-              '<input id="ork-ra-prop" type="checkbox"' + (c.proporcao ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">🪙 Mandar na proporção da moeda</label>' +
+              '<input id="ork-ra-prop" type="checkbox"' + (c.proporcao ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">💰 Mandar na proporção da moeda</label>' +
             '<div style="' + lin + '"><span data-dica="Custo de 1 moeda neste mundo (madeira / argila / ferro). Padrão 28.000 / 30.000 / 25.000.">Custo da moeda</span>' +
               ico('wood') + '<input id="ork-ra-c0" type="number" value="' + c.custo[0] + '" style="width:70px;' + inp + ';text-align:center">' +
               ico('stone') + '<input id="ork-ra-c1" type="number" value="' + c.custo[1] + '" style="width:70px;' + inp + ';text-align:center">' +
@@ -13071,8 +13085,9 @@
             '<div style="' + lin + '"><span data-dica="Quanto de CADA recurso fica em cada aldeia que manda (pra ela continuar construindo). Número = quantidade fixa (ex.: 20000). Com % = porcentagem do armazém de cada aldeia (ex.: 10%). 0 = manda tudo que puder.">Deixar em cada aldeia</span><input id="ork-ra-res" type="text" placeholder="0 ou 10%" value="' + gerHtml(String(c.reserva || 0)) + '" style="width:80px;' + inp + ';text-align:center">' +
               '<span style="flex:1"></span><span data-dica="Só aldeias até essa distância mandam (as mais perto primeiro). 0 = qualquer distância.">Dist. máx.</span><input id="ork-ra-dist" type="number" min="0" value="' + (c.distMax || 0) + '" style="width:60px;' + inp + ';text-align:center"></div></div>' +
           '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;background:#141414;border:1px solid ' + (c.ativo ? '#2f6b2f' : '#262626') + ';border-radius:8px;padding:6px 8px">' +
-            '<span style="flex:1;font-size:10.5px;color:#bbb" data-dica="Ligado: manda sozinho a cada X minutos (sem lotar o armazém do alvo). Fica ligado até você parar aqui ou na bolinha 🏛️.">🔁 Repetir a cada</span>' +
-            '<input id="ork-ra-int" type="number" min="1" value="' + (c.intervaloMin || 10) + '" style="width:52px;' + inp + ';text-align:center"><span style="font-size:10.5px;color:#888">min</span></div>' +
+            '<span style="flex:1;font-size:10.5px;color:#bbb" data-dica="Ligado: manda sozinho a cada X minutos ou segundos (mínimo 10 seg; bom pra speed), sem lotar o armazém do alvo. Fica ligado até você parar aqui ou na bolinha 🏛️.">🔁 Repetir a cada</span>' +
+            '<input id="ork-ra-int" type="number" min="1" value="' + (c.intervaloMin || 10) + '" style="width:52px;' + inp + ';text-align:center">' +
+            '<select id="ork-ra-uni" style="' + inp + '"><option value="min"' + (c.intervaloUni !== 'seg' ? ' selected' : '') + '>min</option><option value="seg"' + (c.intervaloUni === 'seg' ? ' selected' : '') + '>seg</option></select></div>' +
           '<div id="ork-ra-prev" style="' + sec + ';font-size:11px;color:#aaa">Clique em <b style="color:#FFC400">Simular</b> pra ver quanto cada aldeia manda.</div>' +
           '<div style="display:flex;gap:5px;margin-top:8px">' +
             '<button id="ork-ra-sim" style="flex:1;background:#232323;color:#FFC400;border:1px solid #3a3a3a;border-radius:8px;padding:7px 0;cursor:pointer;font-weight:700;font-size:11px;font-family:inherit">Simular</button>' +
@@ -13092,7 +13107,7 @@
       n.proporcao = v('ork-ra-prop').checked;
       n.custo = [v('ork-ra-c0'), v('ork-ra-c1'), v('ork-ra-c2')].map(function (x, i) { return Math.max(1, parseInt(x.value, 10) || [28000, 30000, 25000][i]); });
       var rr = String(v('ork-ra-res').value || '0').trim(); n.reserva = /%$/.test(rr) ? Math.min(100, Math.max(0, parseFloat(rr) || 0)) + '%' : Math.max(0, parseInt(rr.replace(/[^0-9]/g, ''), 10) || 0); n.distMax = Math.max(0, parseFloat(v('ork-ra-dist').value) || 0);
-      n.intervaloMin = Math.max(1, parseFloat(v('ork-ra-int').value) || 10);
+      n.intervaloUni = v('ork-ra-uni').value === 'seg' ? 'seg' : 'min'; n.intervaloMin = Math.max(n.intervaloUni === 'seg' ? 10 : 1, parseFloat(v('ork-ra-int').value) || 10);
       raGravar(n); return n;
     }
     function mostrarPlano(p, enviado) {
@@ -13138,8 +13153,8 @@
     return p;
   }
   function etqGravar(c) { try { localStorage.setItem(ETQ_CHAVE, JSON.stringify(c)); } catch (e) {} }
-  // intervalo em ms (min ou seg; mínimo 10 segundos)
-  function etqIntervaloMs(c) { var v = Math.max(0, parseFloat(c.intervaloMin) || 2); return Math.max(10000, c.intervaloUni === 'seg' ? v * 1000 : v * 60000); }
+  // intervalo em ms (min ou seg; mínimo 1 segundo)
+  function etqIntervaloMs(c) { var v = Math.max(0, parseFloat(c.intervaloMin) || 2); return Math.max(1000, c.intervaloUni === 'seg' ? v * 1000 : v * 60000); }
   function etqLog(t) { try { console.log('[OROCHIKING] Etiquetador: ' + t); } catch (e) {} }
   function etqNaTela() { return !!(window.game_data && game_data.screen === 'overview_villages' && game_data.mode === 'incomings' && !/[?&]subtype=supports/.test(location.href)); }
   // lê as linhas de ataque de um documento da tela de Recebidos
@@ -13234,7 +13249,7 @@
     if (window.__ORK_CAPTCHA_BLOQUEADO__) { etqTimer = setTimeout(etqCiclo, gerEntre(5000, 8000)); return; }
     await etqRodarUmaVez(false);
     c = etqLer(); if (!c.ativo) { return; }
-    c.proximoEm = Date.now() + etqIntervaloMs(c) + (c.intervaloUni === 'seg' ? gerEntre(500, 2000) : gerEntre(2000, 6000)); etqGravar(c);
+    c.proximoEm = Date.now() + etqIntervaloMs(c) + (c.intervaloUni === 'seg' ? gerEntre(1000, 3000) : gerEntre(2000, 6000)); etqGravar(c);
     etqAgendar();
   }
   function etqAgendar() {
@@ -13285,7 +13300,7 @@
           '<div style="' + sec + '">' +
             '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:help" data-dica="Ligado (padrão): etiqueta só os ataques que ainda estão com o nome padrão (Ataque) — os que você renomeou à mão (ex.: com OK, snipe, anotação) ficam como estão. Desligado: etiqueta todos de novo.">' +
               '<input id="ork-etq-novos" type="checkbox"' + (c.soNovos ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">Só os ataques novos (não mexe no que você renomeou)</label>' +
-            '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#bbb;margin-top:6px"><span data-dica="De quanto em quanto tempo o automático confere os ataques chegando — em minutos ou segundos (mínimo 10 seg). Em mundo speed, onde ataque chega em 20-30 seg, use segundos (ex.: 15 seg). Cada conferência é 1 pedido leve; só quando tem ataque novo ele manda a etiqueta (2º pedido).">🔁 Automático a cada</span>' +
+            '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#bbb;margin-top:6px"><span data-dica="De quanto em quanto tempo o automático confere os ataques chegando — em minutos ou segundos (mínimo 1 seg; em segundos soma de 1 a 3 seg aleatórios, com ms). Em mundo speed, onde ataque chega em 20-30 seg, use segundos (ex.: 3 seg = confere a cada 4 a 6 seg). Cada conferência é 1 pedido leve; só quando tem ataque novo ele manda a etiqueta (2º pedido).">🔁 Automático a cada</span>' +
               '<input id="ork-etq-int" type="number" min="1" value="' + (c.intervaloMin || 2) + '" style="width:60px;' + inp + ';text-align:center">' +
               '<select id="ork-etq-uni" style="' + inp + '"><option value="min"' + (c.intervaloUni !== 'seg' ? ' selected' : '') + '>min</option><option value="seg"' + (c.intervaloUni === 'seg' ? ' selected' : '') + '>seg</option></select></div></div>' +
           '<div id="ork-etq-st" style="' + sec + ';font-size:11px;color:#aaa">' + (u ? 'Última vez às ' + new Date(u.quando).toLocaleTimeString('pt-BR').slice(0, 5) + ': ' + (u.erro ? '<span style="color:#ff6b6b">' + gerHtml(u.erro) + '</span>' : '<b style="color:#FFC400">' + u.novos + ' etiquetado(s)</b> • ' + u.total + ' ataque(s) chegando') : 'Clique em <b style="color:#FFC400">Etiquetar agora</b> ou ligue o automático.') + '</div>' +
@@ -13296,7 +13311,7 @@
     document.body.appendChild(ov);
     var balao = autoLigarDicas(ov);
     function v(id) { return document.getElementById(id); }
-    function ler() { var n = etqLer(); n.soNovos = v('ork-etq-novos').checked; n.intervaloUni = v('ork-etq-uni').value === 'seg' ? 'seg' : 'min'; n.intervaloMin = Math.max(n.intervaloUni === 'seg' ? 10 : 1, parseFloat(v('ork-etq-int').value) || 2); etqGravar(n); return n; }
+    function ler() { var n = etqLer(); n.soNovos = v('ork-etq-novos').checked; n.intervaloUni = v('ork-etq-uni').value === 'seg' ? 'seg' : 'min'; n.intervaloMin = Math.max(1, parseFloat(v('ork-etq-int').value) || 2); etqGravar(n); return n; }
     function fechar() { try { balao.remove(); } catch (e) {} ov.remove(); }
     v('ork-etq-x').addEventListener('click', fechar);
     v('ork-etq-agora').addEventListener('click', async function () {
@@ -13317,7 +13332,7 @@
   /* ============================================================
      SNIPE DE NOBRES (v100) — totalmente automático
      Lê os ataques chegando (etiqueta os novos pelo Etiquetador), acha os trens de nobres
-     (2+ nobres na mesma aldeia sua, colados) e coloca a defesa ENTRE o 1º e o 2º nobre:
+     (2+ nobres na mesma aldeia sua, colados) e coloca a defesa no meio do trem (padrão: depois do 2º nobre, você escolhe):
        • Cancelamento: as tropas da aldeia atacada saem (apoio pra outra aldeia sua) e são
          canceladas na hora certa pra VOLTAR no meio do trem. Volta = 2×cancelamento − saída.
        • Apoio: tropas de outras aldeias suas saem no ms certo pra CHEGAR no meio do trem.
@@ -13331,7 +13346,7 @@
   var SNP_NOBRE = /nobre|noble|snob|adel|szlachcic|nobile|edel|šlecht|nemes|ευγεν|asilzade|дворян|nobleman/i;
   function snpLer() {
     var p = { ativo: false, cancel: true, apoio: true, maxApoio: 3, modoTropas: 'tudo', tropas: [{ u: 'spear', n: 0 }, { u: 'sword', n: 0 }, { u: 'archer', n: 0 }, { u: 'heavy', n: 0 }],
-      janelaCancelMin: 10, minGap: 100, ajusteMs: 0, cancelModo: 'auto', bip: true, intervalo: 10, intervaloUni: 'seg', planos: {}, log: [] };
+      janelaCancelMin: 10, minGap: 100, aposNobre: 2, ajusteMs: 0, cancelModo: 'auto', bip: true, intervalo: 10, intervaloUni: 'seg', planos: {}, log: [] };
     try { var c = JSON.parse(localStorage.getItem(SNP_CHAVE) || 'null'); if (c) { for (var k in c) { p[k] = c[k]; } } } catch (e) {}
     if (!p.planos || typeof p.planos !== 'object') { p.planos = {}; }
     if (!Array.isArray(p.log)) { p.log = []; }
@@ -13409,10 +13424,17 @@
         var nome = etqNomeDaLinha(tr), ck = tr.querySelector('input[type="checkbox"]');
         var coords = []; tr.querySelectorAll('a').forEach(function (a) { var m = (a.textContent || '').match(/(\d{1,3})\|(\d{1,3})/); if (m && coords.indexOf(m[0]) === -1) { coords.push(m[0]); } });
         var tm = tr.querySelector('[data-endtime]'), fim = tm ? (+tm.getAttribute('data-endtime') || 0) * 1000 : 0;
-        var ms = null; tr.querySelectorAll('td').forEach(function (td) { var m = (td.textContent || '').match(/\d{1,2}:\d{2}:\d{2}:(\d{3})/); if (m && ms === null) { ms = +m[1]; } });
+        var ms = null, seg = null; tr.querySelectorAll('td').forEach(function (td) { var m = (td.textContent || '').match(/\d{1,2}:\d{2}:(\d{2}):(\d{3})/); if (m && ms === null) { ms = +m[2]; seg = +m[1]; } });
         var idm = (tr.querySelector('a[href*="info_command"]') || {}).href; idm = idm ? (idm.match(/[?&]id=(\d+)/) || [])[1] : null;
-        if (!fim || coords.length < 1) { return; }
-        lista.push({ id: idm || (ck && ck.value) || (coords.join('-') + fim), nome: nome, alvo: coords[0], origem: coords[1] || '', chegada: fim + (ms || 0), temMs: ms !== null,
+        var chegada = fim ? fim + (ms || 0) : 0;
+        if (!fim) {
+          // sem data-endtime: usa o contador "Chega em" (h:mm:ss) e acerta o segundo/ms pela hora de chegada
+          var tt = null; tr.querySelectorAll('.timer, span[class*="timer"], td').forEach(function (el) { var m = (el.textContent || '').trim().match(/^(\d+):(\d{2}):(\d{2})$/); if (m && tt === null) { tt = (+m[1] * 3600 + +m[2] * 60 + +m[3]) * 1000; } });
+          if (tt !== null) { chegada = snpAgora() + tt; }
+        }
+        if (chegada && seg !== null) { var alvoMs = seg * 1000 + ms, base = chegada - (((chegada % 60000) + 60000) % 60000), melhor = 0; [base - 60000, base, base + 60000].forEach(function (b) { if (!melhor || Math.abs(b + alvoMs - chegada) < Math.abs(melhor - chegada)) { melhor = b + alvoMs; } }); chegada = melhor; }
+        if (!chegada || coords.length < 1) { return; }
+        lista.push({ id: idm || (ck && ck.value) || (coords.join('-') + chegada), nome: nome, alvo: coords[0], origem: coords[1] || '', chegada: chegada, temMs: ms !== null,
           nobre: SNP_NOBRE.test(nome) || !!tr.querySelector('img[src*="snob"]'), semNome: ETQ_PADRAO.test(nome) });
       });
       return lista;
@@ -13421,20 +13443,49 @@
     if (lista.some(function (a) { return a.semNome; })) { try { var e = await etqRodarFetch(true); if (e && e.clicou) { await gerEsperar(gerEntre(600, 1200)); lista = await ler(); } } catch (err) {} }
     return lista;
   }
-  // trens: 2+ nobres na mesma aldeia, colados (até 10 s entre um e outro). Snipe = entre o 1º e o 2º.
+  // alvos de snipe: cada trem de nobres (nobres colados, até 10 s um do outro) chegando numa aldeia sua.
+  // "Snipar depois do Nº nobre" (padrão 2º): a defesa chega ENTRE o Nº e o (N+1)º nobre.
+  // 0 = antes do 1º nobre (depois do ataque de limpeza, ou 1 s antes se não tiver limpeza).
+  // Se ali o espaço for menor que o mínimo (ou o trem tiver menos nobres), tenta as posições vizinhas.
   function snpTrens(lista, cfg) {
-    var porAlvo = {};
-    lista.filter(function (a) { return a.nobre; }).forEach(function (a) { (porAlvo[a.alvo] = porAlvo[a.alvo] || []).push(a); });
+    var porAlvo = {}, minGap = +cfg.minGap || 100, pref = Math.max(0, Math.min(9, parseInt(cfg.aposNobre, 10)));
+    if (isNaN(pref)) { pref = 2; }
+    lista.forEach(function (a) { (porAlvo[a.alvo] = porAlvo[a.alvo] || []).push(a); });
     var trens = [];
     Object.keys(porAlvo).forEach(function (alvo) {
-      var ns = porAlvo[alvo].sort(function (a, b) { return a.chegada - b.chegada; });
-      for (var i = 0; i < ns.length - 1; i++) {
-        var gap = ns[i + 1].chegada - ns[i].chegada;
-        if (gap > 10000) { continue; }
-        if (i > 0 && ns[i].chegada - ns[i - 1].chegada <= 10000) { continue; } // só o começo de cada trem
-        trens.push({ chave: alvo + '_' + ns[i].id, alvo: alvo, t1: ns[i].chegada, t2: ns[i + 1].chegada, gap: gap, aim: ns[i].chegada + Math.floor(gap / 2),
-          nobres: ns.filter(function (n) { return n.chegada >= ns[i].chegada && n.chegada - ns[i].chegada < 30000; }).length, origem: ns[i].origem,
-          temMs: ns[i].temMs && ns[i + 1].temMs, apertado: gap < (+cfg.minGap || 100) });
+      var todos = porAlvo[alvo].sort(function (a, b) { return a.chegada - b.chegada; });
+      var ns = todos.filter(function (a) { return a.nobre; });
+      var i = 0;
+      while (i < ns.length) {
+        var trem = [ns[i]];
+        while (i + trem.length < ns.length && ns[i + trem.length].chegada - trem[trem.length - 1].chegada <= 10000) { trem.push(ns[i + trem.length]); }
+        i += trem.length;
+        var n1 = trem[0];
+        var antes = todos.filter(function (a) { return !a.nobre && a.chegada <= n1.chegada && n1.chegada - a.chegada <= 10000; }).pop() || null;
+        // posições possíveis: k = 0 (antes do 1º) ... trem.length-1 (entre o último par)
+        function pos(k) {
+          if (k === 0) {
+            if (antes) { var g = n1.chegada - antes.chegada; return { k: 0, gap: g, aim: n1.chegada - Math.min(Math.floor(g / 2), 1000), onde: 'entre a limpeza e o 1º nobre', ms: n1.temMs && antes.temMs }; }
+            return { k: 0, gap: Infinity, aim: n1.chegada - 1000, onde: '1 s antes do 1º nobre', ms: n1.temMs };
+          }
+          if (k >= trem.length) { return null; }
+          var x = trem[k - 1], y = trem[k], g2 = y.chegada - x.chegada;
+          return { k: k, gap: g2, aim: x.chegada + Math.floor(g2 / 2), onde: 'entre o ' + k + 'º e o ' + (k + 1) + 'º nobre', ms: x.temMs && y.temMs };
+        }
+        var ordem = [], k;
+        for (k = Math.min(pref, trem.length - 1); k >= 0; k--) { ordem.push(k); }
+        for (k = pref + 1; k < trem.length; k++) { ordem.push(k); }
+        var esc = null, tentou = [];
+        ordem.forEach(function (kk) { var p = pos(kk); if (!p) { return; } tentou.push(p); if (!esc && p.gap >= minGap) { esc = p; } });
+        var tr = { chave: alvo + '_' + n1.id, alvo: alvo, t1: n1.chegada, t2: trem[trem.length - 1].chegada, origem: n1.origem, nobres: trem.length };
+        if (esc) {
+          tr.gap = esc.gap === Infinity ? 0 : esc.gap; tr.aim = esc.aim; tr.temMs = esc.ms;
+          tr.onde = esc.onde + (esc.k !== Math.min(pref, trem.length - 1) && pref <= trem.length - 1 ? ' (o ' + pref + 'º estava colado demais)' : '');
+        } else {
+          var mx = tentou.reduce(function (m, p) { return Math.max(m, p.gap); }, 0);
+          tr.gap = mx; tr.aim = n1.chegada; tr.onde = 'sem espaço'; tr.apertado = true; tr.temMs = n1.temMs;
+        }
+        trens.push(tr);
       }
     });
     return trens;
@@ -13531,7 +13582,7 @@
     var alvoV = aldeias.filter(function (v) { return v.coord === tr.alvo; })[0];
     if (!alvoV) { return { erro: 'a aldeia ' + tr.alvo + ' não é sua' }; }
     var outras = aldeias.filter(function (v) { return v.id !== alvoV.id; }).map(function (v) { v._d = nobDist(v, alvoV); return v; }).sort(function (a, b) { return a._d - b._d; });
-    var janela = Math.max(1, +cfg.janelaCancelMin || 10) * 60000;
+    var janela = Math.max(1, +cfg.janelaCancelMin || 10) * 60000, motivos = [];
     if (cfg.cancel && !ocupadas[alvoV.id] && outras.length) {
       var uniC = snpUnidades(cfg, alvoV.tropas);
       var manual = cfg.cancelModo === 'manual';
@@ -13543,26 +13594,32 @@
         var precisa = (tr.aim - sendAt) / 2 + 3000;
         for (var di = 0; di < outras.length && !dest; di++) { if (!lentaC || outras[di]._d * lentaC * 60000 > precisa) { dest = outras[di]; } }
       }
+      if (!uniC) { motivos.push('cancelamento: a aldeia ' + alvoV.coord + ' não tem tropa em casa (das escolhidas)'); }
+      else if (!dest && tr.aim - sendAt < (manual ? 10000 : 2000)) { motivos.push('cancelamento: chega cedo demais (' + Math.round((tr.aim - agora) / 1000) + ' s)' + (manual ? ' pro manual — precisa de 10 s+' : '')); }
+      else if (!dest && tr.aim - sendAt > 2 * janela - 5000) { motivos.push('cancelamento: chega depois de 2× o tempo de cancelar'); }
+      else if (!dest) { motivos.push('cancelamento: nenhuma aldeia sua longe o bastante pra mandar e cancelar'); }
       if (dest) {
         acoes.push({ tipo: 'cancel', origemId: alvoV.id, destino: { id: dest.id, x: dest.x, y: dest.y, coord: dest.coord }, unidades: uniC, sendAt: sendAt, estado: 'agendado',
           manual: manual, desc: 'Cancelamento' + (manual ? ' MANUAL ' : ' ') + alvoV.coord + ' (sai ' + snpHora(sendAt) + ')' });
         ocupadas[alvoV.id] = 1;
       }
     }
+    else if (cfg.cancel && !outras.length) { motivos.push('cancelamento: precisa de pelo menos 2 aldeias'); }
     if (cfg.apoio) {
-      var vel = await snpVelocidades(), n = 0;
+      var vel = await snpVelocidades(), n = 0, semTropa = 0, longe = 0;
       for (var i = 0; i < outras.length && n < Math.max(0, +cfg.maxApoio || 0); i++) {
         var v = outras[i]; if (ocupadas[v.id]) { continue; }
-        var uniA = snpUnidades(cfg, v.tropas); if (!uniA) { continue; }
+        var uniA = snpUnidades(cfg, v.tropas); if (!uniA) { semTropa++; continue; }
         var lenta = 0; Object.keys(uniA).forEach(function (u) { lenta = Math.max(lenta, vel[u] || 0); }); if (!lenta) { continue; }
         var durMs = Math.round(v._d * lenta * 60) * 1000, sA = tr.aim - durMs;
-        if (sA < agora + snpFolga()) { continue; } // longe demais pra chegar a tempo
+        if (sA < agora + snpFolga()) { longe++; continue; } // longe demais pra chegar a tempo
         acoes.push({ tipo: 'apoio', origemId: v.id, destino: { id: alvoV.id, x: alvoV.x, y: alvoV.y, coord: alvoV.coord }, unidades: uniA, sendAt: sA, durMs: durMs, estado: 'agendado',
           desc: 'Apoio ' + v.coord + ' → ' + alvoV.coord + ' (sai ' + snpHora(sA) + ')' });
         ocupadas[v.id] = 1; n++;
       }
+      if (!n) { motivos.push('apoio: ' + (outras.length ? (longe ? longe + ' aldeia(s) longe demais pra chegar a tempo' : '') + (longe && semTropa ? ', ' : '') + (semTropa ? semTropa + ' sem tropa em casa' : '') : 'você não tem outra aldeia')); }
     }
-    return { acoes: acoes };
+    return { acoes: acoes, motivo: motivos.join(' • ') };
   }
   async function snpCiclo(soConferir) {
     if (snpCicloRodando) { return null; }
@@ -13576,19 +13633,20 @@
     var res = { trens: [], novos: 0, erro: '' };
     try {
       var lista = await snpLerChegando();
-      res.trens = snpTrens(lista, c); res.ataques = lista.length; res.nobres = lista.filter(function (a) { return a.nobre; }).length;
+      res.trens = snpTrens(lista, c); res.ataques = lista.length; res.semMs = lista.filter(function (a) { return !a.temMs; }).length; res.nobres = lista.filter(function (a) { return a.nobre; }).length;
       if (!soConferir) {
         var novos = res.trens.filter(function (t) { return !c.planos[t.chave] && t.aim > snpAgora() + snpFolga() + 1000; });
+        res.trens.forEach(function (t) { if (!c.planos[t.chave] && t.aim <= snpAgora() + snpFolga() + 1000 && t.aim > snpAgora() && !snpEmMemoria['tarde_' + t.chave]) { snpEmMemoria['tarde_' + t.chave] = 1; snpLog('nobre em ' + t.alvo + ' já chegando (' + Math.round((t.aim - snpAgora()) / 1000) + ' s) quando vi — tarde demais. Diminua o "Vigiar a cada".', true); } });
         if (novos.length) {
           var aldeias = await nobAldeias('0'), ocupadas = {};
           Object.keys(c.planos).forEach(function (k) { (c.planos[k].acoes || []).forEach(function (a) { if (!/^(falhou|cancelado|enviado)/.test(a.estado)) { ocupadas[a.origemId] = 1; } }); });
           for (var i = 0; i < novos.length; i++) {
             var tr = novos[i];
-            if (tr.apertado) { snpMudar(function (cc) { cc.planos[tr.chave] = { alvo: tr.alvo, t1: tr.t1, t2: tr.t2, aim: tr.aim, gap: tr.gap, nobres: tr.nobres, acoes: [], obs: 'pulado: só ' + tr.gap + ' ms entre os nobres' }; }); snpLog('trem em ' + tr.alvo + ' com só ' + tr.gap + ' ms entre os nobres — apertado demais, pulei.', true); continue; }
+            if (tr.apertado) { snpMudar(function (cc) { cc.planos[tr.chave] = { alvo: tr.alvo, t1: tr.t1, t2: tr.t2, aim: tr.aim, gap: tr.gap, nobres: tr.nobres, acoes: [], obs: 'pulado: só ' + tr.gap + ' ms de espaço (mínimo ' + (c.minGap || 100) + ' ms)' }; }); snpLog('nobre em ' + tr.alvo + ' com só ' + tr.gap + ' ms de espaço — apertado demais, pulei.', true); continue; }
             var pl = await snpPlanejar(tr, snpLer(), aldeias, ocupadas);
-            snpMudar(function (cc) { cc.planos[tr.chave] = { alvo: tr.alvo, t1: tr.t1, t2: tr.t2, aim: tr.aim, gap: tr.gap, nobres: tr.nobres, acoes: pl.acoes || [], obs: pl.erro || (pl.acoes && pl.acoes.length ? '' : 'sem tropa/tempo pra snipar') }; });
+            snpMudar(function (cc) { cc.planos[tr.chave] = { alvo: tr.alvo, t1: tr.t1, t2: tr.t2, aim: tr.aim, gap: tr.gap, nobres: tr.nobres, acoes: pl.acoes || [], onde: tr.onde, obs: pl.erro || (pl.acoes && pl.acoes.length ? '' : (pl.motivo || 'sem tropa/tempo pra snipar')) }; });
             res.novos++;
-            snpLog('⚠️ TREM: ' + tr.nobres + ' nobre(s) em ' + tr.alvo + ' às ' + snpHora(tr.t1) + ' (espaço ' + tr.gap + ' ms) → ' + ((pl.acoes || []).length ? (pl.acoes.length + ' ação(ões) de snipe pra ' + snpHora(tr.aim)) : (pl.erro || 'sem tropa/tempo pra snipar')), true);
+            snpLog('⚠️ TREM: ' + tr.nobres + ' nobre(s) em ' + tr.alvo + ' às ' + snpHora(tr.t1) + ' (espaço ' + tr.gap + ' ms) → ' + ((pl.acoes || []).length ? (pl.acoes.length + ' ação(ões) de snipe pra ' + snpHora(tr.aim) + ' (' + tr.onde + ')') : (pl.erro || pl.motivo || 'sem tropa/tempo pra snipar')), true);
             (pl.acoes || []).forEach(function (a, idx) { snpExecutarAcao(tr.chave, idx); });
           }
         }
@@ -13648,15 +13706,15 @@
       '<div style="background:linear-gradient(160deg,#1a1a1a,#050505);border:1px solid #3a3a3a;border-radius:12px;width:' + (window.innerWidth < 760 ? 440 : 760) + 'px;max-width:calc(100vw - 20px);max-height:calc(100vh - 30px);overflow:auto;color:#eee;box-shadow:0 14px 34px rgba(0,0,0,.75),0 0 0 1px rgba(255,196,0,.12)">' +
         '<div style="background:linear-gradient(100deg,#FFB800,#FFDD55 55%,#FFB800);color:#141200;padding:7px 10px;display:flex;align-items:center;gap:7px">' +
           '<span style="font-weight:800;font-size:12px;letter-spacing:1px">🛡️ SNIPE DE NOBRES</span><span style="font-size:8.5px;font-weight:800;background:#141200;color:#FFC400;border-radius:4px;padding:1px 5px;letter-spacing:.5px">BETA</span>' +
-          '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="Totalmente automático: vigia os ataques chegando (etiqueta os novos), acha trem de nobres (2+ nobres colados na mesma aldeia sua) e coloca a defesa ENTRE o 1º e o 2º nobre. Cancelamento: as tropas da aldeia atacada saem como apoio pra sua aldeia mais perto e são canceladas na hora certa pra VOLTAR no meio do trem (só dá se o nobre chega dentro do tempo de cancelar). Apoio: tropas das suas outras aldeias saem no ms certo pra CHEGAR no meio do trem. Precisão real: ~±50–150 ms. Se o cancelamento falhar, as tropas só chegam como apoio na sua outra aldeia. NÃO feche/recarregue a aba durante um snipe.">?</span>' +
+          '<span style="font-size:10px;font-weight:800;background:#141200;color:#FFC400;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;cursor:help" data-dica="Totalmente automático: vigia os ataques chegando (etiqueta os novos), acha trem de nobres (2+ nobres colados na mesma aldeia sua) e coloca a defesa no meio do trem (padrão: depois do 2º nobre, você escolhe). Cancelamento: as tropas da aldeia atacada saem como apoio pra sua aldeia mais perto e são canceladas na hora certa pra VOLTAR no meio do trem (só dá se o nobre chega dentro do tempo de cancelar). Apoio: tropas das suas outras aldeias saem no ms certo pra CHEGAR no meio do trem. Precisão real: ~±50–150 ms. Se o cancelamento falhar, as tropas só chegam como apoio na sua outra aldeia. NÃO feche/recarregue a aba durante um snipe.">?</span>' +
           '<span style="flex:1;text-align:right;font-size:9.5px;font-weight:800;color:#3d3000">' + (c.ativo ? '● VIGIANDO' : 'PARADO') + '</span><span id="ork-snp-x" style="cursor:pointer;font-weight:bold;font-size:15px;margin-left:6px">&times;</span></div>' +
         '<div style="padding:6px 9px 9px">' +
           '<div style="display:grid;grid-template-columns:' + (window.innerWidth < 760 ? '1fr' : '1fr 1fr') + ';gap:0 8px;align-items:start"><div>' +
             '<div style="' + sec + '"><div style="' + stit + '">Como snipar</div>' +
-              '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:help" data-dica="As tropas da própria aldeia atacada saem (como apoio pra sua aldeia mais perto) e são canceladas no momento exato pra voltar entre o 1º e o 2º nobre. Só funciona se o nobre chega dentro de 2× o tempo de cancelamento."><input id="ork-snp-canc" type="checkbox"' + (c.cancel ? ' checked' : '') + ' style="' + ck + '">↩️ Por cancelamento</label>' +
+              '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:help" data-dica="As tropas da própria aldeia atacada saem (como apoio pra sua aldeia mais perto) e são canceladas no momento exato pra voltar no meio do trem (depois do Nº nobre que você escolher). Só funciona se o nobre chega dentro de 2× o tempo de cancelamento."><input id="ork-snp-canc" type="checkbox"' + (c.cancel ? ' checked' : '') + ' style="' + ck + '">↩️ Por cancelamento</label>' +
               '<div style="' + lin + ';padding-left:21px"><span data-dica="Automático: o painel envia e cancela sozinho no ms certo. Manual: o painel envia e RENOMEIA o comando com &quot;CANCELAR hh:mm:ss:ms&quot; (hora do servidor, já descontada sua latência) e dá bip 3-2-1; você mesmo cancela na Praça. Bom pra speed, mais controle. Lembre: no manual, cada 100 ms de atraso no clique vira 200 ms na volta.">Cancelar:</span><select id="ork-snp-cmodo" style="' + inp + '"><option value="auto"' + (c.cancelModo !== 'manual' ? ' selected' : '') + '>🤖 Automático (no ms)</option><option value="manual"' + (c.cancelModo === 'manual' ? ' selected' : '') + '>✋ Manual (renomeia com a hora)</option></select>' +
                 '<label style="display:flex;align-items:center;gap:4px;cursor:help" data-dica="No cancelamento manual, toca bip 3, 2, 1 e um bip forte na hora exata de clicar em cancelar."><input id="ork-snp-bip" type="checkbox"' + (c.bip !== false ? ' checked' : '') + ' style="' + ck + '">🔔 bip</label></div>' +
-              '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:help;margin-top:5px" data-dica="Sempre automático: tropas das suas outras aldeias (as mais perto primeiro) saem no ms certo pra chegar como apoio entre o 1º e o 2º nobre."><input id="ork-snp-apoio" type="checkbox"' + (c.apoio ? ' checked' : '') + ' style="' + ck + '">🛡️ Por apoio de outras aldeias</label>' +
+              '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:help;margin-top:5px" data-dica="Sempre automático: tropas das suas outras aldeias (as mais perto primeiro) saem no ms certo pra chegar como apoio no meio do trem (depois do Nº nobre que você escolher)."><input id="ork-snp-apoio" type="checkbox"' + (c.apoio ? ' checked' : '') + ' style="' + ck + '">🛡️ Por apoio de outras aldeias</label>' +
               '<div style="' + lin + '"><span data-dica="Quantas aldeias suas, no máximo, mandam apoio em cada trem.">Aldeias de apoio por trem</span><input id="ork-snp-maxap" type="number" min="0" value="' + (c.maxApoio || 0) + '" style="width:52px;' + inp + ';text-align:center"></div></div>' +
             '<div style="' + sec + '"><div style="' + stit + '">Tropas do snipe</div>' +
               '<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc"><input type="radio" name="ork-snp-modo" value="tudo"' + (c.modoTropas !== 'escolher' ? ' checked' : '') + ' style="' + ck + '">Tudo que tiver em casa (menos nobre)</label>' +
@@ -13665,7 +13723,9 @@
               '<button type="button" id="ork-snp-add" style="margin-top:4px;background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:5px;padding:1px 8px;cursor:pointer;font-weight:700;font-size:10px;font-family:inherit">+ tropa</button></div>' +
           '</div><div>' +
             '<div style="' + sec + '"><div style="' + stit + '">Precisão e vigia</div>' +
-              '<div style="' + lin + ';margin-top:0"><span data-dica="Espaço mínimo entre o 1º e o 2º nobre pra tentar o snipe. Menor que isso = apertado demais pra precisão de navegador (pulado). Padrão 100 ms.">Espaço mínimo entre nobres</span><input id="ork-snp-gap" type="number" min="20" value="' + (c.minGap || 100) + '" style="width:60px;' + inp + ';text-align:center"><span>ms</span></div>' +
+              '<div style="' + lin + ';margin-top:0"><span data-dica="Em que ponto do trem a defesa chega. Padrão: depois do 2º nobre (entre o 2º e o 3º). Se ali estiver colado demais, ou o trem tiver menos nobres, ele tenta a posição mais perto que dê.">👑 Snipar</span><select id="ork-snp-apos" style="flex:1;' + inp + '">' +
+                [0, 1, 2, 3, 4].map(function (k) { return '<option value="' + k + '"' + ((c.aposNobre == null ? 2 : +c.aposNobre) === k ? ' selected' : '') + '>' + (k === 0 ? 'antes do 1º nobre (depois da limpeza)' : 'depois do ' + k + 'º nobre (entre o ' + k + 'º e o ' + (k + 1) + 'º)') + '</option>'; }).join('') + '</select></div>' +
+              '<div style="' + lin + '"><span data-dica="Espaço mínimo entre os comandos onde a defesa vai entrar (no ponto escolhido em Snipar). Menor que isso = apertado demais pra precisão de navegador (pulado). Padrão 100 ms.">Espaço mínimo entre nobres</span><input id="ork-snp-gap" type="number" min="20" value="' + (c.minGap || 100) + '" style="width:60px;' + inp + ';text-align:center"><span>ms</span></div>' +
               '<div style="' + lin + '"><span data-dica="Até quantos minutos depois de sair o jogo deixa cancelar um comando neste mundo (padrão do jogo: 10).">Tempo pra cancelar (jogo)</span><input id="ork-snp-jan" type="number" min="1" value="' + (c.janelaCancelMin || 10) + '" style="width:52px;' + inp + ';text-align:center"><span>min</span></div>' +
               '<div style="' + lin + '"><span data-dica="Correção fina, em ms, somada aos disparos. Se os snipes chegarem sempre um pouco ATRASADOS, use um número negativo (ex.: -30); adiantados, positivo. A latência da sua internet já é compensada sozinha.">Ajuste fino</span><input id="ork-snp-aj" type="number" value="' + (c.ajusteMs || 0) + '" style="width:60px;' + inp + ';text-align:center"><span>ms</span><span style="flex:1"></span><span style="color:#777" id="ork-snp-lat">latência ~' + Math.round(snpRtt()) + ' ms</span></div>' +
               '<div style="' + lin + '"><span data-dica="De quanto em quanto tempo ele confere os ataques chegando (mínimo 3 seg). Em speed com ataques de 12–40 s, use 3–5 seg; mundo normal, 15–30 seg.">🔁 Vigiar a cada</span><input id="ork-snp-int" type="number" min="1" value="' + (c.intervalo || 10) + '" style="width:56px;' + inp + ';text-align:center">' +
@@ -13696,9 +13756,9 @@
     function desenharLista(trensConf) {
       var cc = snpLer(), box = v('ork-snp-lista'); if (!box) { return; }
       var linhas = Object.keys(cc.planos).map(function (k) { var p = cc.planos[k];
-        return '<div style="border-top:1px solid #222;padding:3px 0"><b style="color:#FFC400">' + p.alvo + '</b> • ' + p.nobres + '👑 às ' + snpHora(p.t1) + ' • espaço ' + p.gap + ' ms' + (p.obs ? ' • <span style="color:#ffb347">' + gerHtml(p.obs) + '</span>' : '') +
+        return '<div style="border-top:1px solid #222;padding:3px 0"><b style="color:#FFC400">' + p.alvo + '</b> • ' + p.nobres + '👑 às ' + snpHora(p.t1) + ' • espaço ' + p.gap + ' ms' + (p.onde ? ' • mira ' + gerHtml(p.onde) : '') + (p.obs ? ' • <span style="color:#ffb347">' + gerHtml(p.obs) + '</span>' : '') +
           (p.acoes || []).map(function (a) { return '<div style="padding-left:10px;color:' + (/falhou/.test(a.estado) ? '#ff6b6b' : /✔/.test(a.estado) ? '#7ed17e' : /^manual:/.test(a.estado) ? '#ffdc63' : '#ccc') + '">' + (a.tipo === 'cancel' ? '↩️ ' : '🛡️ ') + gerHtml(a.desc) + ' — ' + (/^manual:/.test(a.estado) ? '<b>' + gerHtml(a.estado) + '</b> <span style="color:#ff6b5b">(' + Math.round((a.cancelAt - snpAgora()) / 100) / 10 + ' s)</span> <a href="' + gerHtml(a.cancelUrl || '#') + '" class="ork-snp-cnow" style="background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c;border-radius:4px;padding:0 6px;font-weight:800;text-decoration:none" data-dica="Cancela o comando AGORA (1 clique, sem sair desta tela).">↩️ CANCELAR AGORA</a>' : gerHtml(a.estado)) + '</div>'; }).join('') + '</div>'; });
-      var conf = (trensConf || []).map(function (t) { return '<div style="border-top:1px solid #222;padding:3px 0">🔍 <b style="color:#FFC400">' + t.alvo + '</b> • ' + t.nobres + '👑 às ' + snpHora(t.t1) + ' • espaço ' + t.gap + ' ms' + (t.apertado ? ' <span style="color:#ffb347">(apertado)</span>' : '') + (t.temMs ? '' : ' <span style="color:#ffb347">(sem ms)</span>') + '</div>'; });
+      var conf = (trensConf || []).map(function (t) { return '<div style="border-top:1px solid #222;padding:3px 0">🔍 <b style="color:#FFC400">' + t.alvo + '</b> • ' + t.nobres + '👑 às ' + snpHora(t.t1) + ' • espaço ' + t.gap + ' ms • mira ' + gerHtml(t.onde || '') + ' (' + snpHora(t.aim) + ')' + (t.apertado ? ' <span style="color:#ffb347">(apertado)</span>' : '') + (t.temMs ? '' : ' <span style="color:#ffb347">(sem ms)</span>') + '</div>'; });
       var log = (cc.log || []).slice(0, 8).map(function (l) { return '<div style="color:#777;font-size:10px">' + new Date(l.q).toLocaleTimeString('pt-BR') + ' — ' + gerHtml(l.t) + '</div>'; });
       box.innerHTML = (conf.join('') + linhas.join('')) || '<div style="color:#777">Nenhum trem de nobres detectado ainda.</div>';
       if (log.length) { box.innerHTML += '<div style="margin-top:5px;border-top:1px dashed #333;padding-top:3px">' + log.join('') + '</div>'; }
@@ -13715,7 +13775,7 @@
       n.cancel = v('ork-snp-canc').checked; n.apoio = v('ork-snp-apoio').checked; n.maxApoio = Math.max(0, parseInt(v('ork-snp-maxap').value, 10) || 0);
       n.modoTropas = (ov.querySelector('input[name="ork-snp-modo"]:checked') || {}).value === 'escolher' ? 'escolher' : 'tudo';
       n.tropas = tropas.filter(function (t) { return t.u; }).map(function (t) { return { u: t.u, n: Math.max(0, Math.floor(+t.n || 0)) }; });
-      n.minGap = Math.max(20, parseInt(v('ork-snp-gap').value, 10) || 100); n.janelaCancelMin = Math.max(1, parseFloat(v('ork-snp-jan').value) || 10);
+      n.minGap = Math.max(20, parseInt(v('ork-snp-gap').value, 10) || 100); n.aposNobre = Math.max(0, Math.min(4, parseInt(v('ork-snp-apos').value, 10) || 0)); n.janelaCancelMin = Math.max(1, parseFloat(v('ork-snp-jan').value) || 10);
       n.ajusteMs = parseInt(v('ork-snp-aj').value, 10) || 0;
       n.intervaloUni = v('ork-snp-uni').value === 'min' ? 'min' : 'seg'; n.intervalo = Math.max(n.intervaloUni === 'seg' ? 3 : 1, parseFloat(v('ork-snp-int').value) || 10);
       n.cancelModo = v('ork-snp-cmodo').value === 'manual' ? 'manual' : 'auto'; n.bip = v('ork-snp-bip').checked;
@@ -13729,7 +13789,7 @@
       b.disabled = false; b.textContent = '🔍 Conferir agora (sem snipar)';
       if (r && r.erro) { v('ork-snp-lista').innerHTML = '<span style="color:#ff6b6b">' + gerHtml(r.erro) + '</span>'; return; }
       desenharLista(r ? r.trens : []);
-      if (r) { v('ork-snp-lista').insertAdjacentHTML('afterbegin', '<div style="color:#888;margin-bottom:3px">' + (r.ataques || 0) + ' ataque(s) chegando • ' + (r.nobres || 0) + ' nobre(s) • ' + r.trens.length + ' trem(ns)</div>'); }
+      if (r) { v('ork-snp-lista').insertAdjacentHTML('afterbegin', '<div style="color:#888;margin-bottom:3px">' + (r.ataques || 0) + ' ataque(s) chegando • ' + (r.nobres || 0) + ' nobre(s) • ' + r.trens.length + ' alvo(s) de snipe' + (r.ataques && !r.nobres ? ' — <span style="color:#ffb347">nenhum ataque reconhecido como nobre (o nome do comando tem que ter Nobre/Noble; use o Etiquetador)</span>' : '') + (r.ataques && r.semMs ? ' — <span style="color:#ffb347">' + r.semMs + ' sem ms na hora de chegada</span>' : '') + '</div>'); }
     });
     v('ork-snp-ok').addEventListener('click', function () {
       if (snpLer().ativo) { snpParar(); fechar(); return; }
@@ -14225,7 +14285,7 @@
       id: 'cunhar',
       nome: 'Cunhar Moedas',
       abrev: 'Cunhar',
-      icone: '🪙',
+      icone: '💰',
       dica: 'Escolha o intervalo aqui mesmo; ele vai pra Academia e começa a cunhar sozinho quando a página carregar (sem Ativar agora). Com mais de 1.000 aldeias, passa pelas páginas todas numa aba só. Deixe a aba de Cunhagem aberta. Regras opcionais: Moedas por aldeia (máximo por ciclo, 0 = tudo) e Guardar por aldeia (deixa o recurso de X moedas sem cunhar, pra formar nobre).',
       checar: checaCunhar,
       rodar: rodarCunhar,
@@ -14330,7 +14390,7 @@
       nome: 'Etiquetador',
       abrev: 'Etiquetador',
       icone: '🏷️',
-      dica: 'Etiqueta os ataques recebidos com o botão Etiqueta do próprio jogo (Nobre, Aríete, Espada...). Roda por trás, sem precisar estar na tela de Recebidos; só mexe nos ataques novos (os que você renomeou ficam como estão). Etiquetar agora ou 🔁 automático a cada X minutos ou segundos (mínimo 10 seg, bom pra speed), com bolinha 🏷️ (fica vermelha quando tem ataque chegando). Cada conferência é 1 pedido leve.',
+      dica: 'Etiqueta os ataques recebidos com o botão Etiqueta do próprio jogo (Nobre, Aríete, Espada...). Roda por trás, sem precisar estar na tela de Recebidos; só mexe nos ataques novos (os que você renomeou ficam como estão). Etiquetar agora ou 🔁 automático a cada X minutos ou segundos (mínimo 1 seg + 1 a 3 seg aleatórios, bom pra speed), com bolinha 🏷️ (fica vermelha quando tem ataque chegando). Cada conferência é 1 pedido leve.',
       checar: checaEtiquetador,
       rodar: rodarEtiquetador,
       destino: null
@@ -14340,7 +14400,7 @@
       nome: 'Snipe de Nobres (BETA)',
       abrev: 'Snipe de Nobres',
       icone: '🛡️',
-      dica: 'BETA. Vigia os ataques chegando, acha trem de nobres na sua aldeia e coloca a defesa ENTRE o 1º e o 2º nobre — por cancelamento (as tropas da aldeia atacada saem e voltam no meio do trem; automático no ms OU manual: ele envia e renomeia o comando com "CANCELAR hh:mm:ss:ms", você cancela com bip de aviso) e/ou por apoio automático (suas outras aldeias chegam no meio do trem). Feito pra speed: ataques de 12–40 s já dá. Tropas: tudo que tiver em casa ou só as que você escolher. Precisão ~±50–150 ms; trem mais apertado que o espaço mínimo é pulado. Não feche a aba durante um snipe.',
+      dica: 'BETA. Vigia os ataques chegando, acha trem de nobres na sua aldeia e coloca a defesa no meio do trem (padrão: depois do 2º nobre, você escolhe) — por cancelamento (as tropas da aldeia atacada saem e voltam no meio do trem; automático no ms OU manual: ele envia e renomeia o comando com "CANCELAR hh:mm:ss:ms", você cancela com bip de aviso) e/ou por apoio automático (suas outras aldeias chegam no meio do trem). Feito pra speed: ataques de 12–40 s já dá. Tropas: tudo que tiver em casa ou só as que você escolher. Precisão ~±50–150 ms; trem mais apertado que o espaço mínimo é pulado. Não feche a aba durante um snipe.',
       checar: checaSnipe,
       rodar: rodarSnipe,
       destino: null
