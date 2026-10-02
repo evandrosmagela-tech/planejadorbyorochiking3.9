@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      107.0
+// @version      108.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 107;
+  window.__ORK_VERSAO__ = 108;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -298,6 +298,14 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-10-02-v108',
+      data: '02/10/2026',
+      titulo: 'Bolinhas no canto esquerdo',
+      itens: [
+        '⚪ As bolinhas dos scripts ligados agora ficam encostadas no canto esquerdo, uma do lado da outra, sem buracos — não ficam mais no meio da tela. O Coletor Hard continua à direita.'
+      ]
+    },
     {
       id: '2026-10-02-v107',
       data: '02/10/2026',
@@ -14439,6 +14447,26 @@
       (err && err.message ? err.message : String(err)) + '\n\nSe continuar, clique em "Copiar erro" e mande pro suporte.', botoes);
   }
   // Roda a ferramenta; se quebrar ao abrir, tira da tela o que ficou pela metade e avisa
+  /* v108: BOLINHAS NO CANTO ESQUERDO — as bolinhas ligadas ficam encostadas à esquerda, uma do lado da
+     outra, sem buracos (antes cada uma tinha lugar fixo e as últimas caíam no meio da tela).
+     O Coletor Hard continua no canto direito. */
+  (function bolinhasNoCanto() {
+    var IDS = ['ork-cunhar-bolinha', 'ork-kp-bolinha', 'ork-auto-bolinha', 'ork-bal-bolinha', 'ork-ger-bolinha', 'ork-nob-bolinha',
+      'ork-npl-bolinha', 'ork-fh-bolinha', 'ork-ra-bolinha', 'ork-etq-bolinha', 'ork-snp-bolinha'];
+    function arrumar() {
+      var x = 10;
+      IDS.forEach(function (id) {
+        var b = document.getElementById(id);
+        if (!b || b.style.display === 'none') { return; }
+        var alvo = x + 'px';
+        if (b.style.left !== alvo) { b.style.left = alvo; }
+        if (b.style.right) { b.style.right = ''; }
+        x += 60;
+      });
+    }
+    try { setInterval(arrumar, 600); arrumar(); } catch (e) {}
+  })();
+
   var ORK_ATALHO_PERFIL = 'ork_atalho_perfil';
   function orkExecutar(f) {
     // v107: usou Perfil/Ocultar uma vez → os atalhos aparecem sozinhos em todo perfil de jogador
