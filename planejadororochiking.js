@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OROCHIKING - Painel Unificado
 // @namespace    orochiking.painel
-// @version      114.0
+// @version      115.0
 // @description  Painel único (preto/dourado) OROCHIKING. Abre no Assistente de Saque, navega e ativa cada script no lugar certo (com confirmação de 1 clique pra não cair no bloqueio de popup), com monitor de captcha (alerta visual + sonoro contínuo).
 // @match        https://*/game.php*
 // @match        http://*/game.php*
@@ -280,7 +280,7 @@
      rodando — sem depender de adivinhar se o GitHub já propagou.
      No Console (F12) digite:  __ORK_VERSAO__
   ============================================================ */
-  window.__ORK_VERSAO__ = 114;
+  window.__ORK_VERSAO__ = 115;
   try { localStorage.removeItem('Alvos_Muralha'); } catch (e) {} // v83: lista antiga do Farm Hard que só crescia
 
   /* ============================================================
@@ -298,6 +298,16 @@
      lista abaixo (o mais recente primeiro), com id/data/itens. Só isso.
   ============================================================ */
   var ORK_NOVIDADES = [
+    {
+      id: '2026-10-03-v115',
+      data: '03/10/2026',
+      titulo: 'Relogar sozinho + Enviar Full nos nobres',
+      itens: [
+        '🔄 Novo botão "Relogar sozinho" no painel (embaixo do WhatsApp): ligado, se a sessão cair ele entra de novo no mundo SOZINHO, mesmo sem a 24/7. Precisa do script OROCHIKING Relogin no Tampermonkey. Clicou em Sair de propósito = não reloga.',
+        '⚔️ Noblar Automático e Noblador de Player: opção "Enviar Full" — o 1º nobre de cada aldeia sai com todo o full que ela tiver (bárbaro, CL, arq. a cavalo, explorador, aríete, catapulta, paladino); os outros nobres levam a escolta normal.',
+        '💥 Noblar Automático e Noblador de Player: campo "Catapulta em" pra escolher o prédio que as catapultas atacam.'
+      ]
+    },
     {
       id: '2026-10-02-v114',
       data: '02/10/2026',
@@ -6602,6 +6612,47 @@
      A configuração fica salva, então continua valendo depois de
      recarregar a página.
   ============================================================ */
+  /* ============================================================
+     v115: RELOGAR SOZINHO (botão no painel, embaixo do WhatsApp)
+     Ligado: se a sessão cair, o script "OROCHIKING Relogin" (no
+     Tampermonkey) entra de novo no mundo SOZINHO — mesmo sem a 24/7.
+     Como funciona: o painel deixa o cookie ork_auto247_mundo (o mesmo
+     que a 24/7 usa) com o mundo atual, renovando a cada ~4 min. Quando
+     a sessão cai, o Relogin lê esse cookie e entra no mundo.
+     Clicou em "Sair" de propósito = o cookie é apagado na hora, então
+     ele NÃO reloga (logout manual continua funcionando).
+  ============================================================ */
+  var RELOGIN_SEMPRE_CHAVE = 'ork_relogin_sempre';
+  function orkReloginSempre() {
+    try { return localStorage.getItem(RELOGIN_SEMPRE_CHAVE) === '1'; } catch (e) { return false; }
+  }
+  function orkReloginDominio() {
+    var h = window.location.hostname.split('.'); return h.slice(1).join('.');
+  }
+  function orkReloginCookie(valor, seg) {
+    try {
+      document.cookie = 'ork_auto247_mundo=' + encodeURIComponent(valor) + '; domain=.' + orkReloginDominio() + '; path=/; max-age=' + seg + '; SameSite=Lax';
+    } catch (e) {}
+  }
+  function orkReloginRenovar() {
+    if (!orkReloginSempre() || window.__ORK_SAINDO__) { return; }
+    var mundo = (window.game_data && game_data.world) || '';
+    if (mundo) { orkReloginCookie(mundo, 1800); }
+  }
+  function orkGravarReloginSempre(on) {
+    try { localStorage.setItem(RELOGIN_SEMPRE_CHAVE, on ? '1' : '0'); } catch (e) {}
+    if (on) { orkReloginRenovar(); } else { orkReloginCookie('', 0); }
+  }
+  if (typeof game_data !== 'undefined') {
+    orkReloginRenovar();
+    setInterval(orkReloginRenovar, 240000);
+    // "Sair" manual: apaga o cookie antes de deslogar, pra não relogar contra a vontade
+    document.addEventListener('click', function (ev) {
+      var a = ev.target && ev.target.closest ? ev.target.closest('a[href*="logout"], a[href*="action=logout"]') : null;
+      if (a && orkReloginSempre()) { window.__ORK_SAINDO__ = true; orkReloginCookie('', 0); console.log('[OROCHIKING] Relogar sozinho: você clicou em Sair — não vou relogar.'); }
+    }, true);
+  }
+
   var FREIO_CHAVE = 'ork_freio_ativo';
 
   function freioLigado() {
@@ -7622,6 +7673,10 @@
     return p.length > 2 ? p.slice(1).join('.') : window.location.hostname;
   }
   function autoCookie(nome, valor, segundos) {
+    if (nome === 'ork_auto247_mundo' && !valor && orkReloginSempre() && !window.__ORK_SAINDO__) {
+      valor = (window.game_data && game_data.world) || ''; segundos = 1800; // v115: Relogar sozinho segue valendo
+      if (!valor) { return; }
+    }
     try {
       document.cookie = nome + '=' + encodeURIComponent(valor) + '; domain=.' + autoDominioBase() +
         '; path=/; max-age=' + segundos + '; SameSite=Lax';
@@ -10428,6 +10483,28 @@
      cai: pesquisa explorador (se faltar), recruta exploradores e manda
      1 explorador em cada uma das bárbaras mais perto da aldeia nova.
   ============================================================ */
+  /* v115: ENVIAR FULL + ALVO DA CATAPULTA (Noblar Automático e Noblador de Player)
+     Full = as mesmas tropas do modelo "Ataque Full" do Ataque Mass: bárbaro, CL, arq. a cavalo,
+     explorador, aríete, catapulta e paladino — tudo que tiver em casa vai com o 1º nobre.
+     Lança/espada/arqueiro/CP ficam em casa. Os outros nobres do trem levam a escolta normal. */
+  var ORK_FULL_UN = ['axe', 'light', 'marcher', 'spy', 'ram', 'catapult', 'knight'];
+  var ORK_PREDIOS_CATA = [['', 'Padrão do jogo'], ['main', 'Edifício Principal'], ['wall', 'Muralha'], ['farm', 'Fazenda'], ['storage', 'Armazém'],
+    ['barracks', 'Quartel'], ['stable', 'Estábulo'], ['garage', 'Oficina'], ['snob', 'Academia'], ['smith', 'Ferreiro'], ['market', 'Mercado'],
+    ['place', 'Praça'], ['statue', 'Estátua'], ['watchtower', 'Torre de vigia'], ['church', 'Igreja'], ['hide', 'Esconderijo'],
+    ['wood', 'Bosque'], ['stone', 'Poço de argila'], ['iron', 'Mina de ferro']];
+  function orkOpcoesPredio(sel) { return ORK_PREDIOS_CATA.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === (sel || '') ? ' selected' : '') + '>' + o[1] + '</option>'; }).join(''); }
+  // tira o full da aldeia (devolve null se não tiver nada) — mexe em t (cópia das tropas)
+  function orkTirarFull(t) {
+    var m = {}, tot = 0;
+    ORK_FULL_UN.forEach(function (u) { var q = t[u] || 0; if (q > 0) { m[u] = q; t[u] = 0; tot += q; } });
+    return tot ? m : null;
+  }
+  // depois do confirm, troca o prédio da catapulta no envio final (o jogo põe o padrão dele)
+  function orkPredioNoCorpo(corpo, predio, unidades) {
+    if (!predio || !unidades || !(+unidades.catapult > 0)) { return corpo; }
+    corpo = corpo.replace(/(^|&)building=[^&]*/g, '');
+    return corpo + '&building=' + encodeURIComponent(predio);
+  }
   var NOB_TRAVA = 'ork_nobre_trava';
   var NOB_ABA = 'aba' + Math.random().toString(36).slice(2, 10);
   var nobTimer = null, nobRelogio = null, nobTravaId = null, nobRodando = false;
@@ -10454,6 +10531,7 @@
     p.escoltas = p.escoltas.filter(function (e) { return e && e.u && e.u !== 'snob' && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
     if (!Array.isArray(p.refs)) { p.refs = []; }
     p.refs = p.refs.filter(function (r) { return r && isFinite(+r.x) && isFinite(+r.y); }).map(function (r) { return { x: Math.round(+r.x), y: Math.round(+r.y) }; });
+    nobFull = !!p.full; nobPredio = p.predio || '';
     return p;
   }
   // v87: coordenadas de referência — "500|500 510|480" (qualquer separador) vira [{x,y}]
@@ -10510,14 +10588,17 @@
   }
   // Cada linha da escolta é uma OPÇÃO: pra cada nobre usa a primeira linha que a aldeia tiver completa
   // (ex.: 50 CL OU 50 CP — sem CL, vai com CP). Devolve a escolta escolhida pra cada nobre.
+  var nobFull = false, nobPredio = '';
   function nobAlocarEscolta(tropas, esc, max) {
+    // devolve, pra cada nobre, a escolta dele ({tropa: qtd}) ou null (nobre sozinho)
     var t = {}; Object.keys(tropas || {}).forEach(function (k) { t[k] = tropas[k] || 0; });
     var out = [], snob = t.snob || 0;
+    if (nobFull && snob > 0 && max > 0) { var f = orkTirarFull(t); if (f) { out.push(f); snob--; } }
     while (out.length < max && snob > 0) {
       if (!esc.length) { out.push(null); snob--; continue; }
       var e = esc.filter(function (x) { return (t[x.u] || 0) >= x.n; })[0];
       if (!e) { break; }
-      t[e.u] -= e.n; snob--; out.push(e);
+      t[e.u] -= e.n; snob--; var m1 = {}; m1[e.u] = e.n; out.push(m1);
     }
     return out;
   }
@@ -10776,12 +10857,13 @@
     pares = pares.map(function (p) { return cont.hasOwnProperty(p[0]) ? [p[0], plano.unidades[p[0]] ? String(plano.unidades[p[0]]) : ''] : p; });
     Object.keys(plano.unidades).forEach(function (u) { if (!pares.some(function (p) { return p[0] === u; })) { pares.push([u, String(plano.unidades[u])]); } });
     pares.push(['x', String(alvo.x)], ['y', String(alvo.y)], ['attack', 'l']);
+    if (nobPredio && +plano.unidades.catapult > 0) { pares.push(['building', nobPredio]); }
     await gerEsperar(gerEntre(500, 1100));
     var r2 = await nobAjax('/game.php?village=' + origem + '&screen=place&ajax=confirm&h=' + encodeURIComponent(nobCsrf()) + '&client_time=' + nobHora(), nobCodificar(pares));
     if (r2.erro) { return { ok: false, erro: r2.erro }; }
     var d2 = nobDialogo(r2.dialog);
     var dur = nobDuracaoMs(d2);
-    var corpo = nobCodificar(nobSerializar(d2.querySelector('form') || d2));
+    var corpo = orkPredioNoCorpo(nobCodificar(nobSerializar(d2.querySelector('form') || d2)), nobPredio, plano.unidades);
     (plano.trens || []).forEach(function (t, i) {
       var k = i + 2;
       corpo += '&' + Object.keys(t).map(function (u) { return encodeURIComponent('train[' + k + '][' + u + ']') + '=' + t[u]; }).join('&');
@@ -10796,7 +10878,7 @@
     return function (cont) {
       var aloc = nobAlocarEscolta(cont, esc, qtd), n = aloc.length;
       if (n < 1) { return null; }
-      function leva(e) { var l = {}; if (e) { l[e.u] = e.n; } l.snob = 1; return l; }
+      function leva(e) { var l = {}; if (e) { Object.keys(e).forEach(function (u) { l[u] = e[u]; }); } l.snob = 1; return l; }
       var zero = {}; Object.keys(cont).forEach(function (k) { zero[k] = 0; });
       var trens = [];
       for (var i = 1; i < n; i++) { var t = JSON.parse(JSON.stringify(zero)), l = leva(aloc[i]); Object.keys(l).forEach(function (u) { t[u] = l[u]; }); trens.push(t); }
@@ -10959,7 +11041,7 @@
     var tipos = {}; (cfg.bonusTipos || []).forEach(function (t) { tipos[t] = 1; });
     var origens = aldeias.filter(function (a) { return nobQuantosCabem(a.tropas, esc, 1) >= 1; })
       .map(function (a) { return { id: a.id, x: a.x, y: a.y, coord: a.coord, tropas: JSON.parse(JSON.stringify(a.tropas)) }; });
-    function gastar(o, n) { nobAlocarEscolta(o.tropas, esc, n).forEach(function (e) { o.tropas.snob -= 1; if (e) { o.tropas[e.u] -= e.n; } }); }
+    function gastar(o, n) { nobAlocarEscolta(o.tropas, esc, n).forEach(function (e) { o.tropas.snob -= 1; if (e) { Object.keys(e).forEach(function (u) { o.tropas[u] -= e[u]; }); } }); }
     // pontos que os alvos novos precisam respeitar (espaçamento): suas aldeias + alvos em andamento
     var fixos = (cfg.espacoMinhas === false ? [] : aldeias.map(function (a) { return { x: a.x, y: a.y }; })).concat(cfg.alvos.filter(function (a) { return a.status === 'caminho' || a.status === 'reenviar'; }));
     var conts = nobLerConts(cfg.continentes);
@@ -11392,6 +11474,11 @@
                 '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Tropa que vai JUNTO com CADA nobre. Cada linha é uma OPÇÃO, na ordem: o nobre sai com a primeira que a aldeia tiver completa (ex.: 1ª linha 50 CL, 2ª linha 50 CP → sem CL suficiente, vai com CP). Só não manda se a aldeia não tiver nenhuma das opções. Quantidade em branco ou 0 = tira a linha. Sem nenhuma linha = nobre vai sozinho.">Escolta de cada nobre (1ª opção, 2ª opção...)</span>' +
                   '<button type="button" id="ork-nob-escadd" style="background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:5px;padding:1px 8px;cursor:pointer;font-weight:700;font-size:10px;font-family:inherit">+ tropa</button></div>' +
                 '<div id="ork-nob-esc"></div></div>' +
+              '<div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;background:#111;border:1px solid #242424;border-radius:6px;padding:4px 6px">' +
+                '<input id="ork-nob-full" type="checkbox"' + (c.full ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">' +
+                '<span style="font-size:10.5px;color:#bbb;cursor:help" data-dica="Ligado: o 1º nobre de cada aldeia sai com TODO o full que ela tiver em casa (bárbaro, CL, arqueiro a cavalo, explorador, aríete, catapulta e paladino — igual ao modelo Ataque Full do Ataque Mass). Lança, espada, arqueiro e CP ficam em casa. Os outros nobres do trem levam a escolta de cima. Se a aldeia não tiver nada de full, o nobre usa a escolta normal. Desligado: só a escolta de cima.">⚔️ Enviar Full</span>' +
+                '<span style="flex:1"></span><span style="font-size:10.5px;color:#bbb;cursor:help" data-dica="Prédio que as catapultas vão atacar, quando o envio leva catapulta (pelo Full ou pela escolta). Padrão do jogo = o que o jogo escolhe sozinho.">💥 Catapulta em</span>' +
+                '<select id="ork-nob-predio" style="' + inp + ';padding:2px 4px;font-size:10.5px">' + orkOpcoesPredio(c.predio) + '</select></div>' +
               '<label style="grid-column:1 / -1;display:flex;align-items:center;gap:5px;background:#111;border:1px solid #242424;border-radius:6px;padding:3px 4px 3px 7px">' +
                 '<span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Pausa entre um envio de nobre (ou trem) e o próximo, sorteada em milissegundos entre o mínimo e o máximo. Padrão 2 a 4s = seguro. Pode baixar até 0,5s pra mandar mais rápido — quanto menor, maior o risco de captcha (se aparecer, o script para e espera você resolver).">Entre envios de nobre (seg)</span>' +
                 '<input id="ork-nob-emin" type="number" min="0.5" step="0.1" value="' + (c.envioMin == null ? 2 : c.envioMin) + '" style="width:52px;' + inp + ';padding:3px 4px;text-align:center"><span style="font-size:10px;color:#777">a</span>' +
@@ -11490,6 +11577,7 @@
       n.nobres = Math.max(1, parseInt(v('ork-nob-qtd').value, 10) || 1);
       var rf = parseInt(v('ork-nob-ref').value, 10); n.reforco = Math.max(0, Math.min(5, isNaN(rf) ? 0 : rf));
       n.escoltas = escoltas.filter(function (e) { return e.u && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
+      n.full = v('ork-nob-full').checked; n.predio = v('ork-nob-predio').value || ''; nobFull = n.full; nobPredio = n.predio;
       n.maxSimult = Math.max(0, parseInt(v('ork-nob-max').value, 10) || 0);
       n.produzir = v('ork-nob-prod').checked;
       n.produzirMax = Math.max(1, parseInt(v('ork-nob-pmaxal').value, 10) || 1);
@@ -11569,7 +11657,7 @@
     ['stable', '🐎 Estábulo'], ['garage', '🛠️ Oficina'], ['storage', '📦 Armazém'], ['all', '⭐ Todos os recursos']
   ];
   function nplChave() { return 'ork_noblap_' + ((window.game_data && game_data.world) || ''); }
-  var nplEscSomar = true;
+  var nplEscSomar = true, nplFull = false, nplPredio = '';
   function nplLer() {
     // padrão (quem nunca mexeu vê isso; o que a pessoa mudar e salvar fica valendo pra ela)
     var p = { ativo: false, grupo: '0', grupoNome: 'Todas as aldeias', espacamento: 1, escolta: 'light', escoltas: [{ u: 'spear', n: 122 }, { u: 'light', n: 22 }], nobres: 1, intervaloUni: 'seg', reforco: 0, raio: 1000,
@@ -11588,7 +11676,7 @@
     if (!Array.isArray(p.refs)) { p.refs = []; }
     p.refs = p.refs.filter(function (r) { return r && isFinite(+r.x) && isFinite(+r.y); }).map(function (r) { return { x: Math.round(+r.x), y: Math.round(+r.y) }; });
     if (p.escModo !== 'ou') { p.escModo = 'somar'; } // v114: padrão = somar as linhas, mandando o que tiver
-    nplEscSomar = p.escModo === 'somar';
+    nplEscSomar = p.escModo === 'somar'; nplFull = !!p.full; nplPredio = p.predio || '';
     return p;
   }
   // v87: coordenadas de referência — "500|500 510|480" (qualquer separador) vira [{x,y}]
@@ -11639,6 +11727,7 @@
     var t = {}; Object.keys(tropas || {}).forEach(function (k) { t[k] = tropas[k] || 0; });
     var out = [], snob = t.snob || 0;
     while (out.length < max && snob > 0) {
+      if (nplFull && !out.length) { var f = orkTirarFull(t); if (f) { out.push(f); snob--; continue; } }
       if (!esc.length) { out.push(null); snob--; continue; }
       if (nplEscSomar) {
         // v114: SOMAR — o nobre leva TODAS as linhas juntas, cada uma até o valor (manda o que tiver).
@@ -11990,12 +12079,14 @@
     pares = pares.map(function (p) { return cont.hasOwnProperty(p[0]) ? [p[0], plano.unidades[p[0]] ? String(plano.unidades[p[0]]) : ''] : p; });
     Object.keys(plano.unidades).forEach(function (u) { if (!pares.some(function (p) { return p[0] === u; })) { pares.push([u, String(plano.unidades[u])]); } });
     pares.push(['x', String(alvo.x)], ['y', String(alvo.y)], tipo === 'apoio' ? ['support', 'l'] : ['attack', 'l']);
+    var predioEnvio = tipo === 'apoio' ? '' : nplPredio;
+    if (predioEnvio && +plano.unidades.catapult > 0) { pares.push(['building', predioEnvio]); }
     await gerEsperar(gerEntre(500, 1100));
     var r2 = await nplAjax('/game.php?village=' + origem + '&screen=place&ajax=confirm&h=' + encodeURIComponent(nplCsrf()) + '&client_time=' + nplHora(), nplCodificar(pares));
     if (r2.erro) { return { ok: false, erro: r2.erro }; }
     var d2 = nplDialogo(r2.dialog);
     var dur = nplDuracaoMs(d2);
-    var corpo = nplCodificar(nplSerializar(d2.querySelector('form') || d2));
+    var corpo = orkPredioNoCorpo(nplCodificar(nplSerializar(d2.querySelector('form') || d2)), predioEnvio, plano.unidades);
     (plano.trens || []).forEach(function (t, i) {
       var k = i + 2;
       corpo += '&' + Object.keys(t).map(function (u) { return encodeURIComponent('train[' + k + '][' + u + ']') + '=' + t[u]; }).join('&');
@@ -12620,6 +12711,11 @@
                   '<select id="ork-npl-escmodo" style="' + inp + ';padding:2px 4px;font-size:10.5px"><option value="somar"' + (c.escModo !== 'ou' ? ' selected' : '') + '>➕ Somar (manda o que tiver)</option><option value="ou"' + (c.escModo === 'ou' ? ' selected' : '') + '>1ª opção OU 2ª...</option></select>' +
                   '<button type="button" id="ork-npl-escadd" style="background:#1c1c1c;color:#FFC400;border:1px dashed #3a3a3a;border-radius:5px;padding:1px 8px;cursor:pointer;font-weight:700;font-size:10px;font-family:inherit">+ tropa</button></div>' +
                 '<div id="ork-npl-esc"></div></div>' +
+              '<div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;background:#111;border:1px solid #242424;border-radius:6px;padding:4px 6px">' +
+                '<input id="ork-npl-full" type="checkbox"' + (c.full ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">' +
+                '<span style="font-size:10.5px;color:#bbb;cursor:help" data-dica="Ligado: o 1º nobre de cada aldeia sai com TODO o full que ela tiver em casa (bárbaro, CL, arqueiro a cavalo, explorador, aríete, catapulta e paladino — igual ao modelo Ataque Full do Ataque Mass). Lança, espada, arqueiro e CP ficam em casa. Os outros nobres do trem levam a escolta de cima. Se a aldeia não tiver nada de full, o nobre usa a escolta normal. Desligado: só a escolta de cima.">⚔️ Enviar Full</span>' +
+                '<span style="flex:1"></span><span style="font-size:10.5px;color:#bbb;cursor:help" data-dica="Prédio que as catapultas vão atacar, quando o envio leva catapulta (pelo Full ou pela escolta). Padrão do jogo = o que o jogo escolhe sozinho.">💥 Catapulta em</span>' +
+                '<select id="ork-npl-predio" style="' + inp + ';padding:2px 4px;font-size:10.5px">' + orkOpcoesPredio(c.predio) + '</select></div>' +
               '<label style="grid-column:1 / -1;display:flex;align-items:center;gap:5px;background:#111;border:1px solid #242424;border-radius:6px;padding:3px 4px 3px 7px">' +
                 '<span style="flex:1;font-size:10.5px;color:#bbb;cursor:help" data-dica="Pausa entre um envio de nobre (ou trem) e o próximo, sorteada em milissegundos entre o mínimo e o máximo. Padrão 2 a 4s = seguro. Pode baixar até 0,5s pra mandar mais rápido — quanto menor, maior o risco de captcha (se aparecer, o script para e espera você resolver).">Entre envios de nobre (seg)</span>' +
                 '<input id="ork-npl-emin" type="number" min="0.5" step="0.1" value="' + (c.envioMin == null ? 2 : c.envioMin) + '" style="width:52px;' + inp + ';padding:3px 4px;text-align:center"><span style="font-size:10px;color:#777">a</span>' +
@@ -12741,6 +12837,7 @@
       var rf = parseInt(v('ork-npl-ref').value, 10); n.reforco = Math.max(0, Math.min(5, isNaN(rf) ? 0 : rf));
       n.escoltas = escoltas.filter(function (e) { return e.u && (+e.n || 0) > 0; }).map(function (e) { return { u: e.u, n: Math.floor(+e.n) }; });
       n.escModo = v('ork-npl-escmodo').value === 'ou' ? 'ou' : 'somar'; nplEscSomar = n.escModo === 'somar';
+      n.full = v('ork-npl-full').checked; n.predio = v('ork-npl-predio').value || ''; nplFull = n.full; nplPredio = n.predio;
       n.maxSimult = Math.max(0, parseInt(v('ork-npl-max').value, 10) || 0);
       n.produzir = v('ork-npl-prod').checked;
       n.produzirMax = Math.max(1, parseInt(v('ork-npl-pmaxal').value, 10) || 1);
@@ -14856,7 +14953,7 @@
       nome: 'Noblar Automático',
       abrev: 'Noblar Automático',
       icone: '👑',
-      dica: 'Conquista bárbaras sozinho: lê o mapa de perto pra longe (Tipo: bônus primeiro e depois as normais, qualquer bárbara, ou só bônus; com o espaçamento em campos que você escolher — e, se quiser, pode noblar até a bárbara colada na sua aldeia desligando "Espaçamento conta minhas aldeias"; opcional: 🗺️ Continentes, ex. K45, K55, pra noblar só neles; opcional: 🏘️ Priorizar com vizinhas — bárbaras com pelo menos N bárbaras coladas vão primeiro; opcional: 🔻 Reduzir regras automaticamente — quando as bárbaras nas regras acabam, afrouxa espaçamento/bônus/vizinhas sozinho pra não parar), manda os nobres (quantos quiser por bárbara, todos da mesma aldeia, cada um com a escolta que você escolher) da aldeia mais perto que tem nobre. Opcional: forma nobres na Academia das aldeias sozinho. Quando conquista, pesquisa o explorador, recruta e a própria aldeia nova explora as bárbaras ao redor pra entrarem no Farm. Repete em ciclos de segundos ou minutos. Use o Simular antes. Novo: Coordenadas de referência (opcional) — prioriza as bárbaras perto delas (ex.: a borda); e o tempo entre formar nobres é configurável.',
+      dica: 'Conquista bárbaras sozinho: lê o mapa de perto pra longe (Tipo: bônus primeiro e depois as normais, qualquer bárbara, ou só bônus; com o espaçamento em campos que você escolher — e, se quiser, pode noblar até a bárbara colada na sua aldeia desligando "Espaçamento conta minhas aldeias"; opcional: 🗺️ Continentes, ex. K45, K55, pra noblar só neles; opcional: 🏘️ Priorizar com vizinhas — bárbaras com pelo menos N bárbaras coladas vão primeiro; opcional: 🔻 Reduzir regras automaticamente — quando as bárbaras nas regras acabam, afrouxa espaçamento/bônus/vizinhas sozinho pra não parar), manda os nobres (quantos quiser por bárbara, todos da mesma aldeia, cada um com a escolta que você escolher) da aldeia mais perto que tem nobre. Opcional: forma nobres na Academia das aldeias sozinho. Quando conquista, pesquisa o explorador, recruta e a própria aldeia nova explora as bárbaras ao redor pra entrarem no Farm. Repete em ciclos de segundos ou minutos. Use o Simular antes. Novo: Coordenadas de referência (opcional) — prioriza as bárbaras perto delas (ex.: a borda); e o tempo entre formar nobres é configurável. ⚔️ Enviar Full: o 1º nobre de cada aldeia leva todo o full em casa (bárbaro, CL, arq. a cavalo, explorador, aríete, catapulta, paladino). 💥 Catapulta em: escolhe o prédio que as catapultas atacam.',
       checar: checaNobre,
       rodar: rodarNobre,
       destino: null
@@ -14866,7 +14963,7 @@
       nome: 'Noblador de Player',
       abrev: 'Noblador de Player',
       icone: '🎯',
-      dica: 'Igual ao Noblar Automático, mas pra jogadores: você digita os nicks, ele acha todas as aldeias deles no mundo e nobla as que estão dentro da Dist. máxima, a mais perto primeiro, com a mesma configuração de nobres, escolta, ciclo, Academia e pós-conquista. Antes de mandar, confere no mapa se a aldeia ainda é do jogador. Escolta: ➕ Somar (padrão) — o nobre leva todas as linhas juntas, cada uma até o valor, mandando o que a aldeia tiver; ou 1ª opção OU 2ª. Se um ciclo não mandar nobre, aparece o motivo na tela. Nunca nobla você nem a sua tribo. Opcional: 🛡️ Apoio pós-noblagem — assim que a aldeia cai, a sua aldeia mais perto que tem as tropas definidas manda apoio pra ela. Aldeia de jogador pode ter defesa — escolha a escolta pensando nisso.',
+      dica: 'Igual ao Noblar Automático, mas pra jogadores: você digita os nicks, ele acha todas as aldeias deles no mundo e nobla as que estão dentro da Dist. máxima, a mais perto primeiro, com a mesma configuração de nobres, escolta, ciclo, Academia e pós-conquista. Antes de mandar, confere no mapa se a aldeia ainda é do jogador. Escolta: ➕ Somar (padrão) — o nobre leva todas as linhas juntas, cada uma até o valor, mandando o que a aldeia tiver; ou 1ª opção OU 2ª. Se um ciclo não mandar nobre, aparece o motivo na tela. Nunca nobla você nem a sua tribo. Opcional: 🛡️ Apoio pós-noblagem — assim que a aldeia cai, a sua aldeia mais perto que tem as tropas definidas manda apoio pra ela. Aldeia de jogador pode ter defesa — escolha a escolta pensando nisso. ⚔️ Enviar Full: o 1º nobre de cada aldeia leva todo o full em casa (bárbaro, CL, arq. a cavalo, explorador, aríete, catapulta, paladino). 💥 Catapulta em: escolhe o prédio que as catapultas atacam.',
       checar: checaNoblaPlayer,
       rodar: rodarNoblaPlayer,
       destino: null
@@ -15444,6 +15541,10 @@
           '<span style="font-size:12px;font-weight:800;color:#ececec;letter-spacing:.3px">📱 Aviso no WhatsApp</span>' +
           '<button id="ork-whats-btn" type="button" style="border:1px solid rgba(255,255,255,.14);background:#1c1c1c;color:#8a8a8a;border-radius:20px;padding:5px 12px;font-weight:800;font-size:11px;cursor:pointer;font-family:inherit">configurar</button>' +
         '</div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px">' +
+          '<span style="font-size:12px;font-weight:800;color:#ececec;letter-spacing:.3px;cursor:help" data-dica="Ligado: se a sessão cair (queda, outro login, manutenção), entra de novo no mundo SOZINHO — mesmo sem a 24/7 ligada. Precisa do script OROCHIKING Relogin instalado no Tampermonkey e da senha salva no navegador. Se você clicar em Sair de propósito, ele NÃO reloga. Desligado (padrão): só reloga quando a 24/7 está rodando.">🔄 Relogar sozinho</span>' +
+          '<button id="ork-relogin-btn" type="button" style="border:1px solid rgba(255,255,255,.14);background:#1c1c1c;color:#8a8a8a;border-radius:20px;padding:5px 12px;font-weight:800;font-size:11px;cursor:pointer;font-family:inherit">Desligado</button>' +
+        '</div>' +
       '</div>' +
     '</div>' +
     '</div>' +
@@ -15566,6 +15667,30 @@
       }
       pintar();
       b.addEventListener('click', function () { orkWhatsModal(pintar); });
+    })();
+    (function () {
+      var r = document.getElementById('ork-relogin-btn');
+      if (!r) { return; }
+      try { autoLigarDicas(r.parentNode); } catch (e) {}
+      function pintarR() {
+        var on = orkReloginSempre();
+        r.textContent = on ? '✓ Ligado' : 'Desligado';
+        r.style.background = on ? 'linear-gradient(100deg,#e8ac0a,#ffdc63)' : '#1c1c1c';
+        r.style.color = on ? '#1a1400' : '#8a8a8a';
+        r.style.borderColor = on ? 'transparent' : 'rgba(255,255,255,.14)';
+      }
+      pintarR();
+      r.addEventListener('click', function () {
+        var novo = !orkReloginSempre();
+        orkGravarReloginSempre(novo); pintarR();
+        var st = document.getElementById('ork-status');
+        if (st) {
+          st.textContent = novo
+            ? '🔄 Relogar sozinho LIGADO: se a sessão cair, entra de novo no mundo ' + ((window.game_data && game_data.world) || '') + ' sozinho (precisa do script OROCHIKING Relogin no Tampermonkey). Clicou em Sair = não reloga.'
+            : 'Relogar sozinho desligado: só reloga quando a 24/7 estiver rodando.';
+        }
+        console.log('[OROCHIKING] Relogar sozinho ' + (novo ? 'LIGADO' : 'desligado') + '.');
+      });
     })();
     var btn = document.getElementById('ork-freio-btn');
     if (!btn) { return; }
