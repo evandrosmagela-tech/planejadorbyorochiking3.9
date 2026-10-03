@@ -301,11 +301,14 @@
     {
       id: '2026-10-03-v115',
       data: '03/10/2026',
-      titulo: 'Relogar sozinho + Enviar Full nos nobres',
+      titulo: 'Relogar sozinho, 24/7 com mais ações, Enviar Full e mais',
       itens: [
         '🔄 Novo botão "Relogar sozinho" no painel (embaixo do WhatsApp): ligado, se a sessão cair ele entra de novo no mundo SOZINHO, mesmo sem a 24/7. Precisa do script OROCHIKING Relogin no Tampermonkey. Clicou em Sair de propósito = não reloga.',
         '⚔️ Noblar Automático e Noblador de Player: opção "Enviar Full" — o 1º nobre de cada aldeia sai com todo o full que ela tiver (bárbaro, CL, arq. a cavalo, explorador, aríete, catapulta, paladino); os outros nobres levam a escolta normal.',
-        '💥 Noblar Automático e Noblador de Player: campo "Catapulta em" pra escolher o prédio que as catapultas atacam.'
+        '💥 Noblar Automático e Noblador de Player: campo "Catapulta em" pra escolher o prédio que as catapultas atacam.',
+        '✏️ Renomeador: os botões ✏️ Renomear e ⏹ Parar da tela Combinado agora ficam no TOPO da lista de aldeias (antes ficavam lá embaixo).',
+        '♾️ 24/7: novas ações na sequência — 🎯 Noblador de Player, ⌨️ KeyPress (até a tropa acabar ou por tempo, com o modelo salvo) e ✏️ Renomear aldeias (só as que ainda não estão com o nome salvo).',
+        '🏛️ Cunhar: nova opção "Cunhar fora da Academia" — pode sair da Academia e jogar na mesma aba; na hora do ciclo ele volta sozinho pra Academia, cunha e passa pelas páginas de 1.000 aldeias.'
       ]
     },
     {
@@ -331,7 +334,7 @@
       data: '02/10/2026',
       titulo: 'Renomeador: botões direto no Combinado',
       itens: [
-        '✏️ Depois de usar o Renomeador uma vez pelo painel, a tela Combinado mostra ✏️ Renomear e ⏹ Parar do lado de "Aldeias por página" — sem voltar no painel. O × tira os botões.'
+        '✏️ Depois de usar o Renomeador uma vez pelo painel, a tela Combinado mostra ✏️ Renomear e ⏹ Parar — sem voltar no painel. O × tira os botões.'
       ]
     },
     {
@@ -6848,6 +6851,15 @@
     // repetir sempre no mesmo timing exato — evita um padrão robótico reconhecível.
     // Delay aleatório entre páginas/ciclos, pra nunca cair no mesmo tempo exato.
     var jitterMs = 8000 + Math.random() * 9000; // 8 a 17s
+    try {
+      var cfgP = lerConfigCunhar();
+      if (cfgP.ativo) {
+        cfgP.proximoEm = Date.now() + intervaloMs + jitterMs;
+        // pra onde voltar se você sair da Academia: a próxima página (ou o começo)
+        var fP = fromAtualDaUrl(); cfgP.volta = temProximaPaginaCunhar(fP + 1000) ? fP + 1000 : 0;
+        gravarConfigCunhar(cfgP);
+      }
+    } catch (e) {}
     cunharTimeoutId = setTimeout(function proximoCicloCunhagem() {
       var cfgAtual = lerConfigCunhar();
       if (!cfgAtual.ativo) { return; }
@@ -6934,6 +6946,8 @@
           '<label style="flex:1;font-size:10.5px;color:#bbb" data-dica="Deixa em cada aldeia o recurso equivalente a essa quantidade de moedas, sem cunhar — sobra recurso pra formar nobre. Ex.: 5 = cunha tudo menos 5 moedas por aldeia. 0 = não guarda nada.">Guardar por aldeia<br>' +
             '<input id="ork-cunhar-guardar" type="number" min="0" value="' + lerRegrasCunhar().guardar + '" style="width:100%;box-sizing:border-box;margin-top:3px;background:#111;border:1px solid #444;color:#eee;padding:7px 8px;border-radius:6px;font-size:12.5px"></label>' +
         '</div>' +
+        '<label style="display:flex;align-items:center;gap:7px;font-size:11px;color:#ddd;margin-bottom:9px;background:#111;border:1px solid #2c2c2c;border-radius:7px;padding:7px 8px;cursor:help" data-dica="Ligado: você pode sair da Academia e jogar normal nesta aba. Quando chegar a hora do próximo ciclo, ele volta SOZINHO pra Academia (espera você parar de clicar uns segundos), cunha e passa pelas páginas de 1.000 aldeias, igual na 24/7. Se outra aba já estiver na Academia cunhando, esta não sai do lugar. Desligado (padrão): só cunha enquanto a aba fica na Academia.">' +
+          '<input id="ork-cunhar-fora" type="checkbox"' + (lerConfigCunhar().foraAcad ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a">🏛️ Cunhar fora da Academia</label>' +
         '<div style="font-size:10.5px;color:#888;margin-bottom:6px">Repetir a cada:</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:12px">' +
           '<input id="ork-cunhar-valor" type="number" min="1" value="3" ' +
@@ -6960,7 +6974,7 @@
       var unidade = document.getElementById('ork-cunhar-unidade').value;
       gravarRegrasCunhar({ max: Math.max(0, parseInt(document.getElementById('ork-cunhar-max').value, 10) || 0), guardar: Math.max(0, parseInt(document.getElementById('ork-cunhar-guardar').value, 10) || 0) });
       var intervaloMs = Math.max(5000, unidade === 'seg' ? valor * 1000 : valor * 60000);
-      gravarConfigCunhar({ ativo: true, intervaloMs: intervaloMs });
+      gravarConfigCunhar({ ativo: true, intervaloMs: intervaloMs, foraAcad: !!document.getElementById('ork-cunhar-fora').checked, proximoEm: 0 });
       fechar();
       if (!checaCunhar()) {
         // Configurado antes de sair: vai pra Academia e a cunhagem começa sozinha
@@ -7581,7 +7595,8 @@
       farmMin: 2, farmMax: 3, pausaMin: 3, pausaMax: 4,
       cunhar: true, balancear: false, balCadaMin: 30, balUltimo: 0, balFeitos: [],
       atkMin: 4, atkMax: 6, atkInicio: 0, atkNav: 0,
-      relogarCada: 0, relModo: 'queda', mundo: '', atkFarm: false, atkProxima: 0, seq: null, seqIdx: 0, acaoId: '' };
+      relogarCada: 0, relModo: 'queda', mundo: '', atkFarm: false, atkProxima: 0, seq: null, seqIdx: 0, acaoId: '',
+      kpModo: 'tropa', kpMin: 2, kpMax: 3, kpFim: 0 };
   }
   /* ---------- sequência de ações do ciclo (você escolhe quais e a ordem) ---------- */
   var AUTO_ACOES = {
@@ -7591,7 +7606,10 @@
     nobre: { nome: '👑 Noblar bárbaras', dica: 'Roda 1 ciclo do Noblar Automático com a configuração salva na aba Noblar Automático (alvos, escolta, produzir nobres, pós-conquista...).' },
     gerente: { nome: '🏗️ Gerente de Conta', dica: 'Roda 1 ciclo do Gerente de Conta (construir, recrutar e pesquisar) com as regras salvas na aba Gerente de Conta — só quando já passou o tempo do campo "Repetir a cada" de lá (em minutos ou segundos).' },
     coletor: { nome: '🧺 Coletor Hard (farm assistente)', dica: 'Roda 1 vez o Coletor Hard (ícone dourado flutuante) com a configuração salva nele.' },
-    etiquetar: { nome: '🏷️ Etiquetar ataques', dica: 'Etiqueta os ataques recebidos que ainda estão sem nome (botão Etiqueta do próprio jogo), por trás — 1 ou 2 pedidos leves.' }
+    etiquetar: { nome: '🏷️ Etiquetar ataques', dica: 'Etiqueta os ataques recebidos que ainda estão sem nome (botão Etiqueta do próprio jogo), por trás — 1 ou 2 pedidos leves.' },
+    nobplayer: { nome: '🎯 Noblador de Player', dica: 'Roda 1 ciclo do Noblador de Player com a configuração salva na aba Noblador de Player (nicks, escolta, Enviar Full, catapulta, produzir nobres...).' },
+    keypress: { nome: '⌨️ KeyPress', dica: 'Escolha no campo ao lado: ATÉ ACABAR TROPA = roda 1 passada completa do KeyPress Hard; POR TEMPO = fica mandando pelo tempo escolhido (em minutos, sorteado entre os dois números), passando de novo quando a tropa volta. Usa o que foi salvo na aba KeyPress (modelo A+B, B ou C; aldeia de origem ou todas as aldeias). Se o KeyPress já estiver ligado sozinho, a 24/7 pula pra não rodar em dobro.' },
+    renomear: { nome: '✏️ Renomear aldeias', dica: 'Abre a tela Combinado (todas as aldeias) e roda o Renomeador com o nome e as opções salvos lá (precisa ter usado o Renomeador uma vez com "Lembrar nome e opções" marcado). Só renomeia as que ainda não estão com o nome certo.' }
   };
   function autoSeqCompleta(c) {
     var s = Array.isArray(c.seq) ? c.seq.filter(function (x) { return x && AUTO_ACOES[x.id]; }) : null;
@@ -7623,6 +7641,42 @@
         autoStatus('Gerente: construindo/recrutando/pesquisando...');
         autoLog('🏗️ rodando 1 ciclo do Gerente de Conta (intervalo configurado: ' + gerTextoIntervalo(gc) + ').');
         await gerRodarCiclo(true);
+      } else if (id === 'nobplayer') {
+        autoStatus('Noblador de Player...');
+        autoLog('🎯 rodando 1 ciclo do Noblador de Player.');
+        await nplRodarCiclo(false, true);
+      } else if (id === 'keypress') {
+        var kc = kpLerConfig();
+        if (kc.ativo && !kc.via247) { autoLog('⌨️ KeyPress já está ligado sozinho (fora da 24/7) — pulei pra não rodar em dobro.'); return; }
+        autoStatus('KeyPress rodando...');
+        autoLog('⌨️ rodando 1 passada do KeyPress (' + (kc.modelo === 'a' ? 'A+B' : String(kc.modelo || 'a').toUpperCase()) + (kc.todas ? ', todas as aldeias' : '') + ').');
+        if (!kc.ativo) { kc.ativo = true; kc.via247 = true; kc.proximoEm = 0; if (!kc.todas && !kc.origem) { kc.origem = game_data.village.id; } kpGravarConfig(kc); }
+        var vigiaK = setInterval(function () { if (!autoLer().ativo) { kpPararPorSeguranca('24/7 parada'); } }, 2000);
+        var c7 = autoLer();
+        try {
+          if (c7.kpModo === 'tempo') {
+            // POR TEMPO: repete passadas até dar o tempo sorteado (o fim fica salvo: recarregou, continua contando)
+            if (!c7.kpFim || c7.kpFim < Date.now() - 3600000) { c7.kpFim = Date.now() + autoMs(c7.kpMin, c7.kpMax); autoGravar(c7); }
+            autoLog('⌨️ KeyPress por tempo, até ' + autoHora(c7.kpFim) + '.');
+            var vigiaT = setInterval(function () { if (Date.now() >= (autoLer().kpFim || 0)) { kpPararPorSeguranca(); } }, 1000);
+            try {
+              while (Date.now() < (autoLer().kpFim || 0) && autoLer().ativo) {
+                var kk = kpLerConfig(); if (!kk.ativo) { kk.ativo = true; kk.via247 = true; kk.proximoEm = 0; kpGravarConfig(kk); }
+                await kpRodarCiclo(); while (kpRodando) { await kpEsperar(1000); }
+                var resto = (autoLer().kpFim || 0) - Date.now();
+                if (resto <= 0) { break; }
+                autoStatus('KeyPress: próxima passada já já (por tempo)');
+                await kpEsperar(Math.min(resto, autoEntre(20000, 40000))); // tropa voltando: espera um pouco antes de passar de novo
+              }
+            } finally { clearInterval(vigiaT); var c8 = autoLer(); c8.kpFim = 0; autoGravar(c8); }
+          } else {
+            await kpRodarCiclo(); while (kpRodando) { await kpEsperar(1000); }
+          }
+        } finally {
+          clearInterval(vigiaK);
+          var kf = kpLerConfig(); kf.via247 = false; kpGravarConfig(kf);
+          kpPararPorSeguranca();
+        }
       } else if (id === 'etiquetar') {
         autoStatus('Etiquetando ataques...');
         var re = await etqRodarFetch(true);
@@ -8077,8 +8131,52 @@
         }
         return;
       }
+      if (acao === 'renomear') {
+        var temCfg = false; try { temCfg = !!localStorage.getItem('ork_renomeador_config'); } catch (e) {}
+        if (!temCfg) { autoLog('✏️ Renomear: nenhum nome salvo — abra o Renomeador uma vez e marque "Lembrar nome e opções". Pulei.'); autoProximoSeq(c); return; }
+        c.fase = 'renomear'; autoGravar(c);
+        autoStatus('Indo pro Combinado pra renomear...');
+        autoIrPara('/game.php?village=' + game_data.village.id + '&screen=overview_villages&mode=combined&group=0&page=-1');
+        return;
+      }
       c.fase = 'acao'; c.acaoId = acao; autoGravar(c);
       autoAgendar(autoEntre(1000, 2000));
+      return;
+    }
+
+    if (c.fase === 'renomear') {
+      if (!(game_data.screen === 'overview_villages' && game_data.mode === 'combined')) {
+        autoIrPara('/game.php?village=' + game_data.village.id + '&screen=overview_villages&mode=combined&group=0&page=-1');
+        return;
+      }
+      if (autoPasso) { return; }
+      autoPasso = true;
+      autoStatus('Renomeando aldeias...');
+      setTimeout(function () {
+        try { rodarRename(); } catch (e) { console.error('[OROCHIKING] 24/7: erro ao abrir o Renomeador', e); }
+        setTimeout(function () {
+          try { $('#rh-pular-iguais').prop('checked', true); } catch (e) {}
+          var bt = document.getElementById('rh-start');
+          if (bt && !bt.disabled) { bt.click(); }
+          var inicio = Date.now();
+          var vigia = setInterval(function () {
+            var c5 = autoLer(), b = document.getElementById('rh-start');
+            var acabou = !b || !b.disabled || Date.now() - inicio > 20 * 60000;
+            if (!c5.ativo) { var st = document.getElementById('rh-stop'); if (st) { st.click(); } }
+            if (!acabou && c5.ativo) { return; }
+            clearInterval(vigia);
+            var stx = (document.getElementById('rh-status') || {}).textContent || '';
+            autoLog('✏️ Renomear: ' + (stx || 'terminou') + '.');
+            setTimeout(function () {
+              try { var cl = document.getElementById('rh-close'); if (cl) { cl.click(); } } catch (e) {}
+              autoPasso = false;
+              var c6 = autoLer();
+              if (!c6.ativo || c6.fase !== 'renomear') { return; }
+              autoProximoSeq(c6);
+            }, autoEntre(1500, 3000));
+          }, 1000);
+        }, autoEntre(1500, 2500));
+      }, autoEntre(1000, 2000));
       return;
     }
 
@@ -8421,6 +8519,7 @@
     }
     var seqUI = JSON.parse(JSON.stringify(autoSeqCompleta(c)));
     var balMinUI = c.balCadaMin;
+    var kpUI = { modo: c.kpModo === 'tempo' ? 'tempo' : 'tropa', min: c.kpMin || 2, max: c.kpMax || 3 };
     function desenharSeq() {
       var box = document.getElementById('ork-auto-seq');
       var btn = 'width:22px;height:22px;padding:0;background:#1c1c1c;color:#FFC400;border:1px solid #333;border-radius:5px;cursor:pointer;font-size:10px;font-family:inherit';
@@ -8431,6 +8530,8 @@
           '<input type="checkbox" class="ork-auto-seq-on" data-i="' + i + '"' + (x.on ? ' checked' : '') + ' style="width:15px;height:15px;margin:0;accent-color:#e8ac0a;cursor:pointer">' +
           '<span style="flex:1;font-size:11.5px;color:' + (x.on ? '#eee' : '#888') + ';cursor:help" data-dica="' + a.dica.replace(/"/g, '&quot;') + '">' + a.nome + '</span>' +
           (x.id === 'balancear' ? '<span style="font-size:10px;color:#888">mín.</span><input id="ork-auto-balmin" type="number" min="1" value="' + balMinUI + '" style="width:48px;' + inp + ';padding:3px 5px"><span style="font-size:10px;color:#888">min</span>' : '') +
+          (x.id === 'keypress' ? '<select id="ork-auto-kpmodo" style="' + inp + ';padding:2px 3px;font-size:10px;width:auto" data-dica="Até a tropa acabar: 1 passada completa e segue a sequência. Por tempo: fica mandando (passa de novo quando a tropa volta) pelo tempo sorteado entre os dois números, em minutos."><option value="tropa"' + (kpUI.modo !== 'tempo' ? ' selected' : '') + '>até acabar tropa</option><option value="tempo"' + (kpUI.modo === 'tempo' ? ' selected' : '') + '>por tempo</option></select>' +
+            (kpUI.modo === 'tempo' ? '<input id="ork-auto-kpmin" type="number" min="1" value="' + kpUI.min + '" style="width:36px;' + inp + ';padding:3px 4px"><span style="font-size:10px;color:#888">a</span><input id="ork-auto-kpmax" type="number" min="1" value="' + kpUI.max + '" style="width:36px;' + inp + ';padding:3px 4px"><span style="font-size:10px;color:#888">min</span>' : '') : '') +
           '<button type="button" class="ork-auto-seq-up" data-i="' + i + '" style="' + btn + '"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
           '<button type="button" class="ork-auto-seq-dn" data-i="' + i + '" style="' + btn + '"' + (i === seqUI.length - 1 ? ' disabled' : '') + '>▼</button></div>';
       }).join('');
@@ -8438,6 +8539,9 @@
       box.querySelectorAll('.ork-auto-seq-up').forEach(function (el) { el.addEventListener('click', function () { var i = +el.getAttribute('data-i'); var t = seqUI[i - 1]; seqUI[i - 1] = seqUI[i]; seqUI[i] = t; desenharSeq(); }); });
       box.querySelectorAll('.ork-auto-seq-dn').forEach(function (el) { el.addEventListener('click', function () { var i = +el.getAttribute('data-i'); var t = seqUI[i + 1]; seqUI[i + 1] = seqUI[i]; seqUI[i] = t; desenharSeq(); }); });
       var bm = document.getElementById('ork-auto-balmin'); if (bm) { bm.addEventListener('input', function () { balMinUI = bm.value; }); }
+      var km = document.getElementById('ork-auto-kpmodo'); if (km) { km.addEventListener('change', function () { kpUI.modo = km.value; desenharSeq(); }); }
+      var k1 = document.getElementById('ork-auto-kpmin'); if (k1) { k1.addEventListener('input', function () { kpUI.min = k1.value; }); }
+      var k2 = document.getElementById('ork-auto-kpmax'); if (k2) { k2.addEventListener('input', function () { kpUI.max = k2.value; }); }
     }
     desenharSeq();
     document.getElementById('ork-auto-relmodo').addEventListener('change', function () { mostrarModo(); });
@@ -8469,6 +8573,7 @@
       n.cunhar = ligado('cunhar');
       n.balancear = ligado('balancear');
       n.balCadaMin = Math.max(1, parseFloat(balMinUI) || 30);
+      n.kpModo = kpUI.modo; n.kpMin = Math.max(1, parseFloat(kpUI.min) || 2); n.kpMax = Math.max(n.kpMin, parseFloat(kpUI.max) || n.kpMin); n.kpFim = 0;
       var ax = faixaMin('ork-auto-amin', 'ork-auto-amax', 4, 6, 10); n.atkMin = ax[0]; n.atkMax = ax[1]; n.atkUn = ax[2];
       n.atkFarm = ligado('farm');
       if (!n.seq.some(function (x) { return x.on; }) && modo === 'farm') {
@@ -14721,7 +14826,16 @@
       box.innerHTML = '<button type="button" id="ork-ren-ir" style="' + bt + ';background:linear-gradient(100deg,#FFB800,#FFDD55);color:#141200" title="Abre o Renomeador Hard (mesmo do painel)">✏️ Renomear</button>' +
         '<button type="button" id="ork-ren-parar" style="' + bt + ';background:#2a1010;color:#ff6b6b;border:1px solid #4a1c1c" title="Para o Renomeador e fecha a janela dele">⏹ Parar</button>' +
         '<span id="ork-ren-x" style="color:#8a6a3a;cursor:pointer;font-weight:800;font-size:13px" title="Tirar estes botões (voltam quando usar pelo painel)">&times;</span>';
-      if (ancora && ancora.parentNode) { ancora.parentNode.insertBefore(box, ancora.nextSibling); }
+      // v115: vai pro TOPO da lista (logo acima da tabela das aldeias, abaixo da paginação), mais visível
+      var tabela = document.getElementById('combined_table') || document.querySelector('#paged_view_content table.vis, table.overview_table');
+      if (tabela && tabela.parentNode) {
+        var faixa = document.createElement('div'); faixa.id = 'ork-atalho-ren-faixa';
+        faixa.style.cssText = 'display:flex;justify-content:center;align-items:center;gap:6px;margin:4px 0 6px;padding:5px 8px;background:#1a1a1a;border:1px solid #3a3a3a;border-radius:8px';
+        box.style.marginLeft = '0';
+        faixa.appendChild(box); tabela.parentNode.insertBefore(faixa, tabela);
+        box.querySelector('#ork-ren-x') && (box.querySelector('#ork-ren-x').style.color = '#a08850');
+      }
+      else if (ancora && ancora.parentNode) { ancora.parentNode.insertBefore(box, ancora.nextSibling); }
       else { box.style.cssText += ';position:fixed;top:70px;right:14px;z-index:99990;background:#1a1a1a;padding:6px 8px;border-radius:10px;border:1px solid #3a3a3a'; document.body.appendChild(box); }
       box.querySelector('#ork-ren-ir').addEventListener('click', function (e) { e.preventDefault(); var f = FERRAMENTAS_POR_ID.rename; if (f) { orkExecutar(f); } });
       box.querySelector('#ork-ren-parar').addEventListener('click', function (e) {
@@ -14729,7 +14843,7 @@
         var st = document.getElementById('rh-stop'); if (st && !st.disabled) { st.click(); }
         var pp = document.getElementById('rh-popup'); if (pp) { pp.style.display = 'none'; }
       });
-      box.querySelector('#ork-ren-x').addEventListener('click', function () { try { localStorage.removeItem(ORK_ATALHO_RENOMEAR); } catch (e) {} box.remove(); });
+      box.querySelector('#ork-ren-x').addEventListener('click', function () { try { localStorage.removeItem(ORK_ATALHO_RENOMEAR); } catch (e) {} var fx = document.getElementById('ork-atalho-ren-faixa'); if (fx) { fx.remove(); } else { box.remove(); } });
     } catch (e) {}
   }
   setTimeout(orkAtalhoRenomear, 500);
@@ -14899,7 +15013,7 @@
       nome: 'Cunhar Moedas',
       abrev: 'Cunhar',
       icone: '💰',
-      dica: 'Escolha o intervalo aqui mesmo; ele vai pra Academia e começa a cunhar sozinho quando a página carregar (sem Ativar agora). Com mais de 1.000 aldeias, passa pelas páginas todas numa aba só. Deixe a aba de Cunhagem aberta. Regras opcionais: Moedas por aldeia (máximo por ciclo, 0 = tudo) e Guardar por aldeia (deixa o recurso de X moedas sem cunhar, pra formar nobre).',
+      dica: 'Escolha o intervalo aqui mesmo; ele vai pra Academia e começa a cunhar sozinho quando a página carregar (sem Ativar agora). Com mais de 1.000 aldeias, passa pelas páginas todas numa aba só. Deixe a aba de Cunhagem aberta. Regras opcionais: Moedas por aldeia (máximo por ciclo, 0 = tudo) e Guardar por aldeia (deixa o recurso de X moedas sem cunhar, pra formar nobre). 🏛️ Cunhar fora da Academia (opção no início): você pode sair da Academia e jogar na mesma aba — na hora do próximo ciclo ele volta sozinho pra Academia (espera você parar de clicar uns segundos), cunha e segue pras próximas páginas.',
       checar: checaCunhar,
       rodar: rodarCunhar,
       configurarAntes: true,
@@ -14922,7 +15036,7 @@
       nome: 'Automatização 24/7',
       abrev: '24/7',
       icone: '♾️',
-      dica: 'Roda tudo sozinho, em ciclos, numa aba só. Você escolhe as ações e a ORDEM: Farm Hard, Cunhar, Balancear, Noblar bárbaras (Noblar Automático), Construir/recrutar (Gerente de Conta) e Coletor Hard — depois vem a pausa e repete. Modo Farm Player: repete o ataque salvo no Ataque Mass e roda a sequência entre as levas. Relogin automático, espera o captcha e continua. Funciona com a aba minimizada ou em segundo plano (deixe o Chrome aberto e o PC sem hibernar).',
+      dica: 'Roda tudo sozinho, em ciclos, numa aba só. Você escolhe as ações e a ORDEM: Farm Hard, Cunhar, Balancear, Noblar bárbaras (Noblar Automático), Construir/recrutar (Gerente de Conta) e Coletor Hard — depois vem a pausa e repete. Modo Farm Player: repete o ataque salvo no Ataque Mass e roda a sequência entre as levas. Relogin automático, espera o captcha e continua. Funciona com a aba minimizada ou em segundo plano (deixe o Chrome aberto e o PC sem hibernar). Também dá pra pôr na sequência: 🎯 Noblador de Player (1 ciclo com o que está salvo), ⌨️ KeyPress (até a tropa acabar ou por tempo, com o modelo salvo) e ✏️ Renomear aldeias (abre o Combinado e renomeia, com o nome salvo, só as que ainda não estão certas).',
       checar: checaAuto247,
       rodar: rodarAuto247,
       destino: null
@@ -15171,6 +15285,10 @@
     // Tenta cunhar; se estiver esperando a pausa do farm (modo freio), fica
     // reconferindo a cada ~20-40s (aleatório) até o farm pausar, sem gastar o ciclo.
     var tentativasEspera = 0;
+    if (cfg.foraAcad) {
+      try { localStorage.setItem('ork_cunhar_vivo', String(Date.now())); } catch (e) {}
+      setInterval(function () { if (lerConfigCunhar().ativo) { try { localStorage.setItem('ork_cunhar_vivo', String(Date.now())); } catch (e) {} } }, 10000);
+    }
     function tentarCunhar() {
       mostrarStatusCunhar(cfg);
       if (window.__ORK_CAPTCHA_BLOQUEADO__ || captchaNaTela()) { cunharTimeoutId = setTimeout(tentarCunhar, 4000 + Math.floor(Math.random() * 2001)); return; }
@@ -15201,12 +15319,52 @@
   })();
 
   /* ============================================================
+     v115: CUNHAR FORA DA ACADEMIA
+     Com a opção ligada, em qualquer outra tela: mostra a bolinha 💰 com
+     a contagem e, na hora do próximo ciclo, volta sozinho pra Academia
+     (na página &from= em que parou). Espera você ficar ~8s sem clicar
+     ou digitar, pra não atrapalhar o que você está fazendo (no máximo
+     3 min de espera). Não sai do lugar se: a 24/7 está ativa nesta aba
+     (ela já cunha), tem captcha, ou outra aba já está na Academia.
+  ============================================================ */
+  (function cunharForaDaAcademia() {
+    if (!(window.game_data && game_data.village)) return;
+    if (game_data.screen === 'snob' && game_data.mode === 'coin') return;
+    var cfg = lerConfigCunhar();
+    if (!cfg.ativo || !cfg.foraAcad) return;
+    var ultimoUso = Date.now();
+    ['mousedown', 'keydown', 'wheel', 'touchstart'].forEach(function (ev) { document.addEventListener(ev, function () { ultimoUso = Date.now(); }, true); });
+    mostrarStatusCunhar(cfg);
+    var esperouDesde = 0;
+    function fmt(ms) { var sg = Math.max(0, Math.round(ms / 1000)); return sg >= 60 ? Math.floor(sg / 60) + 'min ' + (sg % 60) + 's' : sg + 's'; }
+    function checar() {
+      var c = lerConfigCunhar();
+      if (!c.ativo || !c.foraAcad) { return; }
+      try { if (autoLer().ativo) { atualizarStatusCunhar('Cunhagem: a 24/7 está ativa nesta aba — ela é que cunha.'); setTimeout(checar, 15000); return; } } catch (e) {}
+      var vivo = 0; try { vivo = +localStorage.getItem('ork_cunhar_vivo') || 0; } catch (e) {}
+      if (Date.now() - vivo < 30000) { atualizarStatusCunhar('Cunhagem: outra aba já está na Academia cunhando — clique pra parar'); setTimeout(checar, 10000); return; }
+      var falta = (c.proximoEm || 0) - Date.now();
+      if (falta > 0) { atualizarStatusCunhar('Cunhagem fora da Academia: volta pra Academia em ' + fmt(falta) + ' — clique pra parar'); setTimeout(checar, Math.min(falta + 500, 5000)); return; }
+      if (window.__ORK_CAPTCHA_BLOQUEADO__ || captchaNaTela()) { atualizarStatusCunhar('Cunhagem: captcha na tela — esperando'); setTimeout(checar, 4000); return; }
+      if (!esperouDesde) { esperouDesde = Date.now(); }
+      var parado = Date.now() - ultimoUso;
+      if (parado < 8000 && Date.now() - esperouDesde < 180000) { atualizarStatusCunhar('Cunhagem: hora de cunhar — vou pra Academia quando você parar de clicar uns segundos'); setTimeout(checar, 2000); return; }
+      try { localStorage.setItem('ork_cunhar_vivo', String(Date.now())); } catch (e) {}
+      var from = +c.volta || 0;
+      console.log('[OROCHIKING] Cunhagem fora da Academia: hora do ciclo — indo pra Academia (from=' + from + ').');
+      irParaPaginaCunhar(from);
+    }
+    setTimeout(checar, 1500 + Math.floor(Math.random() * 1500));
+  })();
+
+  /* ============================================================
      RETOMAR O KEYPRESS HARD (em QUALQUER tela do jogo)
   ============================================================ */
   (function retomarKeyPress() {
     if (!(window.game_data && game_data.village)) return;
     var kc = kpLerConfig();
     if (!kc.ativo) return;
+    if (kc.via247) { try { if (autoLer().ativo) { return; } } catch (e) {} kc.via247 = false; kc.ativo = false; kpGravarConfig(kc); return; } // a 24/7 é quem toca
     // no meio de um ciclo (página recarregou por clique/F5): volta rápido
     var noMeio = !(kc.proximoEm && kc.proximoEm > Date.now());
     setTimeout(kpRetomar, noMeio ? kpAleatorio(400, 900) : kpAleatorio(1500, 3000));
